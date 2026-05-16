@@ -98,6 +98,13 @@ public class TaskController {
         taskService.delete(user.userId(), id);
     }
 
+    @DeleteMapping("/completed")
+    @Operation(summary = "Очистить выполненные", description = "Скрывает все DONE и CANCELLED задачи пользователя")
+    public Map<String, Integer> clearCompleted(@AuthenticationPrincipal AuthenticatedUser user) {
+        int count = taskService.clearCompleted(user.userId());
+        return Map.of("cleared", count);
+    }
+
     @GetMapping("/focus")
     @Operation(summary = "Режим фокуса", description = "Возвращает 1–3 приоритетные задачи с ближайшим дедлайном")
     public FocusResponse getFocusTasks(

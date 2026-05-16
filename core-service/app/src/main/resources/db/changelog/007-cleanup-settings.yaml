@@ -1,0 +1,13 @@
+databaseChangeLog:
+  - changeSet:
+      id: 007-add-auto-clean-setting
+      author: taskflow
+      changes:
+        - addColumn:
+            tableName: user_settings
+            columns:
+              - column:
+                  name: auto_clean_completed_days
+                  type: INT
+                  constraints:
+                    nullable: true

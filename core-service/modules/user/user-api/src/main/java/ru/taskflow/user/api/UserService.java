@@ -1,5 +1,8 @@
 package ru.taskflow.user.api;
 
+import ru.taskflow.user.api.dto.UpdateSettingsRequest;
+import ru.taskflow.user.api.dto.UserSettingsDto;
+
 import java.util.UUID;
 
 public interface UserService {
@@ -7,4 +10,8 @@ public interface UserService {
     UserDto findOrCreateByTelegram(long telegramId, String username, String firstName, String lastName);
 
     UserDto findById(UUID userId);
+
+    UserSettingsDto getSettings(UUID userId);
+
+    void updateSettings(UUID userId, UpdateSettingsRequest request);
 }

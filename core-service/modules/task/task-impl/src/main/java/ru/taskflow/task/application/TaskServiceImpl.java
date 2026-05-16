@@ -417,4 +417,10 @@ public class TaskServiceImpl implements TaskService {
             .map(GroupJpaEntity::getName)
             .toList();
     }
+
+    @Override
+    @Transactional
+    public int clearCompleted(UUID userId) {
+        return taskRepository.softDeleteAllCompletedByUser(userId);
+    }
 }

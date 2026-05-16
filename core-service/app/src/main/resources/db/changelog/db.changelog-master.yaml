@@ -11,3 +11,5 @@ databaseChangeLog:
       file: db/changelog/005-init-notifications.yaml
   - include:
       file: db/changelog/006-init-audit.yaml
+  - include:
+      file: db/changelog/007-cleanup-settings.yaml

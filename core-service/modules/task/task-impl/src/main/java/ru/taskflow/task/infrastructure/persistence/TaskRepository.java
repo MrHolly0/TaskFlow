@@ -3,6 +3,7 @@ package ru.taskflow.task.infrastructure.persistence;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import ru.taskflow.task.api.TaskPriority;
@@ -85,5 +86,34 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
             @Param("date") OffsetDateTime date,
             @Param("done") TaskStatus done
     );
+
+    @Modifying
+    @Query(value = """
+            UPDATE tasks
+            SET is_deleted = true, deleted_at = NOW()
+            WHERE user_id = :userId
+              AND status IN ('DONE', 'CANCELLED')
+              AND is_deleted = false
+            """, nativeQuery = true)
+    int softDeleteAllCompletedByUser(@Param("userId") UUID userId);
+
+    @Modifying
+    @Query(value = """
+            UPDATE tasks
+            SET is_deleted = true, deleted_at = NOW()
+            WHERE user_id = :userId
+              AND status IN ('DONE', 'CANCELLED')
+              AND is_deleted = false
+              AND completed_at < :before
+            """, nativeQuery = true)
+    int softDeleteCompletedBefore(@Param("userId") UUID userId, @Param("before") OffsetDateTime before);
+
+    @Modifying
+    @Query(value = """
+            DELETE FROM tasks
+            WHERE status IN ('DONE', 'CANCELLED')
+              AND completed_at < :before
+            """, nativeQuery = true)
+    int physicalDeleteCompletedBefore(@Param("before") OffsetDateTime before);
 
 }

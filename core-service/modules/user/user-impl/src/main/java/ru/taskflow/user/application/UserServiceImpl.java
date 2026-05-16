@@ -6,35 +6,22 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.taskflow.shared.exception.NotFoundException;
 import ru.taskflow.user.api.UserDto;
 import ru.taskflow.user.api.UserService;
+import ru.taskflow.user.api.dto.UpdateSettingsRequest;
+import ru.taskflow.user.api.dto.UserSettingsDto;
 import ru.taskflow.user.infrastructure.persistence.UserJpaEntity;
 import ru.taskflow.user.infrastructure.persistence.UserRepository;
+import ru.taskflow.user.infrastructure.persistence.UserSettingsJpaEntity;
+import ru.taskflow.user.infrastructure.persistence.UserSettingsRepository;
 
 import java.util.UUID;
 
-/**
- * Сервис управления учётными записями пользователей.
- *
- * Обеспечивает регистрацию и поиск пользователей, интегрируется с Telegram
- * для создания аккаунтов через инициализационные данные из Mini App.
- */
 @Service
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
+    private final UserSettingsRepository settingsRepository;
 
-    /**
-     * Находит или создаёт пользователя по Telegram ID.
-     *
-     * Используется при авторизации через Telegram Mini App. Если пользователь
-     * не существует, создаётся новый аккаунт с данными из профиля Telegram.
-     *
-     * @param telegramId ID пользователя в Telegram
-     * @param username никнейм Telegram
-     * @param firstName имя из профиля
-     * @param lastName фамилия из профиля
-     * @return DTO пользователя (новый или существующий)
-     */
     @Override
     @Transactional
     public UserDto findOrCreateByTelegram(long telegramId, String username, String firstName, String lastName) {
@@ -50,19 +37,57 @@ public class UserServiceImpl implements UserService {
                 });
     }
 
-    /**
-     * Получает данные пользователя по ID.
-     *
-     * @param userId ID пользователя
-     * @return DTO пользователя
-     * @throws NotFoundException если пользователь не найден
-     */
     @Override
     @Transactional(readOnly = true)
     public UserDto findById(UUID userId) {
         return userRepository.findById(userId)
                 .map(this::toDto)
                 .orElseThrow(() -> new NotFoundException("User not found: " + userId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public UserSettingsDto getSettings(UUID userId) {
+        return settingsRepository.findByUserId(userId)
+                .map(this::toSettingsDto)
+                .orElseGet(this::defaultSettings);
+    }
+
+    @Override
+    @Transactional
+    public void updateSettings(UUID userId, UpdateSettingsRequest request) {
+        var settings = settingsRepository.findByUserId(userId)
+                .orElseGet(() -> createDefaultSettings(userId));
+
+        if (request.notificationsEnabled() != null) settings.setNotificationsEnabled(request.notificationsEnabled());
+        if (request.defaultReminderMinutes() != null) settings.setDefaultReminderMinutes(request.defaultReminderMinutes());
+        if (request.urgentExtraReminder() != null) settings.setUrgentExtraReminder(request.urgentExtraReminder());
+        if (request.preferredLlm() != null) settings.setPreferredLlm(request.preferredLlm());
+        if (request.autoCleanCompletedDays() != null) settings.setAutoCleanCompletedDays(request.autoCleanCompletedDays());
+
+        settingsRepository.save(settings);
+    }
+
+    private UserSettingsJpaEntity createDefaultSettings(UUID userId) {
+        var user = userRepository.findById(userId)
+                .orElseThrow(() -> new NotFoundException("User not found: " + userId));
+        var settings = new UserSettingsJpaEntity();
+        settings.setUser(user);
+        return settings;
+    }
+
+    private UserSettingsDto toSettingsDto(UserSettingsJpaEntity e) {
+        return new UserSettingsDto(
+                e.isNotificationsEnabled(),
+                e.getDefaultReminderMinutes(),
+                e.isUrgentExtraReminder(),
+                e.getPreferredLlm(),
+                e.getAutoCleanCompletedDays()
+        );
+    }
+
+    private UserSettingsDto defaultSettings() {
+        return new UserSettingsDto(true, 60, true, "groq", null);
     }
 
     private UserDto toDto(UserJpaEntity e) {

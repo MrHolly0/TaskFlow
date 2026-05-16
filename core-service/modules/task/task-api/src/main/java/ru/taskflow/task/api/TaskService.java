@@ -38,4 +38,6 @@ public interface TaskService {
     TaskResponse createQuick(UUID userId, CreateTaskRequest request);
 
     List<String> findGroupNames(UUID userId);
+
+    int clearCompleted(UUID userId);
 }

@@ -31,4 +31,7 @@ public class UserSettingsJpaEntity {
 
     @Column(name = "preferred_llm", length = 32)
     private String preferredLlm = "groq";
+
+    @Column(name = "auto_clean_completed_days")
+    private Integer autoCleanCompletedDays;
 }
