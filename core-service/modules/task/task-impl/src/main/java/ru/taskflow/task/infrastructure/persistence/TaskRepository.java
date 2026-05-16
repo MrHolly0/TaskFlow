@@ -116,4 +116,8 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
             """, nativeQuery = true)
     int physicalDeleteCompletedBefore(@Param("before") OffsetDateTime before);
 
+    @Modifying
+    @Query(value = "UPDATE tasks SET group_id = NULL WHERE group_id = :groupId", nativeQuery = true)
+    void detachGroup(@Param("groupId") UUID groupId);
+
 }

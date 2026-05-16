@@ -8,22 +8,18 @@ import ru.taskflow.task.api.dto.GroupResponse;
 import ru.taskflow.task.api.exception.GroupNotFoundException;
 import ru.taskflow.task.infrastructure.persistence.GroupJpaEntity;
 import ru.taskflow.task.infrastructure.persistence.GroupRepository;
+import ru.taskflow.task.infrastructure.persistence.TaskRepository;
 
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Сервис управления группами задач.
- *
- * Позволяет пользователям организовывать задачи в группы (проекты, категории).
- * Группы содержат метаданные для визуализации (цвет, иконка).
- */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class GroupService {
 
     private final GroupRepository groupRepository;
+    private final TaskRepository taskRepository;
 
     /**
      * Получает все группы пользователя.
@@ -67,6 +63,7 @@ public class GroupService {
     public void delete(UUID userId, UUID groupId) {
         var group = groupRepository.findByIdAndUserId(groupId, userId)
                 .orElseThrow(() -> new GroupNotFoundException(groupId));
+        taskRepository.detachGroup(groupId);
         groupRepository.delete(group);
     }
 }
