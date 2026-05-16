@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { IconMicrophone, IconSend, IconSparkles, IconCheck, IconArrowLeft, IconX } from '@tabler/icons-react';
+import { IconMicrophone, IconSend, IconSparkles, IconCheck, IconArrowLeft, IconX, IconPaperclip } from '@tabler/icons-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useCreateTask, CreateTaskRequest, useParseText, useGroups } from '@/lib/hooks/useTasks';
+import { useCreateTask, CreateTaskRequest, useParseText, useParseVoice, useGroups } from '@/lib/hooks/useTasks';
 import { Button } from '@/app/components/ui/button';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Input } from '@/app/components/ui/input';
@@ -20,7 +20,7 @@ import {
 } from '@/app/components/ui/select';
 import { cn } from '@/lib/utils';
 
-type Phase = 'input' | 'recording' | 'processing' | 'confirm' | 'loading' | 'done';
+type Phase = 'input' | 'recording' | 'processing' | 'uploading' | 'confirm' | 'loading' | 'done';
 
 interface ParsedTask {
   title: string;
@@ -104,6 +104,7 @@ interface QuickInputModalProps {
 export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
   const { mutateAsync: createTask } = useCreateTask();
   const { mutate: parseText } = useParseText();
+  const { mutate: parseVoice } = useParseVoice();
   const { data: groups = [] } = useGroups();
 
   const [phase, setPhase] = useState<Phase>('input');
@@ -112,6 +113,7 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const submittingRef = useRef(false);
 
   useEffect(() => {
@@ -164,34 +166,52 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
     recognition.start();
   }, []);
 
+  const mapParsed = useCallback((parsed: any[]): ParsedTask[] => {
+    return parsed.map((p: any) => {
+      const rawDeadline = p.deadline;
+      let deadline: string | undefined;
+      if (typeof rawDeadline === 'string' && rawDeadline) {
+        deadline = rawDeadline.includes('T') ? rawDeadline : `${rawDeadline}T20:59:00Z`;
+      } else if (typeof rawDeadline === 'number') {
+        deadline = new Date(rawDeadline * 1000).toISOString();
+      }
+      const validPriorities = ['URGENT', 'HIGH', 'MEDIUM', 'LOW'];
+      const priority = validPriorities.includes(p.priority) ? p.priority : 'MEDIUM';
+      return {
+        title: p.title ?? 'Без названия',
+        priority: priority as ParsedTask['priority'],
+        deadline,
+        groupName: p.group ?? guessGroup(p.title, groups),
+        estimateMinutes: p.estimateMinutes ?? undefined,
+      };
+    });
+  }, [groups]);
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setPhase('uploading');
+    setError(null);
+    parseVoice(file, {
+      onSuccess: (parsed: any[]) => {
+        setParsedTasks(parsed?.length > 0 ? mapParsed(parsed) : [{ title: 'Задача из голосового', priority: 'MEDIUM' }]);
+        setPhase('confirm');
+      },
+      onError: () => {
+        setError('Не удалось распознать аудио. Попробуй другой файл.');
+        setPhase('input');
+      },
+    });
+  }, [parseVoice, mapParsed]);
+
   const handleSubmit = () => {
     if (!text.trim()) return;
     setPhase('processing');
     parseText(text.trim(), {
       onSuccess: (parsed: any[]) => {
         try {
-          if (parsed && parsed.length > 0) {
-            setParsedTasks(parsed.map((p: any) => {
-              const rawDeadline = p.deadline;
-              let deadline: string | undefined;
-              if (typeof rawDeadline === 'string' && rawDeadline) {
-                deadline = rawDeadline.includes('T') ? rawDeadline : `${rawDeadline}T20:59:00Z`;
-              } else if (typeof rawDeadline === 'number') {
-                deadline = new Date(rawDeadline * 1000).toISOString();
-              }
-              const validPriorities = ['URGENT', 'HIGH', 'MEDIUM', 'LOW'];
-              const priority = validPriorities.includes(p.priority) ? p.priority : 'MEDIUM';
-              return {
-                title: p.title ?? 'Без названия',
-                priority: priority as ParsedTask['priority'],
-                deadline,
-                groupName: p.group ?? guessGroup(p.title, groups),
-                estimateMinutes: p.estimateMinutes ?? undefined,
-              };
-            }));
-          } else {
-            setParsedTasks(splitIntoTasks(text.trim(), groups));
-          }
+          setParsedTasks(parsed?.length > 0 ? mapParsed(parsed) : splitIntoTasks(text.trim(), groups));
         } catch {
           setParsedTasks(splitIntoTasks(text.trim(), groups));
         }
@@ -288,6 +308,17 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
                     <IconMicrophone className="h-4 w-4" />
                     Голос
                   </Button>
+                  <Button variant="outline" onClick={() => fileInputRef.current?.click()} className="gap-2 h-11">
+                    <IconPaperclip className="h-4 w-4" />
+                    Файл
+                  </Button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="audio/*"
+                    className="hidden"
+                    onChange={handleFileSelect}
+                  />
                   <Button onClick={handleSubmit} disabled={!text.trim()} className="flex-1 gap-2 h-11">
                     <IconSend className="h-4 w-4" />
                     Далее
@@ -318,6 +349,13 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
               <motion.div key="processing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center justify-center py-8 space-y-3">
                 <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="w-10 h-10 border-2 border-primary/20 border-t-primary rounded-full" />
                 <p className="text-muted-foreground text-sm">AI разбирает задачи...</p>
+              </motion.div>
+            )}
+
+            {phase === 'uploading' && (
+              <motion.div key="uploading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center justify-center py-8 space-y-3">
+                <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="w-10 h-10 border-2 border-primary/20 border-t-primary rounded-full" />
+                <p className="text-muted-foreground text-sm">Расшифровываем аудио...</p>
               </motion.div>
             )}
 
