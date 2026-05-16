@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useTheme } from 'next-themes';
 import { Card } from '@/app/components/ui/card';
 import { Label } from '@/app/components/ui/label';
@@ -11,7 +12,19 @@ import {
 } from '@/app/components/ui/select';
 import { Button } from '@/app/components/ui/button';
 import { Separator } from '@/app/components/ui/separator';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/app/components/ui/alert-dialog';
 import { useStore } from '@/lib/store';
+import { useSettings, useUpdateSettings, useClearCompleted } from '@/lib/hooks/useSettings';
 
 function useSetting(key: string, defaultValue: string): [string, (v: string) => void] {
   const stored = localStorage.getItem(key) ?? defaultValue;
@@ -26,6 +39,14 @@ function useBoolSetting(key: string, defaultValue: boolean): [boolean, (v: boole
   return [value, set];
 }
 
+const AUTO_CLEAN_OPTIONS = [
+  { value: 'off', label: 'Не удалять автоматически', days: null },
+  { value: '7', label: 'Через 7 дней', days: 7 },
+  { value: '14', label: 'Через 2 недели', days: 14 },
+  { value: '30', label: 'Через месяц', days: 30 },
+  { value: '90', label: 'Через 3 месяца', days: 90 },
+];
+
 export function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const user = useStore((s) => s.user);
@@ -35,6 +56,27 @@ export function SettingsPage() {
   const [notifications, setNotifications] = useBoolSetting('settings.notifications', true);
   const [reminderTime, setReminderTime] = useSetting('settings.reminderTime', '1h');
   const [urgentExtra, setUrgentExtra] = useBoolSetting('settings.urgentExtra', true);
+
+  const { data: serverSettings } = useSettings();
+  const updateSettings = useUpdateSettings();
+  const clearCompleted = useClearCompleted();
+  const [clearResult, setClearResult] = useState<number | null>(null);
+
+  const currentAutoClean = serverSettings?.autoCleanCompletedDays
+    ? String(serverSettings.autoCleanCompletedDays)
+    : 'off';
+
+  const handleAutoCleanChange = (value: string) => {
+    const option = AUTO_CLEAN_OPTIONS.find((o) => o.value === value);
+    if (!option) return;
+    updateSettings.mutate({ autoCleanCompletedDays: option.days });
+  };
+
+  const handleClearCompleted = () => {
+    clearCompleted.mutate(undefined, {
+      onSuccess: (data) => setClearResult(data.cleared),
+    });
+  };
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -164,6 +206,73 @@ export function SettingsPage() {
                 Системная
               </Button>
             </div>
+          </div>
+        </section>
+
+        <Separator />
+
+        <section className="flex flex-col gap-5">
+          <h2 className="text-base font-semibold">Задачи</h2>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="auto-clean">Авто-удаление выполненных</Label>
+            <p className="text-xs text-muted-foreground">
+              Выполненные и отклонённые задачи скрываются через указанный срок. Системное удаление из БД — через 3 месяца.
+            </p>
+            <Select
+              value={currentAutoClean}
+              onValueChange={handleAutoCleanChange}
+              disabled={updateSettings.isPending}
+            >
+              <SelectTrigger id="auto-clean" className="h-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {AUTO_CLEAN_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label>Очистить прямо сейчас</Label>
+            <p className="text-xs text-muted-foreground">
+              Скрывает все выполненные и отклонённые задачи немедленно.
+            </p>
+            {clearResult !== null && (
+              <p className="text-xs text-green-600">
+                Скрыто задач: {clearResult}
+              </p>
+            )}
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="h-10 self-start"
+                  disabled={clearCompleted.isPending}
+                >
+                  {clearCompleted.isPending ? 'Очищаем...' : 'Очистить выполненные'}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Очистить выполненные задачи?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Все задачи со статусом «Выполнено» и «Отклонено» будут скрыты из списка.
+                    Они окончательно удалятся через 3 месяца.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Отмена</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleClearCompleted}>
+                    Очистить
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </section>
 
