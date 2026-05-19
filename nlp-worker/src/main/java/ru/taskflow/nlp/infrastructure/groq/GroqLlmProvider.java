@@ -42,21 +42,21 @@ public class GroqLlmProvider implements LlmProvider {
         String systemPrompt = buildSystemPrompt(existingGroups);
 
         var request = Map.of(
-            "model", config.getLlmModel(),
-            "messages", List.of(
-                Map.of("role", "system", "content", systemPrompt),
-                Map.of("role", "user", "content", text)
-            ),
-            "response_format", Map.of("type", "json_object"),
-            "temperature", 0.1
+                "model", config.getLlmModel(),
+                "messages", List.of(
+                        Map.of("role", "system", "content", systemPrompt),
+                        Map.of("role", "user", "content", text)
+                ),
+                "response_format", Map.of("type", "json_object"),
+                "temperature", 0.1
         );
 
         var response = restClient.post()
-            .uri("/chat/completions")
-            .header("Authorization", "Bearer " + config.getApiKey())
-            .body(request)
-            .retrieve()
-            .body(GroqCompletionResponse.class);
+                .uri("/chat/completions")
+                .header("Authorization", "Bearer " + config.getApiKey())
+                .body(request)
+                .retrieve()
+                .body(GroqCompletionResponse.class);
 
         if (response == null || response.choices().isEmpty()) {
             return new ParsedTasks(List.of());
@@ -81,15 +81,15 @@ public class GroqLlmProvider implements LlmProvider {
             try {
                 String title = taskNode.get("title").asText();
                 String description = taskNode.has("description") && !taskNode.get("description").isNull()
-                    ? taskNode.get("description").asText()
-                    : null;
+                        ? taskNode.get("description").asText()
+                        : null;
                 String priority = taskNode.has("priority") ? taskNode.get("priority").asText() : "MEDIUM";
                 String deadline = taskNode.has("deadline") && !taskNode.get("deadline").isNull()
-                    ? taskNode.get("deadline").asText()
-                    : null;
+                        ? taskNode.get("deadline").asText()
+                        : null;
                 String group = taskNode.has("group") && !taskNode.get("group").isNull()
-                    ? taskNode.get("group").asText()
-                    : null;
+                        ? taskNode.get("group").asText()
+                        : null;
 
                 List<String> tags = new ArrayList<>();
                 if (taskNode.has("tags") && taskNode.get("tags").isArray()) {
@@ -101,13 +101,13 @@ public class GroqLlmProvider implements LlmProvider {
                 Instant deadlineInstant = deadline != null ? parseDeadline(deadline, zoneId) : null;
 
                 tasks.add(new ParsedTask(
-                    title,
-                    description,
-                    priority,
-                    deadlineInstant,
-                    group,
-                    tags,
-                    recurrence
+                        title,
+                        description,
+                        priority,
+                        deadlineInstant,
+                        group,
+                        tags,
+                        recurrence
                 ));
             } catch (Exception e) {
                 log.warn("Failed to parse task from JSON node: {}", taskNode, e);
@@ -134,100 +134,100 @@ public class GroqLlmProvider implements LlmProvider {
 
     private String buildSystemPrompt(List<String> existingGroups) {
         String groupInstruction = existingGroups.isEmpty()
-            ? "\"group\": \"категория задачи на русском — ОБЯЗАТЕЛЬНО заполни одним словом, например: Покупки, Работа, Здоровье, Дом, Учёба, Личное, Финансы, Спорт, Семья — выбери наиболее подходящую или придумай короткое название\","
-            : "\"group\": \"ВЫБИРАЙ из существующих групп пользователя: " + existingGroups + ". Создавай новую только если ни одна не подходит — тогда одно короткое слово на русском\",";
+                ? "\"group\": \"категория задачи на русском — ОБЯЗАТЕЛЬНО заполни одним словом, например: Покупки, Работа, Здоровье, Дом, Учёба, Личное, Финансы, Спорт, Семья — выбери наиболее подходящую или придумай короткое название\","
+                : "\"group\": \"ВЫБИРАЙ из существующих групп пользователя: " + existingGroups + ". Создавай новую только если ни одна не подходит — тогда одно короткое слово на русском\",";
 
         return """
-            Ты — помощник для разбора задач на русском языке.
-            Пользователь описывает задачи в виде текста (часто списком или потоком сознания).
-
-            Твоя задача: распарсить текст и вернуть JSON со списком структурированных задач.
-
-            Формат ответа (JSON):
-            {
-              "tasks": [
+                Ты — помощник для разбора задач на русском языке.
+                Пользователь описывает задачи в виде текста (часто списком или потоком сознания).
+                
+                Твоя задача: распарсить текст и вернуть JSON со списком структурированных задач.
+                
+                Формат ответа (JSON):
                 {
-                  "title": "название задачи (обязательно)",
-                  "description": "описание или null",
-                  "priority": "LOW|MEDIUM|HIGH|URGENT (по умолчанию MEDIUM)",
-                  "deadline": "ISO-8601 datetime или null",
-            """ + "      " + groupInstruction + """
-
-                  "tags": ["массив строк"],
-                  "recurrence": "NONE|DAILY|WEEKLY|MONTHLY"
+                  "tasks": [
+                    {
+                      "title": "название задачи (обязательно)",
+                      "description": "описание или null",
+                      "priority": "LOW|MEDIUM|HIGH|URGENT (по умолчанию MEDIUM)",
+                      "deadline": "ISO-8601 datetime или null",
+                """ + "      " + groupInstruction + """
+                
+                      "tags": ["массив строк"],
+                      "recurrence": "NONE|DAILY|WEEKLY|MONTHLY"
+                    }
+                  ]
                 }
-              ]
-            }
-
-            Примеры:
-            Входной текст: "завтра до 18 купить молоко и хлеб, сходить в аптеку за витаминами"
-            {
-              "tasks": [
+                
+                Примеры:
+                Входной текст: "завтра до 18 купить молоко и хлеб, сходить в аптеку за витаминами"
                 {
-                  "title": "Купить молоко и хлеб",
-                  "priority": "MEDIUM",
-                  "deadline": "2026-04-25T18:00:00+03:00",
-                  "group": "Покупки",
-                  "tags": ["магазин"],
-                  "recurrence": "NONE"
-                },
-                {
-                  "title": "Сходить в аптеку за витаминами",
-                  "priority": "MEDIUM",
-                  "deadline": null,
-                  "group": "Здоровье",
-                  "tags": ["аптека"],
-                  "recurrence": "NONE"
+                  "tasks": [
+                    {
+                      "title": "Купить молоко и хлеб",
+                      "priority": "MEDIUM",
+                      "deadline": "2026-04-25T18:00:00+03:00",
+                      "group": "Покупки",
+                      "tags": ["магазин"],
+                      "recurrence": "NONE"
+                    },
+                    {
+                      "title": "Сходить в аптеку за витаминами",
+                      "priority": "MEDIUM",
+                      "deadline": null,
+                      "group": "Здоровье",
+                      "tags": ["аптека"],
+                      "recurrence": "NONE"
+                    }
+                  ]
                 }
-              ]
-            }
-
-            Входной текст: "каждый день в 9 утра делать зарядку, сдать отчёт начальнику до пятницы"
-            {
-              "tasks": [
+                
+                Входной текст: "каждый день в 9 утра делать зарядку, сдать отчёт начальнику до пятницы"
                 {
-                  "title": "Делать зарядку",
-                  "priority": "MEDIUM",
-                  "deadline": "2026-04-25T09:00:00+03:00",
-                  "group": "Спорт",
-                  "tags": ["здоровье"],
-                  "recurrence": "DAILY"
-                },
-                {
-                  "title": "Сдать отчёт начальнику",
-                  "priority": "HIGH",
-                  "deadline": "2026-04-25T18:00:00+03:00",
-                  "group": "Работа",
-                  "tags": ["отчёт"],
-                  "recurrence": "NONE"
+                  "tasks": [
+                    {
+                      "title": "Делать зарядку",
+                      "priority": "MEDIUM",
+                      "deadline": "2026-04-25T09:00:00+03:00",
+                      "group": "Спорт",
+                      "tags": ["здоровье"],
+                      "recurrence": "DAILY"
+                    },
+                    {
+                      "title": "Сдать отчёт начальнику",
+                      "priority": "HIGH",
+                      "deadline": "2026-04-25T18:00:00+03:00",
+                      "group": "Работа",
+                      "tags": ["отчёт"],
+                      "recurrence": "NONE"
+                    }
+                  ]
                 }
-              ]
-            }
-
-            Правила:
-            - Всегда парси в "tasks" список, даже если одна задача
-            - Deadline в ISO-8601 с timezone +03:00 (Москва)
-            - Если дата не указана явно (только время), используй сегодняшнюю дату
-            - Priority: LOW (обычное дело), MEDIUM (стандартное), HIGH (важное), URGENT (очень срочное)
-            - group — ВСЕГДА заполняй, никогда не null. Одно короткое слово или два на русском
-            - Tags — бери из контекста (покупки, работа, здоровье и т.п.)
-            - Recurrence — определяй из фраз типа "каждый день", "по вторникам", "еженедельно"
-            - Если text слишком расплывчато — создавай задачу с тем, что понял, но без выдумок
-            """;
+                
+                Правила:
+                - Всегда парси в "tasks" список, даже если одна задача
+                - Deadline в ISO-8601 с timezone +03:00 (Москва)
+                - Если дата не указана явно (только время), используй сегодняшнюю дату
+                - Priority: LOW (обычное дело), MEDIUM (стандартное), HIGH (важное), URGENT (очень срочное)
+                - group — ВСЕГДА заполняй, никогда не null. Одно короткое слово или два на русском
+                - Tags — бери из контекста (покупки, работа, здоровье и т.п.)
+                - Recurrence — определяй из фраз типа "каждый день", "по вторникам", "еженедельно"
+                - Если text слишком расплывчато — создавай задачу с тем, что понял, но без выдумок
+                """;
     }
 
     record GroqCompletionResponse(
-        List<Choice> choices
+            List<Choice> choices
     ) {
     }
 
     record Choice(
-        Message message
+            Message message
     ) {
     }
 
     record Message(
-        String content
+            String content
     ) {
     }
 }

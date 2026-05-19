@@ -1,5 +1,6 @@
 # AI tooling
 CLAUDE.md
+ARCHITECTURE_EXPLAINED.md
 .claude/
 .cursorrules
 .cursor/
@@ -7,6 +8,7 @@ CLAUDE.md
 .continue/
 .github/copilot-*
 *.ai-*
+docs/superpowers/
 
 # Java / Gradle
 .gradle/
