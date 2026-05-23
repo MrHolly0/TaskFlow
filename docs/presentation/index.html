@@ -2115,6 +2115,43 @@ content:"";position:absolute;inset:-45% -70%;background:linear-gradient(110deg,t
   transform:translate(0,-50%);
 }
 
+/* First slide: more expressive soft orb motion */
+.cover .aurora{
+  width:44vw!important;
+  height:44vw!important;
+  right:6vw!important;
+  top:5vh!important;
+  background:
+    radial-gradient(circle at 46% 46%,rgba(199,210,254,.56) 0%,rgba(129,140,248,.34) 28%,rgba(67,56,202,.14) 54%,transparent 72%)!important;
+  filter:blur(26px)!important;
+  opacity:.42!important;
+  mix-blend-mode:screen!important;
+  animation:coverOrbDriftFinal 8.6s ease-in-out infinite!important;
+}
+.cover:after{
+  width:58vw!important;
+  height:58vw!important;
+  left:44vw!important;
+  top:-2vh!important;
+  opacity:.44!important;
+  filter:blur(34px)!important;
+  background:radial-gradient(circle,rgba(129,140,248,.42) 0%,rgba(67,56,202,.25) 30%,rgba(67,56,202,.09) 58%,transparent 74%)!important;
+}
+.cover.in:after{animation:coverFlareDriftFinal 8.6s ease-in-out infinite!important}
+@keyframes coverOrbDriftFinal{
+  0%,100%{opacity:.34;transform:translate(0,0) scale(.88)}
+  18%{opacity:.78;transform:translate(-5vw,3vh) scale(1.07)}
+  42%{opacity:.98;transform:translate(-14vw,8vh) scale(1.26)}
+  66%{opacity:.44;transform:translate(5vw,-4vh) scale(.95)}
+  84%{opacity:.72;transform:translate(-7vw,-2vh) scale(1.12)}
+}
+@keyframes coverFlareDriftFinal{
+  0%,100%{opacity:.30;transform:translate(0,0) scale(.9)}
+  24%{opacity:.68;transform:translate(-7vw,5vh) scale(1.08)}
+  48%{opacity:.88;transform:translate(-17vw,9vh) scale(1.22)}
+  72%{opacity:.36;transform:translate(6vw,-5vh) scale(.96)}
+}
+
 </style></head><body><div id="progress"></div><div id="dots"><div class="dot" onclick="goTo(0)" title="01"></div>
 <div class="dot" onclick="goTo(1)" title="02"></div>
 <div class="dot" onclick="goTo(2)" title="03"></div>
