@@ -1,4 +1,5 @@
 # AI tooling
+AGENTS.md
 CLAUDE.md
 ARCHITECTURE_EXPLAINED.md
 .claude/
@@ -9,6 +10,12 @@ ARCHITECTURE_EXPLAINED.md
 .github/copilot-*
 *.ai-*
 docs/superpowers/
+.superpowers/
+
+# Private planning docs
+docs/LEGAL_COMPLIANCE.md
+docs/MARKETING_PLAN.md
+docs/MONETIZATION_ROADMAP.md
 
 # Java / Gradle
 .gradle/
