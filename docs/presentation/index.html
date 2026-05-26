@@ -2152,6 +2152,62 @@ content:"";position:absolute;inset:-45% -70%;background:linear-gradient(110deg,t
   72%{opacity:.36;transform:translate(6vw,-5vh) scale(.96)}
 }
 
+/* Laptop-height safety pass: keep dense slides inside short browser viewports */
+@media (max-height: 860px) and (min-width: 1000px){
+  #s2 .bd,#s6 .bd,#s10 .bd,#s14 .bd,#s17 .bd{padding-top:8.2vh!important;padding-bottom:4.4vh!important}
+  #s2 .h1,#s6 .h1,#s10 .h1,#s14 .h1{font-size:clamp(42px,4.6vw,64px)!important;margin-bottom:42px!important}
+  #s17 .h1{font-size:clamp(40px,4.2vw,58px)!important;margin-bottom:0!important;max-width:680px!important}
+  #s2 .tag,#s6 .tag,#s10 .tag,#s14 .tag,#s17 .tag{margin-bottom:18px!important}
+
+  #s2 .platform-v4{grid-template-columns:.86fr 1.55fr!important;gap:24px!important}
+  #s2 .hero-mechanic{min-height:318px!important;padding:28px 30px!important;border-radius:24px!important}
+  #s2 .hero-mechanic h3{font-size:32px!important;margin-top:24px!important}
+  #s2 .hero-mechanic p{font-size:16px!important;line-height:1.42!important;margin-top:20px!important}
+  #s2 .stat-row{margin-top:26px!important;gap:18px!important}
+  #s2 .stat-row b{font-size:40px!important}
+  #s2 .platform-grid{gap:22px!important}
+  #s2 .mini-card{min-height:148px!important;padding:24px!important;border-radius:22px!important}
+  #s2 .mini-card h4{font-size:21px!important;margin-top:16px!important}
+  #s2 .mini-card p{font-size:15px!important;line-height:1.38!important;margin-top:12px!important}
+  #s2 .icon-box{width:44px!important;height:44px!important;border-radius:13px!important;font-size:18px!important}
+
+  #s6 .split-panel{gap:24px!important}
+  #s6 .blue-panel{padding:30px!important;border-radius:24px!important}
+  #s6 .blue-panel h3{font-size:28px!important;line-height:1.08!important;margin-top:28px!important}
+  #s6 .blue-panel p{font-size:16px!important;line-height:1.42!important;margin-top:20px!important}
+  #s6 .card-grid2{gap:20px!important}
+  #s6 .fill-card{padding:22px!important;border-radius:22px!important}
+  #s6 .fill-card p{font-size:15px!important;line-height:1.38!important;margin-top:12px!important}
+  #s6 .fill-card h4{font-size:21px!important}
+
+  #s10 .h1{margin-bottom:30px!important}
+  #s10 .compare th{padding:14px 16px!important;font-size:10px!important}
+  #s10 .compare td{padding:14px 16px!important;font-size:15px!important}
+  #s10 .compare .yes{font-size:18px!important}
+  #s10 .table-note{margin-top:18px!important;padding:16px 22px!important;font-size:16px!important;line-height:1.34!important;max-width:900px!important}
+
+  #s14 .h1{margin-bottom:36px!important}
+  #s14 .arch-v4{grid-template-columns:.9fr 54px 1fr 1.32fr!important;gap:16px!important}
+  #s14 .arch-node{padding:20px!important;border-radius:22px!important}
+  #s14 .arch-node i{font-size:23px!important;margin-bottom:12px!important}
+  #s14 .arch-node h4{font-size:21px!important}
+  #s14 .arch-node p{font-size:14px!important;line-height:1.32!important;margin-top:8px!important}
+  #s14 .branch{gap:12px!important}
+  #s14 .branch-row{grid-template-columns:42px 1fr!important;gap:12px!important}
+  #s14 .big-arrow{font-size:32px!important}
+
+  #s17 .section-gap{margin-top:34px!important}
+  #s17 .devices-showcase-v13{height:390px!important}
+  #s17 .desktop-stage-v13{width:690px!important;height:318px!important;border-width:10px!important;border-radius:24px!important}
+  #s17 .desktop-stage-v13:before{height:14px!important}
+  #s17 .phone-stage-v13{left:535px!important;top:26px!important;width:192px!important;height:342px!important;border-width:8px!important;border-radius:30px!important}
+  #s17 .phone-stage-v13:before{top:8px!important;width:68px!important;height:8px!important}
+  #s17 .device-pill-v13{top:18px!important;left:18px!important;padding:8px 12px!important;font-size:10px!important}
+  #s17 .support-stack-v13{top:54px!important;width:292px!important;gap:16px!important}
+  #s17 .support-card-v13{height:118px!important;border-radius:18px!important}
+  #s17 .support-card-v13 span{font-size:11px!important;left:12px!important;bottom:10px!important;padding:7px 10px!important}
+}
+
 </style></head><body><div id="progress"></div><div id="dots"><div class="dot" onclick="goTo(0)" title="01"></div>
 <div class="dot" onclick="goTo(1)" title="02"></div>
 <div class="dot" onclick="goTo(2)" title="03"></div>
