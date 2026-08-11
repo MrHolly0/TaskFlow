@@ -87,6 +87,21 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
             @Param("done") TaskStatus done
     );
 
+    @Query("""
+            SELECT t FROM TaskJpaEntity t
+            WHERE t.userId = :userId
+              AND t.isDraft = false
+              AND t.status IN (ru.taskflow.task.api.TaskStatus.TODO, ru.taskflow.task.api.TaskStatus.IN_PROGRESS)
+            ORDER BY
+              CASE WHEN t.deadline IS NOT NULL AND t.deadline < :now THEN 0 ELSE 1 END ASC,
+              CASE WHEN t.deadline IS NULL THEN 1 ELSE 0 END ASC,
+              t.deadline ASC,
+              t.createdAt DESC
+            """)
+    List<TaskJpaEntity> findAssistantContext(@Param("userId") UUID userId,
+                                             @Param("now") OffsetDateTime now,
+                                             Pageable pageable);
+
     @Modifying
     @Query(value = """
             UPDATE tasks

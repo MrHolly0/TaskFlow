@@ -2,6 +2,7 @@ package ru.taskflow.task.application;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -422,5 +423,15 @@ public class TaskServiceImpl implements TaskService {
     @Transactional
     public int clearCompleted(UUID userId) {
         return taskRepository.softDeleteAllCompletedByUser(userId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TaskResponse> findAssistantContext(UUID userId, int limit) {
+        return taskRepository
+                .findAssistantContext(userId, OffsetDateTime.now(), PageRequest.of(0, limit))
+                .stream()
+                .map(taskMapper::toResponse)
+                .toList();
     }
 }

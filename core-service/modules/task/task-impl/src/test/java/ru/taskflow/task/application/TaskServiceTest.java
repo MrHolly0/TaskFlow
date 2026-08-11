@@ -2,9 +2,11 @@ package ru.taskflow.task.application;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
 import ru.taskflow.task.api.TaskStatus;
 import ru.taskflow.task.api.dto.CreateTaskRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
@@ -12,6 +14,7 @@ import ru.taskflow.task.api.dto.UpdateTaskRequest;
 import ru.taskflow.task.api.exception.TaskNotFoundException;
 import ru.taskflow.task.infrastructure.persistence.*;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -40,7 +43,7 @@ class TaskServiceTest {
 
     @Test
     void create_savesAndReturnsResponse() {
-        var request = new CreateTaskRequest("купить молоко", null, null, null, null, List.of(), null, null);
+        var request = new CreateTaskRequest("купить молоко", null, null, null, null, null, List.of(), null, null);
         var entity = new TaskJpaEntity();
         entity.setUserId(userId);
         entity.setTitle("купить молоко");
@@ -119,6 +122,33 @@ class TaskServiceTest {
 
         assertThatThrownBy(() -> taskService.delete(userId, taskId))
                 .isInstanceOf(TaskNotFoundException.class);
+    }
+
+    @Test
+    void findAssistantContext_returnsTasksFromRepository() {
+        var entity = taskEntity();
+        var response = mockResponse(taskId, "купить молоко");
+
+        when(taskRepository.findAssistantContext(eq(userId), any(OffsetDateTime.class), any(Pageable.class)))
+                .thenReturn(List.of(entity));
+        when(taskMapper.toResponse(entity)).thenReturn(response);
+
+        var result = taskService.findAssistantContext(userId, 80);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().title()).isEqualTo("купить молоко");
+    }
+
+    @Test
+    void findAssistantContext_passesLimitAsPageSize() {
+        when(taskRepository.findAssistantContext(eq(userId), any(OffsetDateTime.class), any(Pageable.class)))
+                .thenReturn(List.of());
+
+        taskService.findAssistantContext(userId, 25);
+
+        var captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(taskRepository).findAssistantContext(eq(userId), any(OffsetDateTime.class), captor.capture());
+        assertThat(captor.getValue().getPageSize()).isEqualTo(25);
     }
 
     private TaskJpaEntity taskEntity() {

@@ -40,4 +40,6 @@ public interface TaskService {
     List<String> findGroupNames(UUID userId);
 
     int clearCompleted(UUID userId);
+
+    List<TaskResponse> findAssistantContext(UUID userId, int limit);
 }
