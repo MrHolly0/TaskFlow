@@ -1,0 +1,39 @@
+# Контекст сборки для Java-сервисов — корень репозитория.
+# Без этого файла демону уходит ~665 МБ, из которых 629 МБ — node_modules фронта.
+
+.git
+.gitignore
+
+# Зависимости и артефакты сборки
+**/node_modules
+**/build
+**/dist
+.gradle
+**/.gradle
+**/.kotlin
+
+# Секреты — не должны попадать в слои образа
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# IDE и мусор ОС
+.idea
+*.iml
+.vscode
+**/.DS_Store
+
+# Документация и служебное — для сборки не нужны
+docs
+*.md
+class-diagram.puml
+scripts
+graphify-out
+
+# Инфраструктура: compose-файлы не участвуют в сборке образов
+infra
+
+# Фронт собирается отдельным Dockerfile со своим контекстом
+miniapp

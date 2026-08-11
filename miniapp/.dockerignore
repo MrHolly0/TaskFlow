@@ -1,0 +1,10 @@
+# Контекст сборки фронта. node_modules ставятся внутри образа,
+# копировать хостовые нельзя — они собраны под другую платформу.
+
+node_modules
+dist
+.DS_Store
+Dockerfile
+.dockerignore
+README.md
+guidelines
