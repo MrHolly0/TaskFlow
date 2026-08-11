@@ -102,6 +102,25 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
                                              @Param("now") OffsetDateTime now,
                                              Pageable pageable);
 
+    @Query("""
+            SELECT t FROM TaskJpaEntity t
+            LEFT JOIN FETCH t.group
+            LEFT JOIN FETCH t.tags
+            WHERE t.userId = :userId
+              AND t.isDraft = false
+              AND t.isDeleted = false
+              AND (:includeCompleted = true OR t.status NOT IN (ru.taskflow.task.api.TaskStatus.DONE, ru.taskflow.task.api.TaskStatus.CANCELLED))
+              AND (LOWER(t.title) LIKE LOWER(CONCAT('%', :query, '%'))
+                   OR LOWER(t.description) LIKE LOWER(CONCAT('%', :query, '%')))
+            ORDER BY t.updatedAt DESC
+            """)
+    List<TaskJpaEntity> search(
+            @Param("userId") UUID userId,
+            @Param("query") String query,
+            @Param("includeCompleted") boolean includeCompleted,
+            Pageable pageable
+    );
+
     @Modifying
     @Query(value = """
             UPDATE tasks

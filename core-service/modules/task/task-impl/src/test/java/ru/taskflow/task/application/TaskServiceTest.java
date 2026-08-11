@@ -158,6 +158,40 @@ class TaskServiceTest {
         assertThat(captor.getValue().getPageSize()).isEqualTo(25);
     }
 
+    @Test
+    void search_returnsMatchesByTitle() {
+        var entity = new TaskJpaEntity();
+        entity.setUserId(userId);
+        entity.setTitle("Купить корм коту");
+        var response = mockResponse(taskId, "Купить корм коту");
+
+        when(taskRepository.search(eq(userId), eq("корм"), eq(false), any(Pageable.class)))
+                .thenReturn(List.of(entity));
+        when(taskMapper.toResponse(entity)).thenReturn(response);
+
+        var result = taskService.search(userId, "корм", false, 20);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().title()).isEqualTo("Купить корм коту");
+    }
+
+    @Test
+    void search_returnsEmptyForBlankQuery() {
+        var result = taskService.search(userId, "  ", false, 20);
+
+        assertThat(result).isEmpty();
+        verifyNoInteractions(taskRepository);
+    }
+
+    @Test
+    void search_capsLimit() {
+        taskService.search(userId, "корм", false, 500);
+
+        var captor = ArgumentCaptor.forClass(Pageable.class);
+        verify(taskRepository).search(any(), any(), anyBoolean(), captor.capture());
+        assertThat(captor.getValue().getPageSize()).isEqualTo(20);
+    }
+
     private TaskJpaEntity taskEntity() {
         var e = new TaskJpaEntity();
         e.setUserId(userId);

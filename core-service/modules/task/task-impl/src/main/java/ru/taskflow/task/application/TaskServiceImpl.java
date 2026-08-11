@@ -42,6 +42,8 @@ import java.util.UUID;
 @Transactional(readOnly = true)
 public class TaskServiceImpl implements TaskService {
 
+    private static final int SEARCH_LIMIT = 20;
+
     private final TaskRepository taskRepository;
     private final GroupRepository groupRepository;
     private final TagRepository tagRepository;
@@ -430,6 +432,19 @@ public class TaskServiceImpl implements TaskService {
     public List<TaskResponse> findAssistantContext(UUID userId, int limit) {
         return taskRepository
                 .findAssistantContext(userId, OffsetDateTime.now(), PageRequest.of(0, limit))
+                .stream()
+                .map(taskMapper::toResponse)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<TaskResponse> search(UUID userId, String query, boolean includeCompleted, int limit) {
+        if (query == null || query.isBlank()) {
+            return List.of();
+        }
+        int capped = Math.min(limit <= 0 ? SEARCH_LIMIT : limit, SEARCH_LIMIT);
+        return taskRepository.search(userId, query.trim(), includeCompleted, PageRequest.of(0, capped))
                 .stream()
                 .map(taskMapper::toResponse)
                 .toList();

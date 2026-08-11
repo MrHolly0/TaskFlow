@@ -42,4 +42,10 @@ public interface TaskService {
     int clearCompleted(UUID userId);
 
     List<TaskResponse> findAssistantContext(UUID userId, int limit);
+
+    /**
+     * Поиск по подстроке в названии и описании. Возвращает не более limit совпадений,
+     * жёсткий предел — 20: результат уходит в промпт модели.
+     */
+    List<TaskResponse> search(UUID userId, String query, boolean includeCompleted, int limit);
 }
