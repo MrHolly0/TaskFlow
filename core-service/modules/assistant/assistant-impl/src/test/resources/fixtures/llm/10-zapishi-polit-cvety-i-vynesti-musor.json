@@ -1,0 +1,50 @@
+{
+  "id": "chatcmpl-25b9a7d2-ec6a-43ef-b9a3-29396555bc99",
+  "object": "chat.completion",
+  "created": 1786449755,
+  "model": "llama-3.3-70b-versatile",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "id": "hrrag68fq",
+            "type": "function",
+            "function": {
+              "name": "create_task",
+              "arguments": "{\"deadline\":\"2026-08-12T18:00:00+03:00\",\"group\":\"Дом\",\"priority\":\"LOW\",\"recurrence\":\"NONE\",\"title\":\"Полить цветы\"}"
+            }
+          },
+          {
+            "id": "96aqnnxam",
+            "type": "function",
+            "function": {
+              "name": "create_task",
+              "arguments": "{\"deadline\":\"2026-08-12T18:00:00+03:00\",\"group\":\"Дом\",\"priority\":\"MEDIUM\",\"recurrence\":\"NONE\",\"title\":\"Вынести мусор\"}"
+            }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "queue_time": 0.266231495,
+    "prompt_tokens": 1543,
+    "prompt_time": 0.197046814,
+    "completion_tokens": 116,
+    "completion_time": 0.261445013,
+    "total_tokens": 1659,
+    "total_time": 0.458491827
+  },
+  "usage_breakdown": null,
+  "system_fingerprint": "fp_3272ea2d91",
+  "x_groq": {
+    "id": "req_01kzrb7yv0em9865k0hhf83v2e",
+    "seed": 2109434459
+  },
+  "service_tier": "on_demand"
+}

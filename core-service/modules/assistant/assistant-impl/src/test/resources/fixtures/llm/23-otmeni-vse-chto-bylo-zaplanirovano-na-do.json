@@ -1,0 +1,66 @@
+{
+  "id": "chatcmpl-c2eda79f-8fb8-4943-b737-19dd82d4c6c3",
+  "object": "chat.completion",
+  "created": 1786449811,
+  "model": "llama-3.3-70b-versatile",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "id": "mee4c0b2v",
+            "type": "function",
+            "function": {
+              "name": "cancel_task",
+              "arguments": "{\"reason\":\"договор с Марком больше не актуален\",\"task_ref\":\"T3\"}"
+            }
+          },
+          {
+            "id": "2wew7akqm",
+            "type": "function",
+            "function": {
+              "name": "cancel_task",
+              "arguments": "{\"reason\":\"договор с Марком больше не актуален\",\"task_ref\":\"T5\"}"
+            }
+          },
+          {
+            "id": "e6v384ct9",
+            "type": "function",
+            "function": {
+              "name": "cancel_task",
+              "arguments": "{\"reason\":\"договор с Марком больше не актуален\",\"task_ref\":\"T8\"}"
+            }
+          },
+          {
+            "id": "1yjzmq9kj",
+            "type": "function",
+            "function": {
+              "name": "cancel_task",
+              "arguments": "{\"reason\":\"договор с Марком больше не актуален\",\"task_ref\":\"T10\"}"
+            }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "queue_time": 0.332120043,
+    "prompt_tokens": 1544,
+    "prompt_time": 0.172655549,
+    "completion_tokens": 129,
+    "completion_time": 0.248289268,
+    "total_tokens": 1673,
+    "total_time": 0.420944817
+  },
+  "usage_breakdown": null,
+  "system_fingerprint": "fp_3272ea2d91",
+  "x_groq": {
+    "id": "req_01kzrb9nrjec1a1dr4fxxw53hh",
+    "seed": 323715564
+  },
+  "service_tier": "on_demand"
+}

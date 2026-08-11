@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-842a2609-d8f1-4a67-8c76-6a633debdbcf",
+  "object": "chat.completion",
+  "created": 1786449802,
+  "model": "llama-3.3-70b-versatile",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "id": "ngmq2d980",
+            "type": "function",
+            "function": {
+              "name": "search_tasks",
+              "arguments": "{\"include_completed\":false,\"query\":\"химчистка\"}"
+            }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "queue_time": 0.051136574,
+    "prompt_tokens": 1542,
+    "prompt_time": 0.084146565,
+    "completion_tokens": 22,
+    "completion_time": 0.059141452,
+    "total_tokens": 1564,
+    "total_time": 0.143288017
+  },
+  "usage_breakdown": null,
+  "system_fingerprint": "fp_ce7bc1685b",
+  "x_groq": {
+    "id": "req_01kzrb9cq9ey3tpawstnsrxa02",
+    "seed": 1421382336
+  },
+  "service_tier": "on_demand"
+}

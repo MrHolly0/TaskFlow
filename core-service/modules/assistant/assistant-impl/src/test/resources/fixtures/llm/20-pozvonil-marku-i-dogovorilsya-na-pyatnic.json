@@ -1,0 +1,58 @@
+{
+  "id": "chatcmpl-93989d6b-79b9-415b-bc61-059f8b8b657c",
+  "object": "chat.completion",
+  "created": 1786449797,
+  "model": "llama-3.3-70b-versatile",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "id": "gcpxtqvyp",
+            "type": "function",
+            "function": {
+              "name": "update_task",
+              "arguments": "{\"description\":\"Договорился на пятницу\",\"task_ref\":\"T5\",\"title\":\"Позвонить Марку\"}"
+            }
+          },
+          {
+            "id": "bgwn99v8j",
+            "type": "function",
+            "function": {
+              "name": "update_task",
+              "arguments": "{\"description\":\"Запланировано на пятницу\",\"task_ref\":\"T3\",\"title\":\"Обсудить с Марком договор\"}"
+            }
+          },
+          {
+            "id": "ktgbwtv5w",
+            "type": "function",
+            "function": {
+              "name": "cancel_task",
+              "arguments": "{\"reason\":\"Задача выполнена\",\"task_ref\":\"T5\"}"
+            }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "queue_time": 0.051221641,
+    "prompt_tokens": 1541,
+    "prompt_time": 0.159566253,
+    "completion_tokens": 109,
+    "completion_time": 0.265142584,
+    "total_tokens": 1650,
+    "total_time": 0.424708837
+  },
+  "usage_breakdown": null,
+  "system_fingerprint": "fp_f8b414701e",
+  "x_groq": {
+    "id": "req_01kzrb982ze79t1h19zzk1cc8n",
+    "seed": 1223440452
+  },
+  "service_tier": "on_demand"
+}

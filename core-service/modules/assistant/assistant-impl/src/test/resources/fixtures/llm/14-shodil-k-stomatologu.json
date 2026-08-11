@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-74f7ff8c-dfcf-486b-b1c4-d5d32cceef94",
+  "object": "chat.completion",
+  "created": 1786449652,
+  "model": "llama-3.3-70b-versatile",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "id": "t55tzf62t",
+            "type": "function",
+            "function": {
+              "name": "complete_task",
+              "arguments": "{\"note\":\"посещение стоматолога\",\"task_ref\":\"T7\"}"
+            }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "queue_time": 0.485230543,
+    "prompt_tokens": 1538,
+    "prompt_time": 0.542530397,
+    "completion_tokens": 30,
+    "completion_time": 0.092218838,
+    "total_tokens": 1568,
+    "total_time": 0.634749235
+  },
+  "usage_breakdown": null,
+  "system_fingerprint": "fp_45180df409",
+  "x_groq": {
+    "id": "req_01kzrb4sjwefevbjafhnsexk9a",
+    "seed": 1937521203
+  },
+  "service_tier": "on_demand"
+}

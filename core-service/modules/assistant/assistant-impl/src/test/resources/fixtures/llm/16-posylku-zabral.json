@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-65d6a29a-9c8c-4091-b104-72e26acd788b",
+  "object": "chat.completion",
+  "created": 1786449778,
+  "model": "llama-3.3-70b-versatile",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "id": "8x6ya74hm",
+            "type": "function",
+            "function": {
+              "name": "complete_task",
+              "arguments": "{\"note\":\"Посылка забрана\",\"task_ref\":\"T6\"}"
+            }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "queue_time": 0.052209813,
+    "prompt_tokens": 1534,
+    "prompt_time": 0.087206635,
+    "completion_tokens": 27,
+    "completion_time": 0.111558779,
+    "total_tokens": 1561,
+    "total_time": 0.198765414
+  },
+  "usage_breakdown": null,
+  "system_fingerprint": "fp_f8b414701e",
+  "x_groq": {
+    "id": "req_01kzrb8nv9e7crc48sf6hn1th3",
+    "seed": 2098583431
+  },
+  "service_tier": "on_demand"
+}

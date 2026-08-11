@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-1d258e79-08e7-44c3-ae61-8d3322989258",
+  "object": "chat.completion",
+  "created": 1786449774,
+  "model": "llama-3.3-70b-versatile",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "id": "zrxyct634",
+            "type": "function",
+            "function": {
+              "name": "create_task",
+              "arguments": "{\"deadline\":\"2026-08-12T18:00:00+03:00\",\"group\":\"Подарки\",\"priority\":\"URGENT\",\"title\":\"Купить подарок маме на день рождения\"}"
+            }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "queue_time": 0.051368296,
+    "prompt_tokens": 1549,
+    "prompt_time": 0.108644874,
+    "completion_tokens": 61,
+    "completion_time": 0.156846772,
+    "total_tokens": 1610,
+    "total_time": 0.265491646
+  },
+  "usage_breakdown": null,
+  "system_fingerprint": "fp_ba38bbab80",
+  "x_groq": {
+    "id": "req_01kzrb8hc9ecn9nak44qxtyvz5",
+    "seed": 989320275
+  },
+  "service_tier": "on_demand"
+}

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-b5b8e063-3b21-472d-b896-d8d64ada66dc",
+  "object": "chat.completion",
+  "created": 1786449821,
+  "model": "llama-3.3-70b-versatile",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "id": "xh75333v3",
+            "type": "function",
+            "function": {
+              "name": "create_task",
+              "arguments": "{\"deadline\":\"2026-08-11T10:00:00+03:00\",\"group\":\"Еда\",\"priority\":\"LOW\",\"recurrence\":\"NONE\",\"tags\":[],\"title\":\"Сделать кофе\"}"
+            }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "queue_time": 0.051315839,
+    "prompt_tokens": 1536,
+    "prompt_time": 0.081097058,
+    "completion_tokens": 64,
+    "completion_time": 0.177560846,
+    "total_tokens": 1600,
+    "total_time": 0.258657904
+  },
+  "usage_breakdown": null,
+  "system_fingerprint": "fp_ba38bbab80",
+  "x_groq": {
+    "id": "req_01kzrb9zg0ev5txrhax9mepjhp",
+    "seed": 307544131
+  },
+  "service_tier": "on_demand"
+}

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-fd5d0698-cf4a-49c6-bcd2-a46badfaa9fb",
+  "object": "chat.completion",
+  "created": 1786449769,
+  "model": "llama-3.3-70b-versatile",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "id": "aq8143z18",
+            "type": "function",
+            "function": {
+              "name": "cancel_task",
+              "arguments": "{\"reason\":\"Марк заболел\",\"task_ref\":\"T10\"}"
+            }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "queue_time": 0.114459952,
+    "prompt_tokens": 1543,
+    "prompt_time": 0.135526055,
+    "completion_tokens": 28,
+    "completion_time": 0.088120527,
+    "total_tokens": 1571,
+    "total_time": 0.223646582
+  },
+  "usage_breakdown": null,
+  "system_fingerprint": "fp_dae98b5ecb",
+  "x_groq": {
+    "id": "req_01kzrb8creen0s7nsh4dwjmy7m",
+    "seed": 754800185
+  },
+  "service_tier": "on_demand"
+}

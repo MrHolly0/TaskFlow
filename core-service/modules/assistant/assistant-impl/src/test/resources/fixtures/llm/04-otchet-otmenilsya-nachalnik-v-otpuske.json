@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-61707320-a848-4440-b701-35b8628d8540",
+  "object": "chat.completion",
+  "created": 1786449643,
+  "model": "llama-3.3-70b-versatile",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "id": "7x7tvpkc6",
+            "type": "function",
+            "function": {
+              "name": "cancel_task",
+              "arguments": "{\"reason\":\"начальник в отпуске, отчёт отменился\",\"task_ref\":\"T8\"}"
+            }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "queue_time": 0.298393183,
+    "prompt_tokens": 1542,
+    "prompt_time": 0.205738967,
+    "completion_tokens": 36,
+    "completion_time": 0.083037029,
+    "total_tokens": 1578,
+    "total_time": 0.288775996
+  },
+  "usage_breakdown": null,
+  "system_fingerprint": "fp_45180df409",
+  "x_groq": {
+    "id": "req_01kzrb4he9evtthnd7gscxaf32",
+    "seed": 1601441518
+  },
+  "service_tier": "on_demand"
+}

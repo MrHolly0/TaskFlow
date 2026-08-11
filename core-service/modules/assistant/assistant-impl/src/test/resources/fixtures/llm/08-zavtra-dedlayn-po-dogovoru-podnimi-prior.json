@@ -1,0 +1,50 @@
+{
+  "id": "chatcmpl-68192414-5347-412c-bc58-1c05ab7316bf",
+  "object": "chat.completion",
+  "created": 1786449649,
+  "model": "llama-3.3-70b-versatile",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "id": "d651zkxbj",
+            "type": "function",
+            "function": {
+              "name": "reschedule_task",
+              "arguments": "{\"new_deadline\":\"2026-08-12T18:00:00+03:00\",\"task_ref\":\"T3\"}"
+            }
+          },
+          {
+            "id": "x12yacwhm",
+            "type": "function",
+            "function": {
+              "name": "update_task",
+              "arguments": "{\"priority\":\"URGENT\",\"task_ref\":\"T3\"}"
+            }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "queue_time": 0.063614513,
+    "prompt_tokens": 1545,
+    "prompt_time": 0.342578258,
+    "completion_tokens": 64,
+    "completion_time": 0.181807414,
+    "total_tokens": 1609,
+    "total_time": 0.524385672
+  },
+  "usage_breakdown": null,
+  "system_fingerprint": "fp_ba38bbab80",
+  "x_groq": {
+    "id": "req_01kzrb4pyfe0qt7gxvvsy8h2h0",
+    "seed": 75333741
+  },
+  "service_tier": "on_demand"
+}

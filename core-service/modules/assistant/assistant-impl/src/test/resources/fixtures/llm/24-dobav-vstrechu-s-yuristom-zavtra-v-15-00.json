@@ -1,0 +1,50 @@
+{
+  "id": "chatcmpl-48bf4271-915a-472b-aa32-427261f222b3",
+  "object": "chat.completion",
+  "created": 1786449816,
+  "model": "llama-3.3-70b-versatile",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "id": "tgd4pnsj7",
+            "type": "function",
+            "function": {
+              "name": "create_task",
+              "arguments": "{\"deadline\":\"2024-03-16T15:00:00+03:00\",\"group\":\"Работа\",\"priority\":\"MEDIUM\",\"title\":\"Встреча с юристом\"}"
+            }
+          },
+          {
+            "id": "a1m9wyj50",
+            "type": "function",
+            "function": {
+              "name": "create_task",
+              "arguments": "{\"deadline\":\"2024-03-16T15:00:00+03:00\",\"group\":\"Работа\",\"priority\":\"MEDIUM\",\"title\":\"Позвонить бухгалтеру\"}"
+            }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "queue_time": 0.051005434,
+    "prompt_tokens": 1553,
+    "prompt_time": 0.078863233,
+    "completion_tokens": 114,
+    "completion_time": 0.264981244,
+    "total_tokens": 1667,
+    "total_time": 0.343844477
+  },
+  "usage_breakdown": null,
+  "system_fingerprint": "fp_ba38bbab80",
+  "x_groq": {
+    "id": "req_01kzrb9tsbee4tfjtm4w0p54wf",
+    "seed": 980515428
+  },
+  "service_tier": "on_demand"
+}

@@ -1,0 +1,42 @@
+{
+  "id": "chatcmpl-cec5e6da-d2ae-420e-b877-5453eac28b4a",
+  "object": "chat.completion",
+  "created": 1786449792,
+  "model": "llama-3.3-70b-versatile",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "id": "e9rcexs9m",
+            "type": "function",
+            "function": {
+              "name": "cancel_task",
+              "arguments": "{\"reason\":\"коту хватит старого корма\",\"task_ref\":\"T9\"}"
+            }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "queue_time": 0.051605852,
+    "prompt_tokens": 1543,
+    "prompt_time": 0.09534828,
+    "completion_tokens": 31,
+    "completion_time": 0.109380316,
+    "total_tokens": 1574,
+    "total_time": 0.204728596
+  },
+  "usage_breakdown": null,
+  "system_fingerprint": "fp_ba38bbab80",
+  "x_groq": {
+    "id": "req_01kzrb93fwef8twax8yq6q1wk2",
+    "seed": 1318992264
+  },
+  "service_tier": "on_demand"
+}

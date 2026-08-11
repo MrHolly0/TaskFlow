@@ -1,0 +1,58 @@
+{
+  "id": "chatcmpl-2f2d2944-362a-4a16-a51c-5af1a7f1fd14",
+  "object": "chat.completion",
+  "created": 1786449640,
+  "model": "llama-3.3-70b-versatile",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "id": "87p4dnnes",
+            "type": "function",
+            "function": {
+              "name": "complete_task",
+              "arguments": "{\"note\":\"зарядка сделана\",\"task_ref\":\"T4\"}"
+            }
+          },
+          {
+            "id": "9wdm3x0db",
+            "type": "function",
+            "function": {
+              "name": "complete_task",
+              "arguments": "{\"note\":\"посылка забрана\",\"task_ref\":\"T6\"}"
+            }
+          },
+          {
+            "id": "qkatd803t",
+            "type": "function",
+            "function": {
+              "name": "complete_task",
+              "arguments": "{\"note\":\"молоко и хлеб куплены\",\"task_ref\":\"T1\"}"
+            }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "queue_time": 0.273907103,
+    "prompt_tokens": 1538,
+    "prompt_time": 0.499381156,
+    "completion_tokens": 84,
+    "completion_time": 0.242888636,
+    "total_tokens": 1622,
+    "total_time": 0.742269792
+  },
+  "usage_breakdown": null,
+  "system_fingerprint": "fp_45180df409",
+  "x_groq": {
+    "id": "req_01kzrb4ef5etpv34c0k5gzvaq1",
+    "seed": 1479325818
+  },
+  "service_tier": "on_demand"
+}

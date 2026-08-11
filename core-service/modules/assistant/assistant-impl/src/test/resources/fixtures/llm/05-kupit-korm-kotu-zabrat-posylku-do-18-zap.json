@@ -1,0 +1,58 @@
+{
+  "id": "chatcmpl-0d5f4ef6-2493-48a3-b6e8-9a05dcaac186",
+  "object": "chat.completion",
+  "created": 1786449644,
+  "model": "llama-3.3-70b-versatile",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "id": "jkvrcz716",
+            "type": "function",
+            "function": {
+              "name": "create_task",
+              "arguments": "{\"deadline\":\"2026-08-11T18:00:00+03:00\",\"description\":\"\",\"group\":\"Покупки\",\"priority\":\"MEDIUM\",\"recurrence\":\"NONE\",\"tags\":[],\"title\":\"Купить корм коту\"}"
+            }
+          },
+          {
+            "id": "nt3kgw6c7",
+            "type": "function",
+            "function": {
+              "name": "reschedule_task",
+              "arguments": "{\"new_deadline\":\"2026-08-11T18:00:00+03:00\",\"task_ref\":\"T6\"}"
+            }
+          },
+          {
+            "id": "hc80y2rsj",
+            "type": "function",
+            "function": {
+              "name": "create_task",
+              "arguments": "{\"deadline\":\"null\",\"description\":\"\",\"group\":\"Здоровье\",\"priority\":\"LOW\",\"recurrence\":\"NONE\",\"tags\":[],\"title\":\"Записаться к стоматологу\"}"
+            }
+          }
+        ]
+      },
+      "logprobs": null,
+      "finish_reason": "tool_calls"
+    }
+  ],
+  "usage": {
+    "queue_time": 0.232137899,
+    "prompt_tokens": 1552,
+    "prompt_time": 0.12262842,
+    "completion_tokens": 167,
+    "completion_time": 0.350975673,
+    "total_tokens": 1719,
+    "total_time": 0.473604093
+  },
+  "usage_breakdown": null,
+  "system_fingerprint": "fp_ce7bc1685b",
+  "x_groq": {
+    "id": "req_01kzrb4jjref8v9sfrt7v8d530",
+    "seed": 256516978
+  },
+  "service_tier": "on_demand"
+}
