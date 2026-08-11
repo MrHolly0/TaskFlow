@@ -133,7 +133,7 @@ curl -X POST https://api.telegram.org/bot<TOKEN>/setWebhook \
 
 ## 5. Архитектура
 
-Три Java сервиса плюс React фронтенд и Next.js сайт. Каждый сервис — отдельный контейнер.
+Три Java сервиса плюс React фронтенд. Каждый сервис — отдельный контейнер.
 
 **core-service** — основное приложение. Внутри шесть модулей: user (авторизация), task (CRUD и режим фокуса), nlp-gateway (вызовы к nlp-worker), notify (напоминания), integration-telegram (webhook и команды /start, /help, /today), audit (логирование).
 
@@ -141,12 +141,12 @@ curl -X POST https://api.telegram.org/bot<TOKEN>/setWebhook \
 
 **notification-worker** отправляет напоминания через Telegram Bot API. Каждую минуту проверяет таблицу scheduled_notifications и отправляет при необходимости.
 
-**miniapp** и **website** — почти идентичные интерфейсы. Mini App работает внутри Telegram, сайт в браузере.
+**miniapp** — один React-проект, обслуживающий оба сценария входа. Внутри Telegram он открывается как Mini App и авторизуется через `initData`, в обычном браузере — через Telegram Login Widget. Вёрстка адаптивная, поэтому отдельный сайт не нужен.
 
 ```
-Telegram Bot       Mini App (Telegram)      Browser (website)
-       │                  │                          │
-       └──────────────────┼──────────────────────────┘
+Telegram Bot       Mini App (Telegram)      Браузер
+       │                  │                     │
+       └──────────────────┼─────────────────────┘
                           │
                    core-service:8080
                           │
@@ -178,10 +178,7 @@ Telegram Bot       Mini App (Telegram)      Browser (website)
 
 Собрать: `./gradlew build` (всё) или `./gradlew :core-service:app:build` (конкретный модуль).
 
-TypeScript-типы из OpenAPI генерируются здесь:
-```bash
-cd shared-types && pnpm generate
-```
+Фронтенд: `cd miniapp && pnpm dev` для разработки, `pnpm build` для production-сборки.
 
 Миграции БД (Liquibase) применяются автоматически при старте. Добавляй новые в `core-service/app/src/main/resources/db/changelog/`.
 
