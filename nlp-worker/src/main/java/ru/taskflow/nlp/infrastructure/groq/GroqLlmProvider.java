@@ -15,14 +15,18 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.TextStyle;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class GroqLlmProvider implements LlmProvider {
+
+    private static final Locale RUSSIAN = Locale.forLanguageTag("ru");
 
     private final GroqConfig config;
     private final ObjectMapper objectMapper;
@@ -39,7 +43,7 @@ public class GroqLlmProvider implements LlmProvider {
     }
 
     private ParsedTasks callGroqApi(String text, String userTimezone, String userLanguage, List<String> existingGroups) throws JsonProcessingException {
-        String systemPrompt = buildSystemPrompt(existingGroups);
+        String systemPrompt = buildSystemPrompt(existingGroups, ZoneId.of(userTimezone));
 
         var request = Map.of(
                 "model", config.getLlmModel(),
@@ -132,7 +136,12 @@ public class GroqLlmProvider implements LlmProvider {
         }
     }
 
-    private String buildSystemPrompt(List<String> existingGroups) {
+    private String buildSystemPrompt(List<String> existingGroups, ZoneId zoneId) {
+        ZonedDateTime now = ZonedDateTime.now(zoneId);
+        String today = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        String weekday = now.getDayOfWeek().getDisplayName(TextStyle.FULL, RUSSIAN);
+        String offset = now.getOffset().getId().equals("Z") ? "+00:00" : now.getOffset().getId();
+
         String groupInstruction = existingGroups.isEmpty()
                 ? "\"group\": \"категория задачи на русском — ОБЯЗАТЕЛЬНО заполни одним словом, например: Покупки, Работа, Здоровье, Дом, Учёба, Личное, Финансы, Спорт, Семья — выбери наиболее подходящую или придумай короткое название\","
                 : "\"group\": \"ВЫБИРАЙ из существующих групп пользователя: " + existingGroups + ". Создавай новую только если ни одна не подходит — тогда одно короткое слово на русском\",";
@@ -140,7 +149,13 @@ public class GroqLlmProvider implements LlmProvider {
         return """
                 Ты — помощник для разбора задач на русском языке.
                 Пользователь описывает задачи в виде текста (часто списком или потоком сознания).
-                
+
+                ТЕКУЩАЯ ДАТА: %s (%s). Часовой пояс пользователя: %s.
+                Все относительные даты — «сегодня», «завтра», «послезавтра», «в пятницу»,
+                «через неделю», «на следующей неделе» — считай ОТ ЭТОЙ ДАТЫ.
+                Даты в примерах ниже приведены только для показа формата, не бери их за точку отсчёта.
+                """.formatted(today, weekday, offset) + """
+
                 Твоя задача: распарсить текст и вернуть JSON со списком структурированных задач.
                 
                 Формат ответа (JSON):
@@ -206,8 +221,10 @@ public class GroqLlmProvider implements LlmProvider {
                 
                 Правила:
                 - Всегда парси в "tasks" список, даже если одна задача
-                - Deadline в ISO-8601 с timezone +03:00 (Москва)
-                - Если дата не указана явно (только время), используй сегодняшнюю дату
+                """ + "- Deadline в ISO-8601 со смещением " + offset + ", отсчёт от текущей даты " + today + """
+
+                - Если дата не указана явно (только время), используй текущую дату
+                - Дедлайн не может оказаться в прошлом: «в пятницу» — ближайшая будущая пятница
                 - Priority: LOW (обычное дело), MEDIUM (стандартное), HIGH (важное), URGENT (очень срочное)
                 - group — ВСЕГДА заполняй, никогда не null. Одно короткое слово или два на русском
                 - Tags — бери из контекста (покупки, работа, здоровье и т.п.)
