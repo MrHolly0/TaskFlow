@@ -47,6 +47,40 @@ class ActionValidatorTest {
     }
 
     @Test
+    void validate_rejectsUnknownRecurrence() {
+        var result = validator.validate(AssistantActionType.CREATE,
+                Map.of("title", "полить цветы", "recurrence", "КАЖДЫЙ_ВТОРНИК"), windowWith(taskId));
+
+        assertThat(result.valid()).isFalse();
+        assertThat(result.error()).contains("повторяемость");
+    }
+
+    @Test
+    void validate_acceptsNoneAsRecurrence() {
+        var result = validator.validate(AssistantActionType.CREATE,
+                Map.of("title", "полить цветы", "recurrence", "NONE"), windowWith(taskId));
+
+        assertThat(result.valid()).isTrue();
+    }
+
+    @Test
+    void validate_rejectsUpdateWithoutAnyField() {
+        var result = validator.validate(AssistantActionType.UPDATE,
+                Map.of("task_ref", "T1"), windowWith(taskId));
+
+        assertThat(result.valid()).isFalse();
+        assertThat(result.error()).contains("нечего менять");
+    }
+
+    @Test
+    void validate_acceptsUpdateWithOneField() {
+        var result = validator.validate(AssistantActionType.UPDATE,
+                Map.of("task_ref", "T1", "priority", "HIGH"), windowWith(taskId));
+
+        assertThat(result.valid()).isTrue();
+    }
+
+    @Test
     void validate_rejectsCreateWithoutTitle() {
         var result = validator.validate(AssistantActionType.CREATE,
                 Map.of(), windowWith(taskId));

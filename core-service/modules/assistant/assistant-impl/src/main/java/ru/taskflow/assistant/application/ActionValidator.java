@@ -3,13 +3,17 @@ package ru.taskflow.assistant.application;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import ru.taskflow.assistant.api.AssistantActionType;
+import ru.taskflow.task.api.RecurrenceType;
 import ru.taskflow.task.api.TaskPriority;
 import ru.taskflow.task.api.TaskService;
 import ru.taskflow.task.api.TaskStatus;
 import ru.taskflow.task.api.dto.TaskResponse;
+import ru.taskflow.task.api.exception.TaskNotFoundException;
 
 import java.time.OffsetDateTime;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @Component
@@ -17,6 +21,8 @@ import java.util.UUID;
 public class ActionValidator {
 
     private final TaskService taskService;
+
+    private static final Set<String> UPDATABLE_FIELDS = Set.of("title", "description", "priority", "group");
 
     public record ValidationResult(boolean valid, String error, UUID targetTaskId) {
 
@@ -60,7 +66,7 @@ public class ActionValidator {
         TaskResponse task;
         try {
             task = taskService.findById(userId, targetTaskId);
-        } catch (RuntimeException e) {
+        } catch (TaskNotFoundException e) {
             return ValidationResult.fail("задача не найдена или недоступна");
         }
         if (task.status() == TaskStatus.DONE && type == AssistantActionType.COMPLETE) {
@@ -83,6 +89,9 @@ public class ActionValidator {
         if (args.containsKey("deadline") && !isParseableDeadline(args.get("deadline"))) {
             return ValidationResult.fail("не удалось разобрать срок: " + args.get("deadline"));
         }
+        if (args.containsKey("recurrence") && !isKnownRecurrence(args.get("recurrence"))) {
+            return ValidationResult.fail("неизвестная повторяемость: " + args.get("recurrence"));
+        }
         return ValidationResult.ok(null);
     }
 
@@ -98,6 +107,11 @@ public class ActionValidator {
     }
 
     private ValidationResult validateUpdate(Map<String, Object> args, UUID taskId) {
+        boolean hasChange = UPDATABLE_FIELDS.stream()
+                .anyMatch(f -> args.get(f) != null && !args.get(f).toString().isBlank());
+        if (!hasChange) {
+            return ValidationResult.fail("нечего менять: не указано ни одного поля");
+        }
         if (args.containsKey("priority") && !isKnownPriority(args.get("priority"))) {
             return ValidationResult.fail("неизвестный приоритет: " + args.get("priority"));
         }
@@ -109,7 +123,23 @@ public class ActionValidator {
             return false;
         }
         try {
-            TaskPriority.valueOf(raw.toString().trim().toUpperCase());
+            TaskPriority.valueOf(raw.toString().trim().toUpperCase(Locale.ROOT));
+            return true;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    private boolean isKnownRecurrence(Object raw) {
+        if (raw == null) {
+            return true;
+        }
+        String value = raw.toString().trim().toUpperCase(Locale.ROOT);
+        if (value.isEmpty() || "NONE".equals(value) || "NULL".equals(value)) {
+            return true;
+        }
+        try {
+            RecurrenceType.valueOf(value);
             return true;
         } catch (IllegalArgumentException e) {
             return false;

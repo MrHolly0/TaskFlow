@@ -46,7 +46,7 @@ public class ToolRegistry {
                         "deadline", stringParam("Срок в формате ISO-8601 со смещением, например 2026-08-12T18:00:00+03:00"),
                         "group", stringParam("Название группы одним-двумя словами на русском"),
                         "tags", arrayParam("Метки"),
-                        "recurrence", enumParam("Повторяемость", List.of("NONE", "DAILY", "WEEKLY", "MONTHLY"))
+                        "recurrence", enumParam("Повторяемость. NONE — задача разовая", List.of("NONE", "DAILY", "WEEKLY", "MONTHLY", "WEEKDAYS"))
                 ), List.of("title")),
 
                 tool(COMPLETE_TASK, "Отметить существующую задачу выполненной", Map.of(
