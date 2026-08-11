@@ -8,6 +8,7 @@ import ru.taskflow.assistant.api.AssistantActionType;
 import ru.taskflow.assistant.api.dto.ProposedAction;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,15 +25,15 @@ import java.util.Set;
 public class ToolCallParser {
 
     private static final int MAX_ACTIONS = 20;
-    private static final Set<String> REF_BEARING_TYPES = Set.of(
-            "COMPLETE", "RESCHEDULE", "UPDATE", "CANCEL"
+    private static final Set<AssistantActionType> REF_BEARING_TYPES = EnumSet.of(
+            AssistantActionType.COMPLETE, AssistantActionType.RESCHEDULE,
+            AssistantActionType.UPDATE, AssistantActionType.CANCEL
     );
 
     private final ToolRegistry toolRegistry;
     private final ActionValidator actionValidator;
     private final SummaryRenderer summaryRenderer;
-
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     public ParsedToolCalls parse(List<ToolCall> calls, TaskContextWindow window) {
         List<ProposedAction> actions = new ArrayList<>();
@@ -61,7 +62,7 @@ public class ToolCallParser {
                     rejections.add("превышен лимит действий: " + call.name());
                     continue;
                 }
-                String taskTitle = REF_BEARING_TYPES.contains(type.name())
+                String taskTitle = REF_BEARING_TYPES.contains(type)
                         ? window.title(refOf(args))
                         : null;
                 String summary = summaryRenderer.render(type, taskTitle, args);
@@ -77,6 +78,10 @@ public class ToolCallParser {
             }
 
             if (toolRegistry.isRetrieval(call.name())) {
+                if (searchQuery != null) {
+                    rejections.add("повторный поиск отклонён: " + call.name());
+                    continue;
+                }
                 searchQuery = stringArg(args, "query");
                 continue;
             }
