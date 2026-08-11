@@ -13,3 +13,5 @@ databaseChangeLog:
       file: db/changelog/006-init-audit.yaml
   - include:
       file: db/changelog/007-cleanup-settings.yaml
+  - include:
+      file: db/changelog/008-init-assistant.yaml

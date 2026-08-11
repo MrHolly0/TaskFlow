@@ -17,6 +17,8 @@ include("core-service:modules:notify:notify-impl")
 include("core-service:modules:integration-telegram:integration-telegram-impl")
 include("core-service:modules:audit:audit-api")
 include("core-service:modules:audit:audit-impl")
+include("core-service:modules:assistant:assistant-api")
+include("core-service:modules:assistant:assistant-impl")
 
 include("nlp-worker")
 include("notification-worker")

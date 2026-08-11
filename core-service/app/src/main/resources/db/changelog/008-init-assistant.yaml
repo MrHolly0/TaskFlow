@@ -1,0 +1,157 @@
+databaseChangeLog:
+  - changeSet:
+      id: 008-init-assistant-proposals
+      author: taskflow
+      changes:
+        - createTable:
+            tableName: assistant_proposals
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: short_code
+                  type: VARCHAR(12)
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uq_proposals_short_code
+              - column:
+                  name: user_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_proposals_users
+                    references: users(id)
+                    deleteCascade: true
+              - column:
+                  name: source_channel
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: input_kind
+                  type: VARCHAR(8)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: source_text
+                  type: TEXT
+              - column:
+                  name: task_refs
+                  type: JSONB
+              - column:
+                  name: status
+                  type: VARCHAR(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: clarification
+                  type: TEXT
+              - column:
+                  name: llm_passes
+                  type: INT
+                  defaultValueNumeric: 0
+              - column:
+                  name: input_tokens
+                  type: INT
+                  defaultValueNumeric: 0
+              - column:
+                  name: output_tokens
+                  type: INT
+                  defaultValueNumeric: 0
+              - column:
+                  name: latency_ms
+                  type: INT
+                  defaultValueNumeric: 0
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: NOW()
+              - column:
+                  name: expires_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: resolved_at
+                  type: TIMESTAMP WITH TIME ZONE
+        - sql:
+            sql: "ALTER TABLE assistant_proposals ADD CONSTRAINT chk_proposal_status CHECK (status IN ('PENDING','APPLIED','PARTIALLY_APPLIED','REJECTED','EXPIRED'));"
+        - sql:
+            sql: "ALTER TABLE assistant_proposals ADD CONSTRAINT chk_proposal_channel CHECK (source_channel IN ('TELEGRAM','WEB'));"
+        - sql:
+            sql: "ALTER TABLE assistant_proposals ADD CONSTRAINT chk_proposal_input_kind CHECK (input_kind IN ('TEXT','VOICE'));"
+        - createIndex:
+            tableName: assistant_proposals
+            indexName: idx_proposals_user_created
+            columns:
+              - column:
+                  name: user_id
+              - column:
+                  name: created_at
+                  descending: true
+
+  - changeSet:
+      id: 008-init-assistant-proposal-actions
+      author: taskflow
+      changes:
+        - createTable:
+            tableName: assistant_proposal_actions
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: proposal_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_proposal_actions_proposals
+                    references: assistant_proposals(id)
+                    deleteCascade: true
+              - column:
+                  name: ordinal
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: type
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: target_task_id
+                  type: UUID
+              - column:
+                  name: payload
+                  type: JSONB
+              - column:
+                  name: summary
+                  type: VARCHAR(256)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: accepted
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: applied_task_id
+                  type: UUID
+              - column:
+                  name: apply_error
+                  type: VARCHAR(256)
+        - sql:
+            sql: "ALTER TABLE assistant_proposal_actions ADD CONSTRAINT chk_action_type CHECK (type IN ('CREATE','COMPLETE','RESCHEDULE','UPDATE','CANCEL'));"
+        - addUniqueConstraint:
+            tableName: assistant_proposal_actions
+            columnNames: proposal_id, ordinal
+            constraintName: uq_proposal_action_ordinal

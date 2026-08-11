@@ -23,6 +23,7 @@ dependencies {
     implementation(project(":core-service:modules:notify:notify-impl"))
     implementation(project(":core-service:modules:integration-telegram:integration-telegram-impl"))
     implementation(project(":core-service:modules:audit:audit-impl"))
+    implementation(project(":core-service:modules:assistant:assistant-impl"))
 
     compileOnly("org.projectlombok:lombok")
     annotationProcessor("org.projectlombok:lombok")
