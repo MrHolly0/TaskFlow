@@ -10,6 +10,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import ru.taskflow.nlp.application.NlpService;
 import ru.taskflow.nlp.domain.ParsedTasks;
+import ru.taskflow.nlp.domain.ToolCallRequest;
+import ru.taskflow.nlp.domain.ToolCallResult;
+import ru.taskflow.nlp.infrastructure.groq.GroqToolCallProvider;
 import ru.taskflow.nlp.infrastructure.web.dto.ParseTextRequest;
 import ru.taskflow.nlp.infrastructure.web.dto.ParseTextResponse;
 
@@ -22,6 +25,7 @@ import java.util.List;
 public class NlpController {
 
     private final NlpService nlpService;
+    private final GroqToolCallProvider toolCallProvider;
 
     @PostMapping("/parse-text")
     public ParseTextResponse parseText(@RequestBody ParseTextRequest request) {
@@ -48,5 +52,10 @@ public class NlpController {
             existingGroups
         );
         return new ParseTextResponse(result.tasks());
+    }
+
+    @PostMapping("/tool-call")
+    public ToolCallResult toolCall(@RequestBody ToolCallRequest request) {
+        return toolCallProvider.call(request);
     }
 }
