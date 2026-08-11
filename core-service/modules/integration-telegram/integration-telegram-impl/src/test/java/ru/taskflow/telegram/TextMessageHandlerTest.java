@@ -6,6 +6,9 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import ru.taskflow.nlp.api.NlpGatewayService;
+import ru.taskflow.nlp.api.NlpParseResult;
+import ru.taskflow.nlp.api.NlpParsedTask;
 import ru.taskflow.task.api.TaskService;
 import ru.taskflow.task.api.dto.CreateTaskRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
@@ -15,6 +18,7 @@ import ru.taskflow.telegram.infrastructure.client.dto.TelegramChat;
 import ru.taskflow.telegram.infrastructure.client.dto.TelegramMessage;
 import ru.taskflow.telegram.infrastructure.client.dto.TelegramUser;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,6 +36,9 @@ class TextMessageHandlerTest {
     @Mock
     private TelegramMessageSender sender;
 
+    @Mock
+    private NlpGatewayService nlpGatewayService;
+
     @InjectMocks
     private TextMessageHandler handler;
 
@@ -40,6 +47,7 @@ class TextMessageHandlerTest {
         var userId = UUID.randomUUID();
         var message = message("купить молоко");
         var response = taskResponse(UUID.randomUUID(), "купить молоко");
+        when(nlpGatewayService.parseText(any(), any(), any())).thenReturn(parsedTask("купить молоко"));
         when(taskService.create(eq(userId), any(CreateTaskRequest.class))).thenReturn(response);
 
         handler.handle(message, userId);
@@ -54,6 +62,7 @@ class TextMessageHandlerTest {
         var userId = UUID.randomUUID();
         var taskId = UUID.randomUUID();
         var message = message("купить молоко");
+        when(nlpGatewayService.parseText(any(), any(), any())).thenReturn(parsedTask("купить молоко"));
         when(taskService.create(eq(userId), any(CreateTaskRequest.class))).thenReturn(taskResponse(taskId, "купить молоко"));
 
         handler.handle(message, userId);
@@ -68,5 +77,9 @@ class TextMessageHandlerTest {
 
     private static TaskResponse taskResponse(UUID id, String title) {
         return new TaskResponse(id, title, null, null, null, null, null, false, null, null, null, null, null, null, null);
+    }
+
+    private static NlpParseResult parsedTask(String title) {
+        return new NlpParseResult(List.of(new NlpParsedTask(title, null, null, null, null, List.of(), null)));
     }
 }

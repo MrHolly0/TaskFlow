@@ -7,6 +7,8 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
+import ru.taskflow.audit.api.AuditService;
+import ru.taskflow.notify.api.NotificationService;
 import ru.taskflow.task.api.TaskStatus;
 import ru.taskflow.task.api.dto.CreateTaskRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
@@ -34,6 +36,10 @@ class TaskServiceTest {
     private TagRepository tagRepository;
     @Mock
     private TaskMapper taskMapper;
+    @Mock
+    private NotificationService notificationService;
+    @Mock
+    private AuditService auditService;
 
     @InjectMocks
     private TaskServiceImpl taskService;
@@ -86,6 +92,7 @@ class TaskServiceTest {
         var response = mockResponse(taskId, "новый заголовок");
 
         when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskRepository.save(any())).thenReturn(entity);
         when(taskMapper.toResponse(entity)).thenReturn(response);
 
         var result = taskService.update(userId, taskId, request);

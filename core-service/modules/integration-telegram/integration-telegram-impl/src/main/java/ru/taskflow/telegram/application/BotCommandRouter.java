@@ -28,7 +28,7 @@ public class BotCommandRouter {
     private final TelegramMessageSender sender;
 
     @Value("${app.telegram.miniapp-url:}")
-    private String miniappUrl;
+    private String miniappUrl = "";
 
     public void handle(TelegramMessage message, UUID userId) {
         String command = parseCommand(message.text());
