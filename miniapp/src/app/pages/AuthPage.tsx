@@ -178,7 +178,7 @@ export function AuthPage() {
               </button>
             ) : (
               <>
-                <button
+                {import.meta.env.DEV && <button
                   onClick={handleDemoLogin}
                   disabled={loading}
                   className="w-full flex items-center justify-center gap-3 py-4 px-6 rounded-2xl font-semibold transition-all active:scale-95 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed border border-border bg-muted/50 text-foreground"
@@ -191,7 +191,7 @@ export function AuthPage() {
                   ) : (
                     'Попробовать демо'
                   )}
-                </button>
+                </button>}
                 <TelegramLoginWidget onAuth={handleWidgetAuth} />
               </>
             )}

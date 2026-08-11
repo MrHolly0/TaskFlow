@@ -70,16 +70,6 @@ public class AuthController {
         return issueTokens(dto.id(), dto.username());
     }
 
-    @PostMapping("/dev-token")
-    @ResponseStatus(HttpStatus.OK)
-    @Operation(summary = "Выдать тестовый токен", description = "Для локальной разработки: создаёт фиктивного пользователя и выдаёт токены")
-    public AuthResponse devToken(@RequestBody Map<String, String> body) {
-        String username = body.getOrDefault("username", "dev_user");
-        long fakeTelegramId = -1_000_000_000L - Math.abs((long) username.hashCode() % 1_000_000_000L);
-        var dto = userService.findOrCreateByTelegram(fakeTelegramId, username, "Dev", "User");
-        return issueTokens(dto.id(), dto.username());
-    }
-
     private AuthResponse issueTokens(UUID userId, String username) {
         String accessToken = jwtService.issueAccessToken(userId, username);
         String refreshToken = refreshTokenService.issue(userId);
