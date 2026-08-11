@@ -1,0 +1,101 @@
+package ru.taskflow.assistant.infrastructure.persistence;
+
+import org.junit.jupiter.api.Test;
+import ru.taskflow.assistant.api.AssistantActionType;
+import ru.taskflow.assistant.api.ProposalStatus;
+
+import java.time.OffsetDateTime;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class ProposalMapperTest {
+
+    private final ProposalMapper mapper = new ProposalMapper(new com.fasterxml.jackson.databind.ObjectMapper());
+
+    @Test
+    void toDto_copiesEveryScalarField() {
+        var entity = entity();
+
+        var dto = mapper.toDto(entity);
+
+        assertThat(dto.id()).isEqualTo(entity.getId());
+        assertThat(dto.shortCode()).isEqualTo("ABC23456");
+        assertThat(dto.userId()).isEqualTo(entity.getUserId());
+        assertThat(dto.status()).isEqualTo(ProposalStatus.PENDING);
+        assertThat(dto.sourceText()).isEqualTo("в магазин сходил");
+        assertThat(dto.clarification()).isEqualTo("какая именно задача?");
+        assertThat(dto.createdAt()).isEqualTo(entity.getCreatedAt());
+        assertThat(dto.expiresAt()).isEqualTo(entity.getExpiresAt());
+    }
+
+    @Test
+    void toDto_mapsActionsInOrdinalOrder() {
+        var entity = entity();
+        entity.addAction(action(2, "COMPLETE", "Закрыть — молоко", true));
+        entity.addAction(action(1, "CREATE", "Создать — хлеб", false));
+
+        var dto = mapper.toDto(entity);
+
+        assertThat(dto.actions()).extracting("ordinal").containsExactly(1, 2);
+        assertThat(dto.actions().getFirst().type()).isEqualTo(AssistantActionType.CREATE);
+        assertThat(dto.actions().getFirst().accepted()).isFalse();
+        assertThat(dto.actions().get(1).accepted()).isTrue();
+    }
+
+    @Test
+    void toDto_parsesPayloadJson() {
+        var entity = entity();
+        var a = action(1, "CREATE", "Создать — хлеб", true);
+        a.setPayload("{\"title\":\"хлеб\",\"priority\":\"HIGH\"}");
+        entity.addAction(a);
+
+        var dto = mapper.toDto(entity);
+
+        assertThat(dto.actions().getFirst().payload()).containsEntry("title", "хлеб");
+    }
+
+    @Test
+    void toDto_toleratesBrokenPayload() {
+        var entity = entity();
+        var a = action(1, "CREATE", "Создать — хлеб", true);
+        a.setPayload("{это не json");
+        entity.addAction(a);
+
+        var dto = mapper.toDto(entity);
+
+        assertThat(dto.actions().getFirst().payload()).isEmpty();
+    }
+
+    @Test
+    void toDto_handlesEmptyActions() {
+        var dto = mapper.toDto(entity());
+
+        assertThat(dto.actions()).isEmpty();
+        assertThat(dto.hasActions()).isFalse();
+    }
+
+    private ProposalJpaEntity entity() {
+        var p = new ProposalJpaEntity();
+        p.setId(UUID.randomUUID());
+        p.setShortCode("ABC23456");
+        p.setUserId(UUID.randomUUID());
+        p.setSourceChannel("TELEGRAM");
+        p.setInputKind("TEXT");
+        p.setSourceText("в магазин сходил");
+        p.setStatus("PENDING");
+        p.setClarification("какая именно задача?");
+        p.setCreatedAt(OffsetDateTime.now());
+        p.setExpiresAt(OffsetDateTime.now().plusHours(24));
+        return p;
+    }
+
+    private ProposalActionJpaEntity action(int ordinal, String type, String summary, boolean accepted) {
+        var a = new ProposalActionJpaEntity();
+        a.setOrdinal(ordinal);
+        a.setType(type);
+        a.setSummary(summary);
+        a.setAccepted(accepted);
+        return a;
+    }
+}
