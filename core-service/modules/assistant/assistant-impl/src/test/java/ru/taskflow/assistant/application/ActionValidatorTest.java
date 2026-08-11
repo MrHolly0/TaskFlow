@@ -47,20 +47,12 @@ class ActionValidatorTest {
     }
 
     @Test
-    void validate_rejectsUnknownRecurrence() {
+    void validate_rejectsRecurrenceAsUnsupported() {
         var result = validator.validate(AssistantActionType.CREATE,
-                Map.of("title", "полить цветы", "recurrence", "КАЖДЫЙ_ВТОРНИК"), windowWith(taskId));
+                Map.of("title", "Зарядка", "recurrence", "DAILY"), windowWith(taskId));
 
         assertThat(result.valid()).isFalse();
-        assertThat(result.error()).contains("повторяемость");
-    }
-
-    @Test
-    void validate_acceptsNoneAsRecurrence() {
-        var result = validator.validate(AssistantActionType.CREATE,
-                Map.of("title", "полить цветы", "recurrence", "NONE"), windowWith(taskId));
-
-        assertThat(result.valid()).isTrue();
+        assertThat(result.error()).contains("повторяющиеся задачи");
     }
 
     @Test

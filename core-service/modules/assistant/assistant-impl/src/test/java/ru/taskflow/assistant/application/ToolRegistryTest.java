@@ -65,4 +65,25 @@ class ToolRegistryTest {
         assertThat(registry.isControl(ToolRegistry.ASK_USER)).isTrue();
         assertThat(registry.isControl(ToolRegistry.SEARCH_TASKS)).isFalse();
     }
+
+    @Test
+    void toolDefinitions_doNotPromiseRecurrence() {
+        var createTask = registry.toolDefinitions().stream()
+                .filter(t -> ToolRegistry.CREATE_TASK.equals(functionName(t)))
+                .findFirst().orElseThrow();
+
+        assertThat(parameterNames(createTask)).doesNotContain("recurrence");
+    }
+
+    private String functionName(Map<String, Object> tool) {
+        Map<String, Object> function = (Map<String, Object>) tool.get("function");
+        return (String) function.get("name");
+    }
+
+    private List<String> parameterNames(Map<String, Object> tool) {
+        Map<String, Object> function = (Map<String, Object>) tool.get("function");
+        Map<String, Object> parameters = (Map<String, Object>) function.get("parameters");
+        Map<String, Object> properties = (Map<String, Object>) parameters.get("properties");
+        return List.copyOf(properties.keySet());
+    }
 }

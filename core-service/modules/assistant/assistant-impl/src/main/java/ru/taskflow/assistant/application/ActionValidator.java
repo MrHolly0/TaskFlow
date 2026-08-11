@@ -3,7 +3,6 @@ package ru.taskflow.assistant.application;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import ru.taskflow.assistant.api.AssistantActionType;
-import ru.taskflow.task.api.RecurrenceType;
 import ru.taskflow.task.api.TaskPriority;
 import ru.taskflow.task.api.TaskService;
 import ru.taskflow.task.api.TaskStatus;
@@ -89,8 +88,8 @@ public class ActionValidator {
         if (args.containsKey("deadline") && !isParseableDeadline(args.get("deadline"))) {
             return ValidationResult.fail("не удалось разобрать срок: " + args.get("deadline"));
         }
-        if (args.containsKey("recurrence") && !isKnownRecurrence(args.get("recurrence"))) {
-            return ValidationResult.fail("неизвестная повторяемость: " + args.get("recurrence"));
+        if (args.containsKey("recurrence")) {
+            return ValidationResult.fail("повторяющиеся задачи пока не поддерживаются");
         }
         return ValidationResult.ok(null);
     }
@@ -124,22 +123,6 @@ public class ActionValidator {
         }
         try {
             TaskPriority.valueOf(raw.toString().trim().toUpperCase(Locale.ROOT));
-            return true;
-        } catch (IllegalArgumentException e) {
-            return false;
-        }
-    }
-
-    private boolean isKnownRecurrence(Object raw) {
-        if (raw == null) {
-            return true;
-        }
-        String value = raw.toString().trim().toUpperCase(Locale.ROOT);
-        if (value.isEmpty() || "NONE".equals(value) || "NULL".equals(value)) {
-            return true;
-        }
-        try {
-            RecurrenceType.valueOf(value);
             return true;
         } catch (IllegalArgumentException e) {
             return false;
