@@ -93,6 +93,25 @@ class ContextBuilderTest {
         assertThat(window.resolve("T99")).isNull();
     }
 
+    @Test
+    void build_keepsTaskTitlesForRefs() {
+        var task = task(UUID.randomUUID(), "купить молоко", null);
+        when(taskService.findAssistantContext(eq(userId), anyInt())).thenReturn(List.of(task));
+
+        var window = contextBuilder.build(userId);
+
+        assertThat(window.title("T1")).isEqualTo("купить молоко");
+    }
+
+    @Test
+    void title_returnsNullForUnknownRef() {
+        when(taskService.findAssistantContext(eq(userId), anyInt())).thenReturn(List.of());
+
+        var window = contextBuilder.build(userId);
+
+        assertThat(window.title("T99")).isNull();
+    }
+
     private TaskResponse task(UUID id, String title, OffsetDateTime deadline) {
         return new TaskResponse(
                 id, title, null, TaskPriority.MEDIUM, TaskStatus.TODO, deadline,

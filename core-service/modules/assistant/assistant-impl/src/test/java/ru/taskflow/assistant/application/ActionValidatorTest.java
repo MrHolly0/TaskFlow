@@ -34,7 +34,7 @@ class ActionValidatorTest {
     private final UUID taskId = UUID.randomUUID();
 
     private TaskContextWindow windowWith(UUID id) {
-        return new TaskContextWindow("T1 · купить молоко", Map.of("T1", id));
+        return new TaskContextWindow("T1 · купить молоко", Map.of("T1", id), Map.of("T1", "купить молоко"));
     }
 
     @Test

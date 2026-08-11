@@ -26,19 +26,21 @@ public class ContextBuilder {
     public TaskContextWindow build(UUID userId) {
         List<TaskResponse> tasks = taskService.findAssistantContext(userId, WINDOW_SIZE);
         Map<String, UUID> refs = new LinkedHashMap<>();
+        Map<String, String> titles = new LinkedHashMap<>();
         StringBuilder rendered = new StringBuilder();
 
         for (int i = 0; i < tasks.size(); i++) {
             TaskResponse task = tasks.get(i);
             String ref = REF_PREFIX + (i + 1);
             refs.put(ref, task.id());
+            titles.put(ref, task.title());
             if (!rendered.isEmpty()) {
                 rendered.append('\n');
             }
             rendered.append(renderLine(ref, task));
         }
 
-        return new TaskContextWindow(rendered.toString(), Map.copyOf(refs));
+        return new TaskContextWindow(rendered.toString(), Map.copyOf(refs), Map.copyOf(titles));
     }
 
     private String renderLine(String ref, TaskResponse task) {
