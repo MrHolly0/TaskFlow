@@ -5,6 +5,8 @@ import ru.taskflow.assistant.api.AssistantActionType;
 import ru.taskflow.assistant.api.dto.ProposedAction;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -74,7 +76,8 @@ public class DuplicateGuard {
         if (normalized.isBlank()) {
             return Set.of();
         }
-        return Set.of(WHITESPACE.split(normalized));
+        // Set.of(array) падает на повторяющемся слове (естественно для устной речи) — здесь дубли не ошибка.
+        return new HashSet<>(Arrays.asList(WHITESPACE.split(normalized)));
     }
 
     private double jaccard(Set<String> a, Set<String> b) {

@@ -114,4 +114,29 @@ class DuplicateGuardTest {
         assertThat(result.actions().get(0)).isEqualTo(action);
         assertThat(result.rejections()).isEmpty();
     }
+
+    @Test
+    void filter_toleratesRepeatedWordInProposedTitle() {
+        var action = createAction(1, "сходить сходить в магазин");
+
+        var result = guard.filter(List.of(action), windowWithCatFoodTask());
+
+        assertThat(result.actions()).hasSize(1);
+        assertThat(result.rejections()).isEmpty();
+    }
+
+    @Test
+    void filter_toleratesRepeatedWordInWindowTaskTitle() {
+        var action = createAction(1, "позвонить маме");
+        var window = new TaskContextWindow(
+                "T3 · купить хлеб и хлеб",
+                Map.of("T3", UUID.randomUUID()),
+                Map.of("T3", "купить хлеб и хлеб")
+        );
+
+        var result = guard.filter(List.of(action), window);
+
+        assertThat(result.actions()).hasSize(1);
+        assertThat(result.rejections()).isEmpty();
+    }
 }
