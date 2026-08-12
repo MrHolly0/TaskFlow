@@ -8,6 +8,7 @@ import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -92,6 +93,61 @@ class ProposalRepositoryTest {
         var id = repository.saveAndFlush(proposal).getId();
 
         var found = repository.findByIdAndUserId(id, UUID.randomUUID());
+
+        assertThat(found).isEmpty();
+    }
+
+    @Test
+    void findLatestPending_returnsMostRecentPendingProposal() {
+        var userId = UUID.randomUUID();
+        var now = OffsetDateTime.now();
+
+        var older = newProposal();
+        older.setShortCode("OLDER111");
+        older.setUserId(userId);
+        older.setCreatedAt(now.minusMinutes(10));
+        repository.saveAndFlush(older);
+
+        var newer = newProposal();
+        newer.setShortCode("NEWER222");
+        newer.setUserId(userId);
+        newer.setCreatedAt(now.minusMinutes(1));
+        repository.saveAndFlush(newer);
+
+        var found = repository.findLatestPending(userId, now, PageRequest.of(0, 1));
+
+        assertThat(found).hasSize(1);
+        assertThat(found.get(0).getShortCode()).isEqualTo("NEWER222");
+    }
+
+    @Test
+    void findLatestPending_excludesExpired() {
+        var userId = UUID.randomUUID();
+        var now = OffsetDateTime.now();
+
+        var expired = newProposal();
+        expired.setShortCode("EXPIRED1");
+        expired.setUserId(userId);
+        expired.setExpiresAt(now.minusMinutes(1));
+        repository.saveAndFlush(expired);
+
+        var found = repository.findLatestPending(userId, now, PageRequest.of(0, 1));
+
+        assertThat(found).isEmpty();
+    }
+
+    @Test
+    void findLatestPending_excludesNonPendingStatus() {
+        var userId = UUID.randomUUID();
+        var now = OffsetDateTime.now();
+
+        var applied = newProposal();
+        applied.setShortCode("APPLIED1");
+        applied.setUserId(userId);
+        applied.setStatus("APPLIED");
+        repository.saveAndFlush(applied);
+
+        var found = repository.findLatestPending(userId, now, PageRequest.of(0, 1));
 
         assertThat(found).isEmpty();
     }

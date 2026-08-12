@@ -2,6 +2,7 @@ package ru.taskflow.assistant.application;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.taskflow.assistant.api.AssistantChannel;
@@ -30,6 +31,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -103,6 +105,15 @@ public class AssistantServiceImpl implements AssistantService {
         return proposalRepository.findByShortCodeAndUserId(shortCode, userId)
                 .map(proposalMapper::toDto)
                 .orElseThrow(() -> new ProposalNotFoundException(null));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<Proposal> findLatestPending(UUID userId) {
+        return proposalRepository.findLatestPending(userId, OffsetDateTime.now(clock), PageRequest.of(0, 1))
+                .stream()
+                .findFirst()
+                .map(proposalMapper::toDto);
     }
 
     @Override

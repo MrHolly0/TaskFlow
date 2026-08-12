@@ -183,6 +183,30 @@ class AssistantServiceImplTest {
     }
 
     @Test
+    void findLatestPending_returnsMappedProposal() {
+        ProposalJpaEntity entity = new ProposalJpaEntity();
+        Proposal expectedDto = new Proposal(UUID.randomUUID(), "CODE1234", userId, ProposalStatus.PENDING,
+                "текст", null, List.of(), now, now.plusHours(24));
+        when(proposalRepository.findLatestPending(eq(userId), eq(now), any()))
+                .thenReturn(List.of(entity));
+        when(proposalMapper.toDto(entity)).thenReturn(expectedDto);
+
+        Optional<Proposal> result = service.findLatestPending(userId);
+
+        assertThat(result).contains(expectedDto);
+    }
+
+    @Test
+    void findLatestPending_returnsEmptyWhenNone() {
+        when(proposalRepository.findLatestPending(eq(userId), eq(now), any()))
+                .thenReturn(List.of());
+
+        Optional<Proposal> result = service.findLatestPending(userId);
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
     void setActionAccepted_rejectsNonPending() {
         UUID proposalId = UUID.randomUUID();
         ProposalJpaEntity entity = proposal(ProposalStatus.APPLIED, now.plusHours(24), action(1, true));

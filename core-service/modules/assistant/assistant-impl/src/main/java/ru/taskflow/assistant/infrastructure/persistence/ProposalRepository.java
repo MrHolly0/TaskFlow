@@ -1,9 +1,12 @@
 package ru.taskflow.assistant.infrastructure.persistence;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -19,4 +22,15 @@ public interface ProposalRepository extends JpaRepository<ProposalJpaEntity, UUI
             WHERE p.id = :id AND p.userId = :userId
             """)
     Optional<ProposalJpaEntity> findWithActions(@Param("id") UUID id, @Param("userId") UUID userId);
+
+    // Pageable вместо LIMIT — JPQL не поддерживает LIMIT напрямую, а Optional<>
+    // без ограничения результата упал бы IncorrectResultSizeDataAccessException
+    // при второй незакрытой заявке того же пользователя.
+    @Query("""
+            SELECT DISTINCT p FROM ProposalJpaEntity p
+            LEFT JOIN FETCH p.actions
+            WHERE p.userId = :userId AND p.status = 'PENDING' AND p.expiresAt > :now
+            ORDER BY p.createdAt DESC
+            """)
+    List<ProposalJpaEntity> findLatestPending(@Param("userId") UUID userId, @Param("now") OffsetDateTime now, Pageable pageable);
 }
