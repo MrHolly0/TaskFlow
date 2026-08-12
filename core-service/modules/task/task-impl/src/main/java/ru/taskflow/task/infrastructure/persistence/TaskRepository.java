@@ -23,7 +23,6 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
             LEFT JOIN FETCH t.group g
             LEFT JOIN FETCH t.tags
             WHERE t.userId = :userId
-              AND t.isDraft = false
               AND (:groupId IS NULL OR t.group.id = :groupId)
               AND (:status IS NULL OR t.status = :status)
               AND (:priority IS NULL OR t.priority = :priority)
@@ -46,7 +45,6 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
             LEFT JOIN FETCH t.tags
             WHERE t.userId = :userId
               AND t.status != :done
-              AND t.isDraft = false
               AND t.isDeleted = false
               AND (t.deadline IS NULL OR t.deadline <= :endOfToday)
             ORDER BY CASE t.priority
@@ -70,7 +68,6 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
             LEFT JOIN FETCH t.tags
             WHERE t.userId = :userId
               AND t.status != :done
-              AND t.isDraft = false
               AND t.isDeleted = false
               AND (DATE(t.deadline) = DATE(:date) OR (t.deadline IS NULL))
             ORDER BY CASE t.priority
@@ -90,7 +87,6 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
     @Query("""
             SELECT t FROM TaskJpaEntity t
             WHERE t.userId = :userId
-              AND t.isDraft = false
               AND t.status IN (ru.taskflow.task.api.TaskStatus.TODO, ru.taskflow.task.api.TaskStatus.IN_PROGRESS)
             ORDER BY
               CASE WHEN t.deadline IS NOT NULL AND t.deadline < :now THEN 0 ELSE 1 END ASC,
@@ -107,7 +103,6 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
             LEFT JOIN FETCH t.group
             LEFT JOIN FETCH t.tags
             WHERE t.userId = :userId
-              AND t.isDraft = false
               AND t.isDeleted = false
               AND (:includeCompleted = true OR t.status NOT IN (ru.taskflow.task.api.TaskStatus.DONE, ru.taskflow.task.api.TaskStatus.CANCELLED))
               AND (LOWER(t.title) LIKE LOWER(CONCAT('%', :query, '%'))

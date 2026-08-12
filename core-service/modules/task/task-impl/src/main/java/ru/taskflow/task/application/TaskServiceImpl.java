@@ -55,7 +55,7 @@ public class TaskServiceImpl implements TaskService {
     /**
      * Создаёт новую задачу для пользователя.
      *
-     * Задача изначально создаётся в статусе draft. Если указана группа,
+     * Задача сразу видна в списках. Если указана группа,
      * автоматически создаётся, если её не существует.
      *
      * @param userId ID пользователя
@@ -73,7 +73,6 @@ public class TaskServiceImpl implements TaskService {
         task.setDeadline(request.deadline());
         task.setEstimateMinutes(request.estimateMinutes());
         task.setSource(request.source());
-        task.setDraft(true);
 
         task.setGroup(resolveGroup(userId, request.groupId(), request.groupName()));
 

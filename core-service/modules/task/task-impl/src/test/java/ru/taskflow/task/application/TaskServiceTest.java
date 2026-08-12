@@ -67,6 +67,22 @@ class TaskServiceTest {
     }
 
     @Test
+    void create_doesNotSetDraft() {
+        var request = new CreateTaskRequest("купить молоко", null, null, null, null, null, List.of(), null, null);
+        var entity = new TaskJpaEntity();
+        var response = mockResponse(taskId, "купить молоко");
+
+        when(taskRepository.save(any())).thenReturn(entity);
+        when(taskMapper.toResponse(entity)).thenReturn(response);
+
+        taskService.create(userId, request);
+
+        ArgumentCaptor<TaskJpaEntity> captor = ArgumentCaptor.forClass(TaskJpaEntity.class);
+        verify(taskRepository).save(captor.capture());
+        assertThat(captor.getValue().isDraft()).isFalse();
+    }
+
+    @Test
     void findById_returnsTask_whenExists() {
         var entity = taskEntity();
         var response = mockResponse(taskId, "задача");
