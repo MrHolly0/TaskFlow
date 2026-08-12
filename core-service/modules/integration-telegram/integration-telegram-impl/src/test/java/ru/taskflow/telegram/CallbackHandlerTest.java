@@ -62,6 +62,14 @@ class CallbackHandlerTest {
         verify(sender).answerCallback(eq("cb1"), anyString());
     }
 
+    @Test
+    void confirmCallback_noLongerRecognized_doesNotThrow() {
+        handler.handle(callback("confirm:" + UUID.randomUUID()), UUID.randomUUID());
+
+        verifyNoInteractions(taskService);
+        verify(sender).answerCallback(eq("cb1"), anyString());
+    }
+
     private static TelegramCallbackQuery callback(String data) {
         var user = new TelegramUser(1L, "user", "Name", null);
         var message = new TelegramMessage(1L, user, new TelegramChat(100L), null, null);

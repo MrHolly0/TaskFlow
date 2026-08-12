@@ -233,52 +233,6 @@ public class TaskServiceImpl implements TaskService {
         auditService.record(userId, taskId, AuditEventType.DELETED, null);
     }
 
-    @Override
-    @Transactional
-    public TaskResponse confirmDraft(UUID userId, UUID taskId) {
-        var task = taskRepository.findByIdAndUserId(taskId, userId)
-                .orElseThrow(() -> new TaskNotFoundException(taskId));
-        task.setDraft(false);
-
-        if (task.getDeadline() != null) {
-            notificationService.scheduleTaskReminder(userId, taskId, task.getTitle(), task.getDeadline());
-        }
-
-        TaskJpaEntity savedTask = taskRepository.save(task);
-        auditService.record(userId, taskId, AuditEventType.UPDATED, Map.of("isDraft", false));
-        return taskMapper.toResponse(savedTask);
-    }
-
-    @Override
-    @Transactional
-    public TaskResponse updateDraftTask(UUID userId, UUID taskId, UpdateTaskRequest request) {
-        var task = taskRepository.findByIdAndUserId(taskId, userId)
-                .orElseThrow(() -> new TaskNotFoundException(taskId));
-
-        if (!task.isDraft()) {
-            throw new IllegalStateException("Cannot edit non-draft task");
-        }
-
-        if (request.title() != null) task.setTitle(request.title());
-        if (request.description() != null) task.setDescription(request.description());
-        if (request.priority() != null) task.setPriority(request.priority());
-        if (request.deadline() != null) task.setDeadline(request.deadline());
-        if (request.estimateMinutes() != null) task.setEstimateMinutes(request.estimateMinutes());
-
-        if (request.groupId() != null) {
-            var group = groupRepository.findByIdAndUserId(request.groupId(), userId)
-                    .orElseThrow(() -> new GroupNotFoundException(request.groupId()));
-            task.setGroup(group);
-        }
-
-        if (request.tags() != null) {
-            task.setTags(resolveOrCreateTags(userId, request.tags()));
-        }
-
-        TaskJpaEntity savedTask = taskRepository.save(task);
-        return taskMapper.toResponse(savedTask);
-    }
-
     private List<TagJpaEntity> resolveOrCreateTags(UUID userId, List<String> tagNames) {
         var existing = tagRepository.findAllByUserIdAndNameIn(userId, tagNames);
         var existingNames = existing.stream().map(TagJpaEntity::getName).toList();

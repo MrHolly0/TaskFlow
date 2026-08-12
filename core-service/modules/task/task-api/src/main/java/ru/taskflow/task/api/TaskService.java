@@ -27,10 +27,6 @@ public interface TaskService {
 
     void delete(UUID userId, UUID taskId);
 
-    TaskResponse confirmDraft(UUID userId, UUID taskId);
-
-    TaskResponse updateDraftTask(UUID userId, UUID taskId, UpdateTaskRequest request);
-
     FocusResponse getFocusTasks(UUID userId);
 
     DigestResponse getDigest(UUID userId, LocalDate date);
