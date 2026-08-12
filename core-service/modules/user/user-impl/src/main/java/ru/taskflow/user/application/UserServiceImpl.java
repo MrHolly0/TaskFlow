@@ -13,6 +13,7 @@ import ru.taskflow.user.infrastructure.persistence.UserRepository;
 import ru.taskflow.user.infrastructure.persistence.UserSettingsJpaEntity;
 import ru.taskflow.user.infrastructure.persistence.UserSettingsRepository;
 
+import java.time.ZoneId;
 import java.util.UUID;
 
 @Service
@@ -51,6 +52,14 @@ public class UserServiceImpl implements UserService {
         return settingsRepository.findByUserId(userId)
                 .map(this::toSettingsDto)
                 .orElseGet(this::defaultSettings);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ZoneId getTimezone(UUID userId) {
+        return userRepository.findById(userId)
+                .map(e -> ZoneId.of(e.getTimezone()))
+                .orElseThrow(() -> new NotFoundException("User not found: " + userId));
     }
 
     @Override

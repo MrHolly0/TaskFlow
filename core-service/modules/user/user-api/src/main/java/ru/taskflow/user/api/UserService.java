@@ -3,6 +3,7 @@ package ru.taskflow.user.api;
 import ru.taskflow.user.api.dto.UpdateSettingsRequest;
 import ru.taskflow.user.api.dto.UserSettingsDto;
 
+import java.time.ZoneId;
 import java.util.UUID;
 
 public interface UserService {
@@ -14,4 +15,6 @@ public interface UserService {
     UserSettingsDto getSettings(UUID userId);
 
     void updateSettings(UUID userId, UpdateSettingsRequest request);
+
+    ZoneId getTimezone(UUID userId);
 }
