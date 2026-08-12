@@ -12,6 +12,8 @@ import ru.taskflow.assistant.infrastructure.persistence.ProposalActionJpaEntity;
 import ru.taskflow.assistant.infrastructure.persistence.ProposalJpaEntity;
 import ru.taskflow.audit.api.AuditEventType;
 import ru.taskflow.audit.api.AuditService;
+import ru.taskflow.shared.exception.AccessDeniedException;
+import ru.taskflow.shared.exception.NotFoundException;
 import ru.taskflow.task.api.TaskPriority;
 import ru.taskflow.task.api.TaskService;
 import ru.taskflow.task.api.TaskSource;
@@ -104,8 +106,29 @@ public class ProposalApplier {
             return true;
         } catch (Exception e) {
             log.warn("Не удалось применить действие {} предложения: {}", action.getOrdinal(), e.getMessage());
-            action.setApplyError(GENERIC_FAILURE_MESSAGE);
+            action.setApplyError(safeMessage(e));
             return false;
+        }
+    }
+
+    /**
+     * Доменные исключения (ActionApplyException — наши собственные отказы после
+     * разбора payload, и NotFoundException/AccessDeniedException из TaskService)
+     * несут безопасный русский текст, который сформулирован для показа пользователю —
+     * его можно отдать как есть. Всё остальное (NPE, ошибки БД, таймауты) — обобщённым
+     * сообщением, чтобы наружу не утекли стектрейсы и внутренние детали.
+     */
+    private String safeMessage(Exception e) {
+        if (e instanceof ActionApplyException || e instanceof NotFoundException || e instanceof AccessDeniedException) {
+            return e.getMessage();
+        }
+        return GENERIC_FAILURE_MESSAGE;
+    }
+
+    /** Сигнализирует отказ конкретного действия по причине, безопасной для показа пользователю. */
+    private static final class ActionApplyException extends RuntimeException {
+        ActionApplyException(String message) {
+            super(message);
         }
     }
 
@@ -127,20 +150,27 @@ public class ProposalApplier {
                 yield targetTaskId;
             }
             case RESCHEDULE -> {
+                // Срок обязателен по контракту RESCHEDULE: если модель дала значение,
+                // которое не разобралось, это отказ, а не успешное "ничего не изменить".
+                OffsetDateTime deadline = parseDeadline(payload.get("new_deadline"));
+                if (deadline == null) {
+                    throw new ActionApplyException("не удалось распознать новый срок");
+                }
                 UpdateTaskRequest request = new UpdateTaskRequest(
-                        null, null, null, null,
-                        parseDeadline(payload.get("new_deadline")), null, null, null, null);
+                        null, null, null, null, deadline, null, null, null, null);
                 taskService.update(userId, targetTaskId, request);
                 yield targetTaskId;
             }
             case UPDATE -> {
+                String title = asString(payload.get("title"));
+                String description = asString(payload.get("description"));
+                TaskPriority priority = parsePriority(payload.get("priority"));
+                String groupName = asString(payload.get("group"));
+                if (title == null && description == null && priority == null && groupName == null) {
+                    throw new ActionApplyException("не осталось изменяемых полей после разбора");
+                }
                 UpdateTaskRequest request = new UpdateTaskRequest(
-                        asString(payload.get("title")),
-                        asString(payload.get("description")),
-                        parsePriority(payload.get("priority")),
-                        null, null, null,
-                        asString(payload.get("group")),
-                        null, null);
+                        title, description, priority, null, null, null, groupName, null, null);
                 taskService.update(userId, targetTaskId, request);
                 yield targetTaskId;
             }

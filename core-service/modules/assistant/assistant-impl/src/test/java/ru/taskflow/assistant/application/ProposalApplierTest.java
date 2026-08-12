@@ -374,4 +374,55 @@ class ProposalApplierTest {
         assertThat(result.appliedCount()).isEqualTo(1);
         assertThat(a1.getApplyError()).isNull();
     }
+
+    @Test
+    void apply_rejectsRescheduleWithUnparseableDeadline() {
+        UUID t1 = UUID.randomUUID();
+        ProposalActionJpaEntity a1 = action(0, AssistantActionType.RESCHEDULE, t1, "{\"new_deadline\":\"не дата\"}", true);
+        ProposalJpaEntity entity = proposal("TELEGRAM", "TEXT", a1);
+
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.RESCHEDULE, t1))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, t1));
+
+        ApplyResult result = applier.apply(userId, entity);
+
+        assertThat(result.appliedCount()).isEqualTo(0);
+        assertThat(result.status()).isEqualTo(ProposalStatus.FAILED);
+        assertThat(a1.getApplyError()).isNotNull();
+        verify(taskService, never()).update(any(), any(), any());
+    }
+
+    @Test
+    void apply_rejectsUpdateWhenAllFieldsUnparseable() {
+        UUID t1 = UUID.randomUUID();
+        ProposalActionJpaEntity a1 = action(0, AssistantActionType.UPDATE, t1, "{\"priority\":\"неведомый\"}", true);
+        ProposalJpaEntity entity = proposal("TELEGRAM", "TEXT", a1);
+
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.UPDATE, t1))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, t1));
+
+        ApplyResult result = applier.apply(userId, entity);
+
+        assertThat(result.appliedCount()).isEqualTo(0);
+        assertThat(result.status()).isEqualTo(ProposalStatus.FAILED);
+        assertThat(a1.getApplyError()).isNotNull();
+        verify(taskService, never()).update(any(), any(), any());
+    }
+
+    @Test
+    void apply_preservesDomainExceptionMessage() {
+        UUID t1 = UUID.randomUUID();
+        ProposalActionJpaEntity a1 = action(0, AssistantActionType.COMPLETE, t1, null, true);
+        ProposalJpaEntity entity = proposal("TELEGRAM", "TEXT", a1);
+
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.COMPLETE, t1))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, t1));
+        ru.taskflow.task.api.exception.TaskNotFoundException domainException =
+                new ru.taskflow.task.api.exception.TaskNotFoundException(t1);
+        org.mockito.Mockito.doThrow(domainException).when(taskService).complete(userId, t1);
+
+        applier.apply(userId, entity);
+
+        assertThat(a1.getApplyError()).isEqualTo(domainException.getMessage());
+    }
 }
