@@ -129,28 +129,24 @@ public class ProposalApplier {
             case RESCHEDULE -> {
                 UpdateTaskRequest request = new UpdateTaskRequest(
                         null, null, null, null,
-                        parseDeadline(payload.get("new_deadline")), null, null, null);
+                        parseDeadline(payload.get("new_deadline")), null, null, null, null);
                 taskService.update(userId, targetTaskId, request);
                 yield targetTaskId;
             }
             case UPDATE -> {
-                // payload["group"] намеренно не читаем: UpdateTaskRequest несёт только
-                // groupId (UUID), а модель даёт название группы строкой — разрешение
-                // имени в UUID инкапсулировано в TaskServiceImpl.create и недоступно
-                // через публичный TaskService. Смена группы через update_task пока
-                // молча не применяется; расширение UpdateTaskRequest полем groupName
-                // по аналогии с CreateTaskRequest — отдельная задача.
                 UpdateTaskRequest request = new UpdateTaskRequest(
                         asString(payload.get("title")),
                         asString(payload.get("description")),
                         parsePriority(payload.get("priority")),
-                        null, null, null, null, null);
+                        null, null, null,
+                        asString(payload.get("group")),
+                        null, null);
                 taskService.update(userId, targetTaskId, request);
                 yield targetTaskId;
             }
             case CANCEL -> {
                 UpdateTaskRequest request = new UpdateTaskRequest(
-                        null, null, null, TaskStatus.CANCELLED, null, null, null, null);
+                        null, null, null, TaskStatus.CANCELLED, null, null, null, null, null);
                 taskService.update(userId, targetTaskId, request);
                 yield targetTaskId;
             }

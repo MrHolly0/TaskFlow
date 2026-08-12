@@ -15,6 +15,7 @@ public record UpdateTaskRequest(
         TaskStatus status,
         OffsetDateTime deadline,
         UUID groupId,
+        String groupName,
         List<String> tags,
         Integer estimateMinutes
 ) {}

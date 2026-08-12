@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -145,6 +146,7 @@ public class TaskServiceImpl implements TaskService {
         // состоянием, а не "было/стало"; после сеттеров ниже task.getX() уже равен
         // request.X(), и сравнение всегда было бы истинным.
         Map<String, Object> delta = buildDelta(task, request);
+        UUID oldGroupId = task.getGroup() != null ? task.getGroup().getId() : null;
 
         boolean deadlineChanged = request.deadline() != null;
         boolean titleChanged = request.title() != null;
@@ -162,10 +164,10 @@ public class TaskServiceImpl implements TaskService {
             }
         }
 
-        if (request.groupId() != null) {
-            var group = groupRepository.findByIdAndUserId(request.groupId(), userId)
-                    .orElseThrow(() -> new GroupNotFoundException(request.groupId()));
-            task.setGroup(group);
+        boolean groupRequested = request.groupId() != null
+                || (request.groupName() != null && !request.groupName().isBlank());
+        if (groupRequested) {
+            task.setGroup(resolveGroup(userId, request.groupId(), request.groupName()));
         }
 
         if (request.tags() != null) {
@@ -173,6 +175,13 @@ public class TaskServiceImpl implements TaskService {
         }
 
         TaskJpaEntity updatedTask = taskRepository.save(task);
+
+        if (groupRequested) {
+            UUID newGroupId = updatedTask.getGroup() != null ? updatedTask.getGroup().getId() : null;
+            if (!Objects.equals(oldGroupId, newGroupId)) {
+                delta.put("groupId", newGroupId);
+            }
+        }
         auditService.record(userId, taskId, AuditEventType.UPDATED, delta.isEmpty() ? null : delta);
 
         if (deadlineChanged || titleChanged) {

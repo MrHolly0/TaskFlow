@@ -90,7 +90,7 @@ class TaskServiceTest {
     @Test
     void update_changesTitle() {
         var entity = taskEntity();
-        var request = new UpdateTaskRequest("новый заголовок", null, null, null, null, null, null, null);
+        var request = new UpdateTaskRequest("новый заголовок", null, null, null, null, null, null, null, null);
         var response = mockResponse(taskId, "новый заголовок");
 
         when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
@@ -106,7 +106,7 @@ class TaskServiceTest {
     @Test
     void update_recordsChangedFieldsInAudit() {
         var entity = taskEntity();
-        var request = new UpdateTaskRequest("новое название", null, null, null, null, null, null, null);
+        var request = new UpdateTaskRequest("новое название", null, null, null, null, null, null, null, null);
         var response = mockResponse(taskId, "новое название");
 
         when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
@@ -118,6 +118,69 @@ class TaskServiceTest {
         ArgumentCaptor<Map> deltaCaptor = ArgumentCaptor.forClass(Map.class);
         verify(auditService).record(eq(userId), eq(taskId), eq(AuditEventType.UPDATED), deltaCaptor.capture());
         assertThat(deltaCaptor.getValue()).containsEntry("title", "новое название");
+    }
+
+    @Test
+    void update_changesGroupToExisting() {
+        var entity = taskEntity();
+        var existingGroup = new GroupJpaEntity();
+        existingGroup.setId(UUID.randomUUID());
+        existingGroup.setUserId(userId);
+        existingGroup.setName("Работа");
+        var request = new UpdateTaskRequest(null, null, null, null, null, null, "Работа", null, null);
+        var response = mockResponse(taskId, "задача");
+
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(groupRepository.findByUserIdAndName(userId, "Работа")).thenReturn(Optional.of(existingGroup));
+        when(taskRepository.save(any())).thenReturn(entity);
+        when(taskMapper.toResponse(entity)).thenReturn(response);
+
+        taskService.update(userId, taskId, request);
+
+        assertThat(entity.getGroup()).isEqualTo(existingGroup);
+        verify(groupRepository, never()).save(any());
+    }
+
+    @Test
+    void update_createsGroupWhenMissing() {
+        var entity = taskEntity();
+        var request = new UpdateTaskRequest(null, null, null, null, null, null, "Новая группа", null, null);
+        var response = mockResponse(taskId, "задача");
+
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(groupRepository.findByUserIdAndName(userId, "Новая группа")).thenReturn(Optional.empty());
+        when(groupRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(taskRepository.save(any())).thenReturn(entity);
+        when(taskMapper.toResponse(entity)).thenReturn(response);
+
+        taskService.update(userId, taskId, request);
+
+        ArgumentCaptor<GroupJpaEntity> groupCaptor = ArgumentCaptor.forClass(GroupJpaEntity.class);
+        verify(groupRepository).save(groupCaptor.capture());
+        assertThat(groupCaptor.getValue().getName()).isEqualTo("Новая группа");
+        assertThat(entity.getGroup()).isEqualTo(groupCaptor.getValue());
+    }
+
+    @Test
+    void update_recordsGroupChangeInAudit() {
+        var entity = taskEntity();
+        var existingGroup = new GroupJpaEntity();
+        existingGroup.setId(UUID.randomUUID());
+        existingGroup.setUserId(userId);
+        existingGroup.setName("Работа");
+        var request = new UpdateTaskRequest(null, null, null, null, null, null, "Работа", null, null);
+        var response = mockResponse(taskId, "задача");
+
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(groupRepository.findByUserIdAndName(userId, "Работа")).thenReturn(Optional.of(existingGroup));
+        when(taskRepository.save(any())).thenReturn(entity);
+        when(taskMapper.toResponse(entity)).thenReturn(response);
+
+        taskService.update(userId, taskId, request);
+
+        ArgumentCaptor<Map> deltaCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(auditService).record(eq(userId), eq(taskId), eq(AuditEventType.UPDATED), deltaCaptor.capture());
+        assertThat(deltaCaptor.getValue()).containsEntry("groupId", existingGroup.getId());
     }
 
     @Test

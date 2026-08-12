@@ -18,6 +18,7 @@ import ru.taskflow.task.api.TaskSource;
 import ru.taskflow.task.api.TaskStatus;
 import ru.taskflow.task.api.dto.CreateTaskRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
+import ru.taskflow.task.api.dto.UpdateTaskRequest;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -354,5 +355,23 @@ class ProposalApplierTest {
         assertThat(result.appliedCount()).isEqualTo(0);
         assertThat(result.totalCount()).isEqualTo(0);
         assertThat(entity.getStatus()).isEqualTo(ProposalStatus.APPLIED.name());
+    }
+
+    @Test
+    void apply_updatesGroupOnlyViaAssistant() {
+        UUID t1 = UUID.randomUUID();
+        ProposalActionJpaEntity a1 = action(0, AssistantActionType.UPDATE, t1, "{\"group\":\"Работа\"}", true);
+        ProposalJpaEntity entity = proposal("TELEGRAM", "TEXT", a1);
+
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.UPDATE, t1))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, t1));
+
+        ApplyResult result = applier.apply(userId, entity);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(UpdateTaskRequest.class);
+        verify(taskService).update(eq(userId), eq(t1), captor.capture());
+        assertThat(captor.getValue().groupName()).isEqualTo("Работа");
+        assertThat(result.appliedCount()).isEqualTo(1);
+        assertThat(a1.getApplyError()).isNull();
     }
 }
