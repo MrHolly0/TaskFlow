@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/app/components/ui/sonner';
 import { AppLayout } from '@/app/components/layout/AppLayout';
 import { FocusPage } from '@/app/pages/FocusPage';
+import { AssistantPage } from '@/app/pages/AssistantPage';
 import { AllTasksPage } from '@/app/pages/AllTasksPage';
 import { BoardPage } from '@/app/pages/BoardPage';
 import { GroupsPage } from '@/app/pages/GroupsPage';
@@ -100,6 +101,7 @@ function AppContent() {
     <AppLayout>
       <Routes>
         <Route path="/" element={<FocusPage />} />
+        <Route path="/assistant" element={<AssistantPage />} />
         <Route path="/all" element={<AllTasksPage />} />
         <Route path="/board" element={<BoardPage />} />
         <Route path="/groups" element={<GroupsPage />} />

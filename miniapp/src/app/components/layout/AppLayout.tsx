@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   IconSparkles,
+  IconMessageCircle,
   IconList,
   IconLayoutKanban,
   IconTags,
@@ -39,6 +40,7 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { href: '/', label: 'Сейчас', icon: IconSparkles },
+  { href: '/assistant', label: 'Ассистент', icon: IconMessageCircle },
   { href: '/all', label: 'Все задачи', icon: IconList },
   { href: '/board', label: 'Доска', icon: IconLayoutKanban },
   { href: '/groups', label: 'Группы', icon: IconTags },
@@ -161,18 +163,22 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           {children}
         </main>
 
-        {/* Mobile FAB */}
-        <button
-          onClick={() => setQuickInputOpen(true)}
-          className="lg:hidden fixed bottom-20 right-4 z-40 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center active:scale-95 transition-transform cursor-pointer"
-        >
-          <IconPlus className="h-6 w-6" />
-        </button>
+        {/* Mobile FAB — скрыт на /assistant: там свой ввод внизу экрана,
+            и в узком вьюпорте плавающая кнопка перекрывает кнопку отправки чата */}
+        {location.pathname !== '/assistant' && (
+          <button
+            onClick={() => setQuickInputOpen(true)}
+            className="lg:hidden fixed bottom-20 right-4 z-40 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center active:scale-95 transition-transform cursor-pointer"
+          >
+            <IconPlus className="h-6 w-6" />
+          </button>
+        )}
 
         {/* Mobile Bottom Navigation */}
         <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 flex items-center border-t border-border bg-background/95 backdrop-blur">
           {[
             { href: '/', icon: IconSparkles, label: 'Сейчас' },
+            { href: '/assistant', icon: IconMessageCircle, label: 'Ассистент' },
             { href: '/all', icon: IconList, label: 'Задачи' },
             { href: '/board', icon: IconLayoutKanban, label: 'Доска' },
             { href: '/groups', icon: IconTags, label: 'Группы' },
