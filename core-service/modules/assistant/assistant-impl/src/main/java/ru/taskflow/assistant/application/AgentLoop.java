@@ -1,6 +1,9 @@
 package ru.taskflow.assistant.application;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import ru.taskflow.assistant.api.dto.ProposedAction;
 import ru.taskflow.nlp.api.LlmMessage;
@@ -29,6 +32,7 @@ import java.util.UUID;
  */
 @Component
 @RequiredArgsConstructor
+@Slf4j
 public class AgentLoop {
 
     private static final Duration BUDGET = Duration.ofSeconds(35);
@@ -42,6 +46,7 @@ public class AgentLoop {
     private final DuplicateGuard duplicateGuard;
     private final TaskService taskService;
     private final Clock clock;
+    private final ObjectMapper objectMapper;
 
     public AgentOutcome run(UUID userId, String userText, ZoneId zone) {
         Instant start = clock.instant();
@@ -177,19 +182,16 @@ public class AgentLoop {
     }
 
     private String serializeFoundTasks(List<String> refs, List<TaskResponse> found) {
-        StringBuilder json = new StringBuilder("[");
+        List<Map<String, String>> payload = new ArrayList<>(found.size());
         for (int i = 0; i < found.size(); i++) {
-            if (i > 0) {
-                json.append(',');
-            }
-            json.append("{\"ref\":\"").append(refs.get(i)).append("\",\"title\":\"")
-                    .append(escapeJson(found.get(i).title())).append("\"}");
+            payload.add(Map.of("ref", refs.get(i), "title", found.get(i).title()));
         }
-        return json.append(']').toString();
-    }
-
-    private String escapeJson(String value) {
-        return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (JsonProcessingException e) {
+            log.warn("Не удалось сериализовать результаты поиска, вернём пустой список", e);
+            return "[]";
+        }
     }
 
     private boolean isBlank(String value) {

@@ -45,6 +45,7 @@ class AgentLoopTest {
     private final ToolCallParser toolCallParser = new ToolCallParser(
             toolRegistry, new ActionValidator(taskService), new SummaryRenderer(), new ObjectMapper());
     private final DuplicateGuard duplicateGuard = new DuplicateGuard();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private TaskContextWindow window() {
         return new TaskContextWindow(
@@ -55,7 +56,7 @@ class AgentLoopTest {
 
     private AgentLoop loop(Clock clock) {
         return new AgentLoop(contextBuilder, promptBuilder, toolRegistry, gateway,
-                toolCallParser, duplicateGuard, taskService, clock);
+                toolCallParser, duplicateGuard, taskService, clock, objectMapper);
     }
 
     private AgentLoop loopWithFixedClock() {
@@ -221,6 +222,26 @@ class AgentLoopTest {
         assertThat(outcome.actions()).hasSize(1);
         assertThat(outcome.actions().getFirst().ordinal()).isEqualTo(1);
         assertThat(outcome.rejections()).anyMatch(r -> r.contains("уже предложено"));
+    }
+
+    @Test
+    void run_serializesSearchResultsAsValidJson() throws Exception {
+        String trickyTitle = "Купить \"молоко\"\nи хлеб";
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(
+                toolResponse(List.of(searchCall("молоко")), null),
+                toolResponse(List.of(), "готово"));
+        when(taskService.search(userId, "молоко", false, 20))
+                .thenReturn(List.of(taskResponse(foundTaskId, trickyTitle)));
+
+        loopWithFixedClock().run(userId, "найди задачу про молоко", zone);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(LlmToolRequest.class);
+        verify(gateway, times(2)).callWithTools(captor.capture());
+        String toolResultContent = captor.getAllValues().get(1).messages().get(3).content();
+
+        var parsed = objectMapper.readTree(toolResultContent);
+        assertThat(parsed.get(0).get("title").asText()).isEqualTo(trickyTitle);
     }
 
     @Test
