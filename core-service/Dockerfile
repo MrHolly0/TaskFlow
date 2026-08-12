@@ -5,8 +5,14 @@ WORKDIR /app
 # Copy entire project (Gradle multi-module requires all modules)
 COPY . .
 
-# Build the application
-RUN chmod +x gradlew && \
+# Build the application.
+# Кэш /root/.gradle общий для трёх JVM-образов: без него каждый заново качает
+# дистрибутив Gradle (~130 МБ) и весь набор зависимостей, а docker compose build
+# собирает их параллельно — три одновременные загрузки одного файла, и любой
+# сетевой сбой роняет всю сборку. sharing=locked сериализует доступ к кэшу:
+# первый образ наполняет его, остальные ждут и переиспользуют.
+RUN --mount=type=cache,target=/root/.gradle,sharing=locked \
+    chmod +x gradlew && \
     ./gradlew :core-service:app:bootJar -x test --no-daemon
 
 # Runtime stage

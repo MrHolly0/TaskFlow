@@ -4,8 +4,10 @@ WORKDIR /app
 
 COPY . .
 
-RUN chmod +x gradlew && \
-    ./gradlew :nlp-worker:bootJar -x test
+# Кэш /root/.gradle общий с остальными JVM-образами — пояснение в core-service/Dockerfile.
+RUN --mount=type=cache,target=/root/.gradle,sharing=locked \
+    chmod +x gradlew && \
+    ./gradlew :nlp-worker:bootJar -x test --no-daemon
 
 FROM eclipse-temurin:21-jre-alpine
 
