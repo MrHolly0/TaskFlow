@@ -22,4 +22,20 @@ public class RestClientConfig {
             .requestFactory(factory)
             .build();
     }
+
+    /**
+     * Отдельный клиент для вызова инструментов: путь интерактивный (проход
+     * укладывается в 20с бюджета спеки), общий клиент с read-timeout 30с
+     * и тремя попытками retry даёт втрое больше худшего случая на один проход.
+     */
+    @Bean
+    public RestClient toolCallRestClient() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(nlpGatewayConfig.getConnectTimeoutSeconds() * 1000);
+        factory.setReadTimeout(nlpGatewayConfig.getToolCallReadTimeoutSeconds() * 1000);
+
+        return RestClient.builder()
+            .requestFactory(factory)
+            .build();
+    }
 }

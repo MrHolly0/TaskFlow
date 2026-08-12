@@ -42,11 +42,16 @@ class NlpWorkerClientTest {
 
         objectMapper = new ObjectMapper();
 
-        RestClient.Builder builder = RestClient.builder();
-        server = MockRestServiceServer.bindTo(builder).build();
-        RestClient restClient = builder.build();
+        RestClient.Builder restClientBuilder = RestClient.builder();
+        RestClient restClient = restClientBuilder.build();
 
-        client = new NlpWorkerClient(config, restClient);
+        // callWithTools ходит через отдельный toolCallRestClient (R4) — мок-сервер
+        // биндим именно к нему, restClient тут не участвует в вызовах инструментов.
+        RestClient.Builder toolCallBuilder = RestClient.builder();
+        server = MockRestServiceServer.bindTo(toolCallBuilder).build();
+        RestClient toolCallRestClient = toolCallBuilder.build();
+
+        client = new NlpWorkerClient(config, restClient, toolCallRestClient);
     }
 
     @Test

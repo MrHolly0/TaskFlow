@@ -28,6 +28,7 @@ public class NlpWorkerClient {
 
     private final NlpGatewayConfig config;
     private final RestClient restClient;
+    private final RestClient toolCallRestClient;
 
     @CircuitBreaker(name = "nlp-worker", fallbackMethod = "parseTextFallback")
     @Retry(name = "nlp-worker")
@@ -100,11 +101,11 @@ public class NlpWorkerClient {
         return new NlpParseResult(List.of());
     }
 
-    @CircuitBreaker(name = "nlp-worker", fallbackMethod = "callWithToolsFallback")
-    @Retry(name = "nlp-worker")
+    @CircuitBreaker(name = "nlp-worker-tools", fallbackMethod = "callWithToolsFallback")
+    @Retry(name = "nlp-worker-tools")
     public LlmToolResponse callWithTools(LlmToolRequest request) {
         try {
-            var response = restClient.post()
+            var response = toolCallRestClient.post()
                 .uri(config.getWorkerUrl() + "/nlp/tool-call")
                 .body(request)
                 .retrieve()
