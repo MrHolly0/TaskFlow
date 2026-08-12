@@ -1,0 +1,9 @@
+databaseChangeLog:
+  - changeSet:
+      id: 009-assistant-failed-status
+      author: taskflow
+      changes:
+        - sql:
+            sql: "ALTER TABLE assistant_proposals DROP CONSTRAINT chk_proposal_status;"
+        - sql:
+            sql: "ALTER TABLE assistant_proposals ADD CONSTRAINT chk_proposal_status CHECK (status IN ('PENDING','APPLIED','PARTIALLY_APPLIED','REJECTED','EXPIRED','FAILED'));"

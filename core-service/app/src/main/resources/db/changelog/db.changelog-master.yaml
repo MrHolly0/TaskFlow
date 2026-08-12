@@ -15,3 +15,5 @@ databaseChangeLog:
       file: db/changelog/007-cleanup-settings.yaml
   - include:
       file: db/changelog/008-init-assistant.yaml
+  - include:
+      file: db/changelog/009-assistant-failed-status.yaml
