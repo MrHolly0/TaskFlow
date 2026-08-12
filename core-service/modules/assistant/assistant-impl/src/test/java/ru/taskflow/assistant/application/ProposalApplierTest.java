@@ -1,0 +1,297 @@
+package ru.taskflow.assistant.application;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import ru.taskflow.assistant.api.AssistantActionType;
+import ru.taskflow.assistant.api.ProposalStatus;
+import ru.taskflow.assistant.api.dto.ApplyResult;
+import ru.taskflow.assistant.infrastructure.persistence.ProposalActionJpaEntity;
+import ru.taskflow.assistant.infrastructure.persistence.ProposalJpaEntity;
+import ru.taskflow.audit.api.AuditService;
+import ru.taskflow.task.api.TaskPriority;
+import ru.taskflow.task.api.TaskService;
+import ru.taskflow.task.api.TaskSource;
+import ru.taskflow.task.api.TaskStatus;
+import ru.taskflow.task.api.dto.TaskResponse;
+
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class ProposalApplierTest {
+
+    @Mock
+    private ActionValidator actionValidator;
+
+    @Mock
+    private TaskService taskService;
+
+    @Mock
+    private AuditService auditService;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    private ProposalApplier applier;
+
+    private final UUID userId = UUID.randomUUID();
+
+    @BeforeEach
+    void setUp() {
+        applier = new ProposalApplier(actionValidator, taskService, auditService, objectMapper);
+    }
+
+    private ProposalJpaEntity proposal(String sourceChannel, String inputKind, ProposalActionJpaEntity... actions) {
+        ProposalJpaEntity entity = new ProposalJpaEntity();
+        entity.setUserId(userId);
+        entity.setSourceChannel(sourceChannel);
+        entity.setInputKind(inputKind);
+        entity.setStatus(ProposalStatus.PENDING.name());
+        for (ProposalActionJpaEntity action : actions) {
+            entity.addAction(action);
+        }
+        return entity;
+    }
+
+    private ProposalActionJpaEntity action(int ordinal, AssistantActionType type, UUID targetTaskId,
+                                            String payload, boolean accepted) {
+        ProposalActionJpaEntity action = new ProposalActionJpaEntity();
+        action.setOrdinal(ordinal);
+        action.setType(type.name());
+        action.setTargetTaskId(targetTaskId);
+        action.setPayload(payload);
+        action.setSummary("действие " + ordinal);
+        action.setAccepted(accepted);
+        return action;
+    }
+
+    private TaskResponse taskResponse(UUID id) {
+        return new TaskResponse(
+                id, "задача", null, TaskPriority.MEDIUM, TaskStatus.TODO, null,
+                null, false, TaskSource.MANUAL, null, null,
+                List.of(), OffsetDateTime.now(), OffsetDateTime.now(), null
+        );
+    }
+
+    @Test
+    void apply_appliesAllAccepted() {
+        UUID t1 = UUID.randomUUID();
+        UUID t2 = UUID.randomUUID();
+        UUID createdId = UUID.randomUUID();
+
+        ProposalActionJpaEntity a1 = action(0, AssistantActionType.CREATE, null, "{\"title\":\"новая\"}", true);
+        ProposalActionJpaEntity a2 = action(1, AssistantActionType.COMPLETE, t1, null, true);
+        ProposalActionJpaEntity a3 = action(2, AssistantActionType.CANCEL, t2, null, true);
+        ProposalJpaEntity entity = proposal("TELEGRAM", "TEXT", a1, a2, a3);
+
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.CREATE, null))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, null));
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.COMPLETE, t1))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, t1));
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.CANCEL, t2))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, t2));
+
+        when(taskService.createQuick(eq(userId), any())).thenReturn(taskResponse(createdId));
+
+        ApplyResult result = applier.apply(userId, entity);
+
+        assertThat(result.status()).isEqualTo(ProposalStatus.APPLIED);
+        assertThat(result.appliedCount()).isEqualTo(3);
+        assertThat(result.totalCount()).isEqualTo(3);
+        assertThat(entity.getStatus()).isEqualTo(ProposalStatus.APPLIED.name());
+        assertThat(entity.getResolvedAt()).isNotNull();
+        assertThat(a1.getAppliedTaskId()).isEqualTo(createdId);
+        assertThat(a2.getAppliedTaskId()).isEqualTo(t1);
+        assertThat(a3.getAppliedTaskId()).isEqualTo(t2);
+    }
+
+    @Test
+    void apply_skipsUnaccepted() {
+        UUID t1 = UUID.randomUUID();
+        ProposalActionJpaEntity accepted = action(0, AssistantActionType.COMPLETE, t1, null, true);
+        ProposalActionJpaEntity rejected = action(1, AssistantActionType.CANCEL, UUID.randomUUID(), null, false);
+        ProposalJpaEntity entity = proposal("TELEGRAM", "TEXT", accepted, rejected);
+
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.COMPLETE, t1))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, t1));
+
+        ApplyResult result = applier.apply(userId, entity);
+
+        assertThat(result.totalCount()).isEqualTo(1);
+        assertThat(result.appliedCount()).isEqualTo(1);
+        assertThat(result.status()).isEqualTo(ProposalStatus.APPLIED);
+        verify(actionValidator, never()).revalidateForApply(eq(userId), eq(AssistantActionType.CANCEL), any());
+    }
+
+    @Test
+    void apply_recordsPartialFailure() {
+        UUID t1 = UUID.randomUUID();
+        UUID t2 = UUID.randomUUID();
+        UUID t3 = UUID.randomUUID();
+        ProposalActionJpaEntity a1 = action(0, AssistantActionType.COMPLETE, t1, null, true);
+        ProposalActionJpaEntity a2 = action(1, AssistantActionType.COMPLETE, t2, null, true);
+        ProposalActionJpaEntity a3 = action(2, AssistantActionType.COMPLETE, t3, null, true);
+        ProposalJpaEntity entity = proposal("TELEGRAM", "TEXT", a1, a2, a3);
+
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.COMPLETE, t1))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, t1));
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.COMPLETE, t2))
+                .thenReturn(new ActionValidator.ValidationResult(false, "задача уже закрыта", null));
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.COMPLETE, t3))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, t3));
+
+        ApplyResult result = applier.apply(userId, entity);
+
+        assertThat(result.status()).isEqualTo(ProposalStatus.PARTIALLY_APPLIED);
+        assertThat(result.appliedCount()).isEqualTo(2);
+        assertThat(result.totalCount()).isEqualTo(3);
+        assertThat(a2.getApplyError()).isEqualTo("задача уже закрыта");
+        assertThat(a1.getApplyError()).isNull();
+        assertThat(a3.getApplyError()).isNull();
+        verify(taskService, never()).complete(userId, t2);
+        verify(taskService).complete(userId, t1);
+        verify(taskService).complete(userId, t3);
+    }
+
+    @Test
+    void apply_marksFailedWhenNothingApplied() {
+        UUID t1 = UUID.randomUUID();
+        UUID t2 = UUID.randomUUID();
+        UUID t3 = UUID.randomUUID();
+        ProposalActionJpaEntity a1 = action(0, AssistantActionType.COMPLETE, t1, null, true);
+        ProposalActionJpaEntity a2 = action(1, AssistantActionType.COMPLETE, t2, null, true);
+        ProposalActionJpaEntity a3 = action(2, AssistantActionType.COMPLETE, t3, null, true);
+        ProposalJpaEntity entity = proposal("TELEGRAM", "TEXT", a1, a2, a3);
+
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.COMPLETE, t1))
+                .thenReturn(new ActionValidator.ValidationResult(false, "задача не найдена или недоступна", null));
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.COMPLETE, t2))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, t2));
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.COMPLETE, t3))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, t3));
+
+        org.mockito.Mockito.doThrow(new RuntimeException("boom")).when(taskService).complete(userId, t2);
+        org.mockito.Mockito.doThrow(new RuntimeException("boom")).when(taskService).complete(userId, t3);
+
+        ApplyResult result = applier.apply(userId, entity);
+
+        assertThat(result.status()).isEqualTo(ProposalStatus.FAILED);
+        assertThat(result.appliedCount()).isEqualTo(0);
+        assertThat(result.totalCount()).isEqualTo(3);
+        assertThat(a1.getApplyError()).isEqualTo("задача не найдена или недоступна");
+        assertThat(a2.getApplyError()).isNotNull();
+        assertThat(a3.getApplyError()).isNotNull();
+    }
+
+    @Test
+    void apply_survivesServiceException() {
+        UUID t1 = UUID.randomUUID();
+        UUID t2 = UUID.randomUUID();
+        UUID t3 = UUID.randomUUID();
+        ProposalActionJpaEntity a1 = action(0, AssistantActionType.COMPLETE, t1, null, true);
+        ProposalActionJpaEntity a2 = action(1, AssistantActionType.COMPLETE, t2, null, true);
+        ProposalActionJpaEntity a3 = action(2, AssistantActionType.COMPLETE, t3, null, true);
+        ProposalJpaEntity entity = proposal("TELEGRAM", "TEXT", a1, a2, a3);
+
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.COMPLETE, t1))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, t1));
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.COMPLETE, t2))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, t2));
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.COMPLETE, t3))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, t3));
+
+        org.mockito.Mockito.doNothing().when(taskService).complete(userId, t1);
+        org.mockito.Mockito.doThrow(new RuntimeException("boom, database offline"))
+                .when(taskService).complete(userId, t2);
+        org.mockito.Mockito.doNothing().when(taskService).complete(userId, t3);
+
+        ApplyResult result = applier.apply(userId, entity);
+
+        assertThat(result.status()).isEqualTo(ProposalStatus.PARTIALLY_APPLIED);
+        assertThat(result.appliedCount()).isEqualTo(2);
+        assertThat(result.totalCount()).isEqualTo(3);
+        assertThat(a2.getApplyError()).isNotNull();
+        assertThat(a2.getApplyError()).doesNotContain("boom");
+        assertThat(a1.getApplyError()).isNull();
+        assertThat(a3.getApplyError()).isNull();
+        assertThat(a1.getAppliedTaskId()).isEqualTo(t1);
+        assertThat(a3.getAppliedTaskId()).isEqualTo(t3);
+        verify(taskService).complete(userId, t1);
+        verify(taskService).complete(userId, t3);
+    }
+
+    @Test
+    void apply_usesCreateQuickForCreate() {
+        UUID createdId = UUID.randomUUID();
+        ProposalActionJpaEntity a1 = action(0, AssistantActionType.CREATE, null, "{\"title\":\"новая задача\"}", true);
+        ProposalJpaEntity entity = proposal("TELEGRAM", "TEXT", a1);
+
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.CREATE, null))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, null));
+        when(taskService.createQuick(eq(userId), any())).thenReturn(taskResponse(createdId));
+
+        applier.apply(userId, entity);
+
+        verify(taskService).createQuick(eq(userId), any());
+        verify(taskService, never()).create(any(), any());
+    }
+
+    @Test
+    void apply_writesAudit() {
+        UUID t1 = UUID.randomUUID();
+        UUID t2 = UUID.randomUUID();
+        ProposalActionJpaEntity a1 = action(0, AssistantActionType.COMPLETE, t1, null, true);
+        ProposalActionJpaEntity a2 = action(1, AssistantActionType.CANCEL, t2, null, true);
+        ProposalJpaEntity entity = proposal("TELEGRAM", "TEXT", a1, a2);
+
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.COMPLETE, t1))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, t1));
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.CANCEL, t2))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, t2));
+
+        applier.apply(userId, entity);
+
+        verify(auditService, times(2)).record(eq(userId), any(), any(), any());
+    }
+
+    @Test
+    void apply_setsAppliedTaskIdForCreate() {
+        UUID createdId = UUID.randomUUID();
+        ProposalActionJpaEntity a1 = action(0, AssistantActionType.CREATE, null, "{\"title\":\"новая задача\"}", true);
+        ProposalJpaEntity entity = proposal("TELEGRAM", "TEXT", a1);
+
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.CREATE, null))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, null));
+        when(taskService.createQuick(eq(userId), any())).thenReturn(taskResponse(createdId));
+
+        applier.apply(userId, entity);
+
+        assertThat(a1.getAppliedTaskId()).isEqualTo(createdId);
+    }
+
+    @Test
+    void apply_handlesEmptyAcceptedList() {
+        ProposalActionJpaEntity a1 = action(0, AssistantActionType.COMPLETE, UUID.randomUUID(), null, false);
+        ProposalActionJpaEntity a2 = action(1, AssistantActionType.CANCEL, UUID.randomUUID(), null, false);
+        ProposalJpaEntity entity = proposal("TELEGRAM", "TEXT", a1, a2);
+
+        ApplyResult result = applier.apply(userId, entity);
+
+        assertThat(result.status()).isEqualTo(ProposalStatus.APPLIED);
+        assertThat(result.appliedCount()).isEqualTo(0);
+        assertThat(result.totalCount()).isEqualTo(0);
+        assertThat(entity.getStatus()).isEqualTo(ProposalStatus.APPLIED.name());
+    }
+}
