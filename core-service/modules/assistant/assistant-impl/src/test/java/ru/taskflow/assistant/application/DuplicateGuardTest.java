@@ -139,4 +139,45 @@ class DuplicateGuardTest {
         assertThat(result.actions()).hasSize(1);
         assertThat(result.rejections()).isEmpty();
     }
+
+    @Test
+    void filter_dropsActionRepeatedFromEarlierPass() {
+        var alreadyProposed = List.of(createAction(1, "Купить корм коту"));
+        var repeated = createAction(1, "купить корм коту!");
+        var emptyWindow = new TaskContextWindow("Сейчас активных задач нет", Map.of(), Map.of());
+
+        var result = guard.filter(List.of(repeated), emptyWindow, alreadyProposed);
+
+        assertThat(result.actions()).isEmpty();
+        assertThat(result.rejections()).hasSize(1);
+        assertThat(result.rejections().get(0)).contains("уже предложено");
+    }
+
+    @Test
+    void filter_keepsDifferentCreatesAcrossTwoPasses() {
+        var alreadyProposed = List.of(createAction(1, "Купить корм коту"));
+        var different = createAction(1, "Записаться к стоматологу");
+        var emptyWindow = new TaskContextWindow("Сейчас активных задач нет", Map.of(), Map.of());
+
+        var result = guard.filter(List.of(different), emptyWindow, alreadyProposed);
+
+        assertThat(result.actions()).hasSize(1);
+        assertThat(result.actions().get(0)).isEqualTo(different);
+        assertThat(result.rejections()).isEmpty();
+    }
+
+    @Test
+    void filter_crossPassDropDoesNotBreakNumbering() {
+        var alreadyProposed = List.of(createAction(1, "Купить корм коту"));
+        var repeated = createAction(1, "купить корм коту");
+        var kept = createAction(2, "Записаться к стоматологу");
+        var emptyWindow = new TaskContextWindow("Сейчас активных задач нет", Map.of(), Map.of());
+
+        var result = guard.filter(List.of(repeated, kept), emptyWindow, alreadyProposed);
+
+        assertThat(result.actions()).hasSize(1);
+        assertThat(result.actions().get(0).ordinal()).isEqualTo(1);
+        assertThat(result.actions().get(0).payload()).isEqualTo(kept.payload());
+        assertThat(result.rejections()).hasSize(1);
+    }
 }

@@ -106,7 +106,7 @@ public class AgentLoop {
         }
 
         ParsedToolCalls parsed2 = toolCallParser.parse(toDomainCalls(response2.toolCalls()), extended.window());
-        DuplicateGuard.GuardResult guarded2 = duplicateGuard.filter(parsed2.actions(), extended.window());
+        DuplicateGuard.GuardResult guarded2 = duplicateGuard.filter(parsed2.actions(), extended.window(), guarded1.actions());
 
         rejections.addAll(parsed2.rejections());
         rejections.addAll(guarded2.rejections());

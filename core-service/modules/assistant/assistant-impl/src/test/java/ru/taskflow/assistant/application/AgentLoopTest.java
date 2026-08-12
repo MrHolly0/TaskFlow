@@ -208,6 +208,22 @@ class AgentLoopTest {
     }
 
     @Test
+    void run_dropsCreateRepeatedAcrossPasses() {
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(
+                toolResponse(List.of(searchCall("аптека"), createTaskCall("Записаться к стоматологу")), null),
+                toolResponse(List.of(createTaskCall("записаться к стоматологу")), null));
+        when(taskService.search(userId, "аптека", false, 20))
+                .thenReturn(List.of(taskResponse(foundTaskId, "Купить лекарство в аптеке")));
+
+        var outcome = loopWithFixedClock().run(userId, "найди задачу про аптеку, запишись к стоматологу", zone);
+
+        assertThat(outcome.actions()).hasSize(1);
+        assertThat(outcome.actions().getFirst().ordinal()).isEqualTo(1);
+        assertThat(outcome.rejections()).anyMatch(r -> r.contains("уже предложено"));
+    }
+
+    @Test
     void run_stopsWhenBudgetExhausted() {
         when(contextBuilder.build(userId)).thenReturn(window());
         when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(searchCall("аптека")), null));

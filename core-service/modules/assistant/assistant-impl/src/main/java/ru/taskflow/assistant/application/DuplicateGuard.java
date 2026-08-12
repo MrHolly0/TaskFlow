@@ -23,6 +23,23 @@ public class DuplicateGuard {
     public record GuardResult(List<ProposedAction> actions, List<String> rejections) {}
 
     public GuardResult filter(List<ProposedAction> actions, TaskContextWindow window) {
+        return filter(actions, window, List.of());
+    }
+
+    /**
+     * alreadyProposed — действия, уже принятые в предыдущем проходе того же обращения.
+     * История второго прохода несёт модели только эхо search_tasks (иначе провайдер
+     * отвергнет вызовы tool без ответа) — модель не видит, что уже предложила
+     * create_task, и может предложить его снова. Здесь этот случай отлавливается
+     * тем же правилом сравнения, что и для окна.
+     */
+    public GuardResult filter(List<ProposedAction> actions, TaskContextWindow window,
+                               List<ProposedAction> alreadyProposed) {
+        List<String> alreadyProposedTitles = alreadyProposed.stream()
+                .filter(a -> a.type() == AssistantActionType.CREATE)
+                .map(this::titleOf)
+                .toList();
+
         List<ProposedAction> kept = new ArrayList<>();
         List<String> rejections = new ArrayList<>();
 
@@ -33,13 +50,20 @@ public class DuplicateGuard {
             }
 
             String title = titleOf(action);
-            String match = findMatch(title, window);
-            if (match != null) {
+            String windowMatch = findMatch(title, window);
+            if (windowMatch != null) {
                 rejections.add("создание отклонено: похожая задача уже есть в списке ("
-                        + match + " — " + window.title(match) + ")");
-            } else {
-                kept.add(action);
+                        + windowMatch + " — " + window.title(windowMatch) + ")");
+                continue;
             }
+
+            String proposedMatch = findMatchAmongTitles(title, alreadyProposedTitles);
+            if (proposedMatch != null) {
+                rejections.add("создание отклонено: уже предложено в этом обращении (" + proposedMatch + ")");
+                continue;
+            }
+
+            kept.add(action);
         }
 
         return new GuardResult(renumber(kept), rejections);
@@ -55,15 +79,31 @@ public class DuplicateGuard {
         Set<String> proposedWords = wordsOf(normalizedProposed);
 
         for (Map.Entry<String, String> entry : window.titles().entrySet()) {
-            String normalizedExisting = normalize(entry.getValue());
-            if (normalizedProposed.equals(normalizedExisting)) {
-                return entry.getKey();
-            }
-            if (jaccard(proposedWords, wordsOf(normalizedExisting)) >= JACCARD_THRESHOLD) {
+            if (matches(normalizedProposed, proposedWords, entry.getValue())) {
                 return entry.getKey();
             }
         }
         return null;
+    }
+
+    private String findMatchAmongTitles(String proposedTitle, List<String> titles) {
+        String normalizedProposed = normalize(proposedTitle);
+        Set<String> proposedWords = wordsOf(normalizedProposed);
+
+        for (String existing : titles) {
+            if (matches(normalizedProposed, proposedWords, existing)) {
+                return existing;
+            }
+        }
+        return null;
+    }
+
+    private boolean matches(String normalizedProposed, Set<String> proposedWords, String otherTitle) {
+        String normalizedOther = normalize(otherTitle);
+        if (normalizedProposed.equals(normalizedOther)) {
+            return true;
+        }
+        return jaccard(proposedWords, wordsOf(normalizedOther)) >= JACCARD_THRESHOLD;
     }
 
     private String normalize(String title) {
