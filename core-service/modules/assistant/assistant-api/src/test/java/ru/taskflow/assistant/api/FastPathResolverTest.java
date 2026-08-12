@@ -1,4 +1,4 @@
-package ru.taskflow.assistant.application;
+package ru.taskflow.assistant.api;
 
 import org.junit.jupiter.api.Test;
 

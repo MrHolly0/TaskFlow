@@ -25,18 +25,31 @@ public class TelegramMessageSender {
 
     @Retryable(retryFor = RestClientException.class, maxAttempts = 3, backoff = @Backoff(delay = 500))
     public void sendMessage(long chatId, String text, List<List<InlineButton>> keyboard) {
-        var rows = keyboard.stream()
-                .map(row -> row.stream()
-                        .map(b -> Map.of("text", b.text(), "callback_data", b.callbackData()))
-                        .collect(Collectors.toList()))
-                .collect(Collectors.toList());
-        var replyMarkup = Map.of("inline_keyboard", rows);
-        apiClient.sendMessageWithKeyboard(chatId, text, "HTML", replyMarkup);
+        apiClient.sendMessageWithKeyboard(chatId, text, "HTML", replyMarkup(keyboard));
+    }
+
+    @Retryable(retryFor = RestClientException.class, maxAttempts = 3, backoff = @Backoff(delay = 500))
+    public void editMessage(long chatId, long messageId, String text) {
+        apiClient.editMessageText(chatId, messageId, text, "HTML");
+    }
+
+    @Retryable(retryFor = RestClientException.class, maxAttempts = 3, backoff = @Backoff(delay = 500))
+    public void editMessage(long chatId, long messageId, String text, List<List<InlineButton>> keyboard) {
+        apiClient.editMessageTextWithKeyboard(chatId, messageId, text, "HTML", replyMarkup(keyboard));
     }
 
     @Retryable(retryFor = RestClientException.class, maxAttempts = 3, backoff = @Backoff(delay = 500))
     public void answerCallback(String callbackQueryId, String text) {
         apiClient.answerCallbackQuery(callbackQueryId, text);
+    }
+
+    private Map<String, Object> replyMarkup(List<List<InlineButton>> keyboard) {
+        var rows = keyboard.stream()
+                .map(row -> row.stream()
+                        .map(b -> Map.of("text", b.text(), "callback_data", b.callbackData()))
+                        .collect(Collectors.toList()))
+                .collect(Collectors.toList());
+        return Map.of("inline_keyboard", rows);
     }
 
     public void sendMessageWithWebApp(long chatId, String text, String buttonText, String webAppUrl) {

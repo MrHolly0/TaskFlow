@@ -1,4 +1,4 @@
-package ru.taskflow.assistant.application;
+package ru.taskflow.assistant.api;
 
 import org.springframework.stereotype.Component;
 
@@ -11,6 +11,9 @@ import java.util.Set;
  * подтверждение не должны стоить вызова модели. Срабатывает только когда есть
  * незакрытое предложение — «готово» вне контекста ничего не значит и должно
  * уйти в обычный цикл агента, а не молча потеряться.
+ *
+ * Живёт в assistant-api, а не assistant-impl: нужен любому каналу (Telegram,
+ * позже miniapp), а модули-impl не зависят друг от друга — только от чужих api.
  */
 @Component
 public class FastPathResolver {

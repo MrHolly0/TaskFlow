@@ -40,6 +40,23 @@ public class TelegramApiClient {
                 .toBodilessEntity();
     }
 
+    public void editMessageText(long chatId, long messageId, String text, String parseMode) {
+        apiClient.post()
+                .uri("/editMessageText")
+                .body(Map.of("chat_id", chatId, "message_id", messageId, "text", text, "parse_mode", parseMode))
+                .retrieve()
+                .toBodilessEntity();
+    }
+
+    public void editMessageTextWithKeyboard(long chatId, long messageId, String text, String parseMode, Object replyMarkup) {
+        apiClient.post()
+                .uri("/editMessageText")
+                .body(Map.of("chat_id", chatId, "message_id", messageId, "text", text,
+                        "parse_mode", parseMode, "reply_markup", replyMarkup))
+                .retrieve()
+                .toBodilessEntity();
+    }
+
     public void answerCallbackQuery(String callbackQueryId, String text) {
         apiClient.post()
                 .uri("/answerCallbackQuery")

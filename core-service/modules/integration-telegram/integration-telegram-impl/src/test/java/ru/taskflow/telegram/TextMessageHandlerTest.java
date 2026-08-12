@@ -2,28 +2,30 @@ package ru.taskflow.telegram;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import ru.taskflow.nlp.api.NlpGatewayService;
-import ru.taskflow.nlp.api.NlpParseResult;
-import ru.taskflow.nlp.api.NlpParsedTask;
-import ru.taskflow.task.api.TaskService;
-import ru.taskflow.task.api.dto.CreateTaskRequest;
-import ru.taskflow.task.api.dto.TaskResponse;
+import ru.taskflow.assistant.api.AssistantChannel;
+import ru.taskflow.assistant.api.AssistantService;
+import ru.taskflow.assistant.api.ProposalStatus;
+import ru.taskflow.assistant.api.FastPathResolver;
+import ru.taskflow.assistant.api.dto.ApplyResult;
+import ru.taskflow.assistant.api.dto.Proposal;
+import ru.taskflow.telegram.application.ProposalMessageRenderer;
 import ru.taskflow.telegram.application.TextMessageHandler;
 import ru.taskflow.telegram.infrastructure.client.TelegramMessageSender;
 import ru.taskflow.telegram.infrastructure.client.dto.TelegramChat;
 import ru.taskflow.telegram.infrastructure.client.dto.TelegramMessage;
 import ru.taskflow.telegram.infrastructure.client.dto.TelegramUser;
 
+import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -31,43 +33,51 @@ import static org.mockito.Mockito.when;
 class TextMessageHandlerTest {
 
     @Mock
-    private TaskService taskService;
+    private AssistantService assistantService;
+
+    @Mock
+    private FastPathResolver fastPathResolver;
+
+    @Mock
+    private ProposalMessageRenderer renderer;
 
     @Mock
     private TelegramMessageSender sender;
 
-    @Mock
-    private NlpGatewayService nlpGatewayService;
-
     @InjectMocks
     private TextMessageHandler handler;
 
+    private final UUID userId = UUID.randomUUID();
+
     @Test
-    void plainText_createsTask() {
-        var userId = UUID.randomUUID();
-        var message = message("купить молоко");
-        var response = taskResponse(UUID.randomUUID(), "купить молоко");
-        when(nlpGatewayService.parseText(any(), any(), any())).thenReturn(parsedTask("купить молоко"));
-        when(taskService.create(eq(userId), any(CreateTaskRequest.class))).thenReturn(response);
+    void handleText_createsProposalAndSendsMessage() {
+        var message = message("закрой молоко");
+        Proposal proposal = proposal();
+        when(assistantService.findLatestPending(userId)).thenReturn(Optional.empty());
+        when(fastPathResolver.resolve("закрой молоко", false)).thenReturn(Optional.empty());
+        when(assistantService.handleText(userId, "закрой молоко", AssistantChannel.TELEGRAM)).thenReturn(proposal);
+        when(renderer.render(proposal)).thenReturn("Предлагаю: закрыть молоко");
+        when(renderer.keyboard(proposal)).thenReturn(List.of(List.of()));
 
         handler.handle(message, userId);
 
-        var captor = ArgumentCaptor.forClass(CreateTaskRequest.class);
-        verify(taskService).create(eq(userId), captor.capture());
-        assertThat(captor.getValue().title()).isEqualTo("купить молоко");
+        verify(sender).sendMessage(eq(100L), eq("Предлагаю: закрыть молоко"), any());
     }
 
     @Test
-    void plainText_sendsConfirmation() {
-        var userId = UUID.randomUUID();
-        var taskId = UUID.randomUUID();
-        var message = message("купить молоко");
-        when(nlpGatewayService.parseText(any(), any(), any())).thenReturn(parsedTask("купить молоко"));
-        when(taskService.create(eq(userId), any(CreateTaskRequest.class))).thenReturn(taskResponse(taskId, "купить молоко"));
+    void handleText_usesFastPathWithoutLlm() {
+        var message = message("да");
+        Proposal pending = proposal();
+        when(assistantService.findLatestPending(userId)).thenReturn(Optional.of(pending));
+        when(fastPathResolver.resolve("да", true)).thenReturn(Optional.of(true));
+        when(assistantService.apply(userId, pending.id()))
+                .thenReturn(new ApplyResult(ProposalStatus.APPLIED, 1, 1, List.of()));
+        when(renderer.renderApplyResult(any())).thenReturn("Применено 1 из 1.");
 
         handler.handle(message, userId);
 
-        verify(sender).sendMessage(eq(100L), any(String.class), any());
+        verify(assistantService, never()).handleText(any(), any(), any());
+        verify(sender).sendMessage(eq(100L), eq("Применено 1 из 1."));
     }
 
     private static TelegramMessage message(String text) {
@@ -75,11 +85,9 @@ class TextMessageHandlerTest {
                 new TelegramChat(100L), text, null);
     }
 
-    private static TaskResponse taskResponse(UUID id, String title) {
-        return new TaskResponse(id, title, null, null, null, null, null, null, null, null, null, null, null, null);
-    }
-
-    private static NlpParseResult parsedTask(String title) {
-        return new NlpParseResult(List.of(new NlpParsedTask(title, null, null, null, null, List.of(), null)));
+    private Proposal proposal() {
+        OffsetDateTime now = OffsetDateTime.now();
+        return new Proposal(UUID.randomUUID(), "ABCDEFGH", userId, ProposalStatus.PENDING,
+                "закрой молоко", null, List.of(), now, now.plusHours(24));
     }
 }
