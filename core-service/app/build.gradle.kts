@@ -33,4 +33,29 @@ dependencies {
     testImplementation("org.testcontainers:junit-jupiter:1.20.4")
     testImplementation("org.testcontainers:postgresql:1.20.4")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+
+    // implementation-зависимости impl-модулей на свои api не протекают транзитивно —
+    // тестам app, обращающимся к доменным типам напрямую (LiveModelRegressionTest),
+    // нужны собственные ссылки на нужные api-модули
+    testImplementation(project(":core-service:modules:assistant:assistant-api"))
+    testImplementation(project(":core-service:modules:task:task-api"))
+    testImplementation(project(":core-service:modules:user:user-api"))
+}
+
+tasks.test {
+    useJUnitPlatform {
+        excludeTags("live")
+    }
+}
+
+// стоит денег и требует настоящего GROQ_API_KEY + работающего nlp-worker —
+// не часть обычной сборки, запускается вручную: ./gradlew :core-service:app:liveTest
+tasks.register<Test>("liveTest") {
+    description = "Регрессия на живой модели (тег live)"
+    group = "verification"
+    useJUnitPlatform {
+        includeTags("live")
+    }
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
 }
