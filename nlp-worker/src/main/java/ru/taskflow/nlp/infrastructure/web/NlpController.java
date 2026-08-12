@@ -9,12 +9,14 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import ru.taskflow.nlp.application.NlpService;
+import ru.taskflow.nlp.application.TranscriptionService;
 import ru.taskflow.nlp.domain.ParsedTasks;
 import ru.taskflow.nlp.domain.ToolCallRequest;
 import ru.taskflow.nlp.domain.ToolCallResult;
 import ru.taskflow.nlp.infrastructure.groq.GroqToolCallProvider;
 import ru.taskflow.nlp.infrastructure.web.dto.ParseTextRequest;
 import ru.taskflow.nlp.infrastructure.web.dto.ParseTextResponse;
+import ru.taskflow.nlp.infrastructure.web.dto.TranscribeResponse;
 
 import java.io.IOException;
 import java.util.List;
@@ -26,6 +28,7 @@ public class NlpController {
 
     private final NlpService nlpService;
     private final GroqToolCallProvider toolCallProvider;
+    private final TranscriptionService transcriptionService;
 
     @PostMapping("/parse-text")
     public ParseTextResponse parseText(@RequestBody ParseTextRequest request) {
@@ -52,6 +55,12 @@ public class NlpController {
             existingGroups
         );
         return new ParseTextResponse(result.tasks());
+    }
+
+    @PostMapping(value = "/transcribe", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public TranscribeResponse transcribe(@RequestParam("file") MultipartFile file) throws IOException {
+        String text = transcriptionService.transcribe(file.getBytes());
+        return new TranscribeResponse(text);
     }
 
     @PostMapping("/tool-call")

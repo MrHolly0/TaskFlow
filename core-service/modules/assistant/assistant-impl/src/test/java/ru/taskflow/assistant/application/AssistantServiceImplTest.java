@@ -18,6 +18,7 @@ import ru.taskflow.assistant.infrastructure.persistence.ProposalJpaEntity;
 import ru.taskflow.assistant.infrastructure.persistence.ProposalMapper;
 import ru.taskflow.assistant.infrastructure.persistence.ProposalRepository;
 import ru.taskflow.audit.api.AuditService;
+import ru.taskflow.nlp.api.NlpGatewayService;
 import ru.taskflow.task.api.TaskService;
 import ru.taskflow.task.api.TaskSource;
 import ru.taskflow.task.api.dto.CreateTaskRequest;
@@ -46,6 +47,8 @@ class AssistantServiceImplTest {
     @Mock
     private AgentLoop agentLoop;
     @Mock
+    private NlpGatewayService nlpGatewayService;
+    @Mock
     private ProposalFactory proposalFactory;
     @Mock
     private ProposalMapper proposalMapper;
@@ -69,8 +72,8 @@ class AssistantServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        service = new AssistantServiceImpl(agentLoop, proposalFactory, proposalMapper, proposalRepository,
-                proposalApplier, userService, taskService, auditService, clock);
+        service = new AssistantServiceImpl(agentLoop, nlpGatewayService, proposalFactory, proposalMapper,
+                proposalRepository, proposalApplier, userService, taskService, auditService, clock);
     }
 
     private AgentOutcome emptyWindowOutcome(List<ru.taskflow.assistant.api.dto.ProposedAction> actions,
@@ -226,6 +229,47 @@ class AssistantServiceImplTest {
         assertThat(entity.getStatus()).isEqualTo(ProposalStatus.REJECTED.name());
         assertThat(entity.getResolvedAt()).isEqualTo(now);
         verify(proposalRepository).save(entity);
+    }
+
+    @Test
+    void handleVoice_runsLoopOnTranscribedText() {
+        byte[] audio = {1, 2, 3};
+        when(nlpGatewayService.transcribe(audio)).thenReturn("закрой молоко");
+        when(userService.getTimezone(userId)).thenReturn(zone);
+        AgentOutcome outcome = emptyWindowOutcome(
+                List.of(new ru.taskflow.assistant.api.dto.ProposedAction(1, ru.taskflow.assistant.api.AssistantActionType.COMPLETE,
+                        UUID.randomUUID(), java.util.Map.of(), "закрыть задачу", true)),
+                null, null, false);
+        when(agentLoop.run(userId, "закрой молоко", zone)).thenReturn(outcome);
+
+        ProposalJpaEntity entity = new ProposalJpaEntity();
+        when(proposalFactory.from(eq(userId), eq("закрой молоко"), eq(AssistantChannel.TELEGRAM), eq("VOICE"), eq(outcome)))
+                .thenReturn(entity);
+        when(proposalRepository.save(entity)).thenReturn(entity);
+        Proposal expectedDto = new Proposal(UUID.randomUUID(), "CODE1234", userId, ProposalStatus.PENDING,
+                "закрой молоко", null, List.of(), now, now.plusHours(24));
+        when(proposalMapper.toDto(entity)).thenReturn(expectedDto);
+
+        Proposal result = service.handleVoice(userId, audio, AssistantChannel.TELEGRAM);
+
+        assertThat(result).isEqualTo(expectedDto);
+        verify(taskService, never()).createQuick(any(), any());
+    }
+
+    @Test
+    void handleVoice_savesRawTaskWhenTranscriptionFails() {
+        byte[] audio = {1, 2, 3};
+        when(nlpGatewayService.transcribe(audio)).thenReturn(null);
+        when(taskService.createQuick(eq(userId), any())).thenReturn(taskResponse());
+
+        Proposal result = service.handleVoice(userId, audio, AssistantChannel.TELEGRAM);
+
+        ArgumentCaptor<CreateTaskRequest> captor = ArgumentCaptor.forClass(CreateTaskRequest.class);
+        verify(taskService).createQuick(eq(userId), captor.capture());
+        assertThat(captor.getValue().source()).isEqualTo(TaskSource.BOT_VOICE);
+        verify(agentLoop, never()).run(any(), any(), any());
+        verify(proposalRepository, never()).save(any());
+        assertThat(result.status()).isEqualTo(ProposalStatus.FAILED);
     }
 
     private TaskResponse taskResponse() {

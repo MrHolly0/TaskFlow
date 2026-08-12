@@ -133,9 +133,42 @@ public class NlpWorkerClient {
         return LlmToolResponse.unavailable();
     }
 
+    @CircuitBreaker(name = "nlp-worker", fallbackMethod = "transcribeFallback")
+    @Retry(name = "nlp-worker")
+    public String transcribe(byte[] audioBytes) {
+        try {
+            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+            body.add("file", new ByteArrayResource(audioBytes) {
+                @Override
+                public String getFilename() {
+                    return "voice.ogg";
+                }
+            });
+
+            var response = restClient.post()
+                .uri(config.getWorkerUrl() + "/nlp/transcribe")
+                .body(body)
+                .retrieve()
+                .body(TranscribeWireResponse.class);
+
+            return response != null ? response.text() : null;
+        } catch (Exception e) {
+            log.error("Failed to call nlp-worker transcribe", e);
+            throw e;
+        }
+    }
+
+    public String transcribeFallback(byte[] audioBytes, Exception e) {
+        log.warn("NLP transcribe circuit breaker fallback, returning null", e);
+        return null;
+    }
+
     record NlpWorkerResponse(List<NlpParsedTask> tasks) {
     }
 
     record ToolCallWireResponse(List<LlmToolCall> toolCalls, String text, int inputTokens, int outputTokens) {
+    }
+
+    record TranscribeWireResponse(String text) {
     }
 }

@@ -51,4 +51,14 @@ public class NlpGatewayServiceImpl implements NlpGatewayService {
             return LlmToolResponse.unavailable();
         }
     }
+
+    @Override
+    public String transcribe(byte[] audioBytes) {
+        try {
+            return nlpWorkerClient.transcribe(audioBytes);
+        } catch (Exception e) {
+            log.error("NLP transcribe failed", e);
+            return null;
+        }
+    }
 }

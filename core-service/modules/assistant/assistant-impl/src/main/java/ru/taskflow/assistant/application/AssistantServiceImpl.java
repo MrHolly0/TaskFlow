@@ -18,6 +18,7 @@ import ru.taskflow.assistant.infrastructure.persistence.ProposalMapper;
 import ru.taskflow.assistant.infrastructure.persistence.ProposalRepository;
 import ru.taskflow.audit.api.AuditEventType;
 import ru.taskflow.audit.api.AuditService;
+import ru.taskflow.nlp.api.NlpGatewayService;
 import ru.taskflow.task.api.TaskService;
 import ru.taskflow.task.api.TaskSource;
 import ru.taskflow.task.api.dto.CreateTaskRequest;
@@ -44,8 +45,11 @@ public class AssistantServiceImpl implements AssistantService {
     private static final int MAX_TITLE_LENGTH = 512;
     private static final String DEGRADATION_EXPLANATION =
             "Не удалось разобрать сообщение — сохранил его как отдельную задачу целиком.";
+    private static final String VOICE_TRANSCRIPTION_FAILED_TEXT =
+            "Голосовое сообщение (не удалось распознать речь)";
 
     private final AgentLoop agentLoop;
+    private final NlpGatewayService nlpGatewayService;
     private final ProposalFactory proposalFactory;
     private final ProposalMapper proposalMapper;
     private final ProposalRepository proposalRepository;
@@ -59,19 +63,30 @@ public class AssistantServiceImpl implements AssistantService {
     public Proposal handleText(UUID userId, String text, AssistantChannel channel) {
         ZoneId zone = userService.getTimezone(userId);
         AgentOutcome outcome = agentLoop.run(userId, text, zone);
-
-        if (outcome.llmFailed() || isEmpty(outcome)) {
-            return degrade(userId, text, sourceFor(channel));
-        }
-
-        ProposalJpaEntity entity = proposalFactory.from(userId, text, channel, "TEXT", outcome);
-        ProposalJpaEntity saved = proposalRepository.save(entity);
-        return proposalMapper.toDto(saved);
+        return toProposal(userId, text, channel, "TEXT", outcome, sourceFor(channel));
     }
 
     @Override
     public Proposal handleVoice(UUID userId, byte[] audio, AssistantChannel channel) {
-        throw new UnsupportedOperationException("голосовой путь появится в Task 24");
+        String text = nlpGatewayService.transcribe(audio);
+        if (isBlank(text)) {
+            return degrade(userId, VOICE_TRANSCRIPTION_FAILED_TEXT, TaskSource.BOT_VOICE);
+        }
+
+        ZoneId zone = userService.getTimezone(userId);
+        AgentOutcome outcome = agentLoop.run(userId, text, zone);
+        return toProposal(userId, text, channel, "VOICE", outcome, TaskSource.BOT_VOICE);
+    }
+
+    private Proposal toProposal(UUID userId, String text, AssistantChannel channel, String inputKind,
+                                 AgentOutcome outcome, TaskSource degradedSource) {
+        if (outcome.llmFailed() || isEmpty(outcome)) {
+            return degrade(userId, text, degradedSource);
+        }
+
+        ProposalJpaEntity entity = proposalFactory.from(userId, text, channel, inputKind, outcome);
+        ProposalJpaEntity saved = proposalRepository.save(entity);
+        return proposalMapper.toDto(saved);
     }
 
     @Override
