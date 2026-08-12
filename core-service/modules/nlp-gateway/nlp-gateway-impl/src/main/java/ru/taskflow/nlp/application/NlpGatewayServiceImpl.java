@@ -3,6 +3,8 @@ package ru.taskflow.nlp.application;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import ru.taskflow.nlp.api.LlmToolRequest;
+import ru.taskflow.nlp.api.LlmToolResponse;
 import ru.taskflow.nlp.api.NlpGatewayService;
 import ru.taskflow.nlp.api.NlpParseResult;
 import ru.taskflow.nlp.infrastructure.NlpWorkerClient;
@@ -37,6 +39,16 @@ public class NlpGatewayServiceImpl implements NlpGatewayService {
         } catch (Exception e) {
             log.error("NLP parseVoice failed", e);
             return new NlpParseResult(java.util.List.of());
+        }
+    }
+
+    @Override
+    public LlmToolResponse callWithTools(LlmToolRequest request) {
+        try {
+            return nlpWorkerClient.callWithTools(request);
+        } catch (Exception e) {
+            log.error("NLP callWithTools failed", e);
+            return LlmToolResponse.unavailable();
         }
     }
 }

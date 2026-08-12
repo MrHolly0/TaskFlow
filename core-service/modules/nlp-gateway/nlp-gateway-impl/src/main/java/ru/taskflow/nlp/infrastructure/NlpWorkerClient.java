@@ -8,6 +8,9 @@ import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import ru.taskflow.nlp.api.LlmToolCall;
+import ru.taskflow.nlp.api.LlmToolRequest;
+import ru.taskflow.nlp.api.LlmToolResponse;
 import ru.taskflow.nlp.api.NlpParseResult;
 import ru.taskflow.nlp.api.NlpParsedTask;
 
@@ -97,6 +100,41 @@ public class NlpWorkerClient {
         return new NlpParseResult(List.of());
     }
 
+    @CircuitBreaker(name = "nlp-worker", fallbackMethod = "callWithToolsFallback")
+    @Retry(name = "nlp-worker")
+    public LlmToolResponse callWithTools(LlmToolRequest request) {
+        try {
+            var response = restClient.post()
+                .uri(config.getWorkerUrl() + "/nlp/tool-call")
+                .body(request)
+                .retrieve()
+                .body(ToolCallWireResponse.class);
+
+            if (response != null) {
+                return new LlmToolResponse(
+                    response.toolCalls != null ? response.toolCalls : List.of(),
+                    response.text,
+                    response.inputTokens,
+                    response.outputTokens,
+                    false
+                );
+            }
+        } catch (Exception e) {
+            log.error("Failed to call nlp-worker callWithTools", e);
+            throw e;
+        }
+
+        return new LlmToolResponse(List.of(), null, 0, 0, false);
+    }
+
+    public LlmToolResponse callWithToolsFallback(LlmToolRequest request, Exception e) {
+        log.warn("NLP callWithTools circuit breaker fallback, marking failed", e);
+        return LlmToolResponse.unavailable();
+    }
+
     record NlpWorkerResponse(List<NlpParsedTask> tasks) {
+    }
+
+    record ToolCallWireResponse(List<LlmToolCall> toolCalls, String text, int inputTokens, int outputTokens) {
     }
 }
