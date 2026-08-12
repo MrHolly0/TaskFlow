@@ -141,6 +141,11 @@ public class TaskServiceImpl implements TaskService {
         var task = taskRepository.findByIdAndUserId(taskId, userId)
                 .orElseThrow(() -> new TaskNotFoundException(taskId));
 
+        // Считаем дельту до мутации task — buildDelta сравнивает request с текущим
+        // состоянием, а не "было/стало"; после сеттеров ниже task.getX() уже равен
+        // request.X(), и сравнение всегда было бы истинным.
+        Map<String, Object> delta = buildDelta(task, request);
+
         boolean deadlineChanged = request.deadline() != null;
         boolean titleChanged = request.title() != null;
 
@@ -168,8 +173,7 @@ public class TaskServiceImpl implements TaskService {
         }
 
         TaskJpaEntity updatedTask = taskRepository.save(task);
-        Map<String, Object> delta = buildDelta(task, request);
-        auditService.record(userId, taskId, AuditEventType.UPDATED, delta);
+        auditService.record(userId, taskId, AuditEventType.UPDATED, delta.isEmpty() ? null : delta);
 
         if (deadlineChanged || titleChanged) {
             notificationService.cancelTaskNotifications(taskId);
@@ -320,7 +324,7 @@ public class TaskServiceImpl implements TaskService {
         if (request.status() != null && !request.status().equals(task.getStatus())) {
             delta.put("status", request.status());
         }
-        return delta.isEmpty() ? null : delta;
+        return delta;
     }
 
     /**

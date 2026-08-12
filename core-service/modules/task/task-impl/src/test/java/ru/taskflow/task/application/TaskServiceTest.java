@@ -7,6 +7,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
+import ru.taskflow.audit.api.AuditEventType;
 import ru.taskflow.audit.api.AuditService;
 import ru.taskflow.notify.api.NotificationService;
 import ru.taskflow.task.api.TaskStatus;
@@ -18,6 +19,7 @@ import ru.taskflow.task.infrastructure.persistence.*;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -99,6 +101,23 @@ class TaskServiceTest {
 
         assertThat(entity.getTitle()).isEqualTo("новый заголовок");
         assertThat(result.title()).isEqualTo("новый заголовок");
+    }
+
+    @Test
+    void update_recordsChangedFieldsInAudit() {
+        var entity = taskEntity();
+        var request = new UpdateTaskRequest("новое название", null, null, null, null, null, null, null);
+        var response = mockResponse(taskId, "новое название");
+
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskRepository.save(any())).thenReturn(entity);
+        when(taskMapper.toResponse(entity)).thenReturn(response);
+
+        taskService.update(userId, taskId, request);
+
+        ArgumentCaptor<Map> deltaCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(auditService).record(eq(userId), eq(taskId), eq(AuditEventType.UPDATED), deltaCaptor.capture());
+        assertThat(deltaCaptor.getValue()).containsEntry("title", "новое название");
     }
 
     @Test
