@@ -58,7 +58,7 @@ public class ProposalApplier {
         int appliedCount = 0;
 
         for (ProposalActionJpaEntity action : accepted) {
-            if (applyOne(userId, action)) {
+            if (applyOne(userId, proposal, action)) {
                 appliedCount++;
                 outcomes.add(new ActionOutcome(action.getOrdinal(), action.getSummary(), true, null));
             } else {
@@ -74,27 +74,33 @@ public class ProposalApplier {
     }
 
     /**
-     * Возвращает true, если действие применено успешно. Любая ошибка — валидации
-     * или исключение из TaskService — ловится здесь и не идёт дальше по стеку,
-     * чтобы не сорвать применение остальных действий предложения.
+     * Возвращает true, если действие применено успешно. Любая ошибка — валидации,
+     * исключение из TaskService при ревалидации или при диспетчеризации — ловится
+     * здесь целиком одним try и не идёт дальше по стеку, чтобы не сорвать применение
+     * остальных действий предложения. Запись в аудит — намеренно отдельный,
+     * "лучше-по-возможности" try внутри: если TaskService уже применил действие,
+     * а аудит не записался, действие всё равно должно считаться применённым —
+     * откатить TaskService нельзя (он транзакционен сам по себе), и падать на
+     * "применено, но не залогировано" означало бы врать пользователю об отказе
+     * там, где данные реально изменились.
      */
-    private boolean applyOne(UUID userId, ProposalActionJpaEntity action) {
-        AssistantActionType type = AssistantActionType.valueOf(action.getType());
-
-        ActionValidator.ValidationResult validation =
-                actionValidator.revalidateForApply(userId, type, action.getTargetTaskId());
-        if (!validation.valid()) {
-            action.setApplyError(validation.error());
-            return false;
-        }
-
-        Map<String, Object> payload = readPayload(action.getPayload());
-        UUID targetTaskId = validation.targetTaskId();
-
+    private boolean applyOne(UUID userId, ProposalJpaEntity proposal, ProposalActionJpaEntity action) {
         try {
-            UUID appliedTaskId = dispatch(userId, type, targetTaskId, payload);
+            AssistantActionType type = AssistantActionType.valueOf(action.getType());
+
+            ActionValidator.ValidationResult validation =
+                    actionValidator.revalidateForApply(userId, type, action.getTargetTaskId());
+            if (!validation.valid()) {
+                action.setApplyError(validation.error());
+                return false;
+            }
+
+            Map<String, Object> payload = readPayload(action.getPayload());
+            UUID targetTaskId = validation.targetTaskId();
+
+            UUID appliedTaskId = dispatch(userId, proposal, type, targetTaskId, payload);
             action.setAppliedTaskId(appliedTaskId);
-            auditService.record(userId, appliedTaskId, eventTypeFor(type), payload);
+            recordAudit(userId, appliedTaskId, type, payload, action.getOrdinal());
             return true;
         } catch (Exception e) {
             log.warn("Не удалось применить действие {} предложения: {}", action.getOrdinal(), e.getMessage());
@@ -103,9 +109,19 @@ public class ProposalApplier {
         }
     }
 
-    private UUID dispatch(UUID userId, AssistantActionType type, UUID targetTaskId, Map<String, Object> payload) {
+    private void recordAudit(UUID userId, UUID taskId, AssistantActionType type,
+                              Map<String, Object> payload, int ordinal) {
+        try {
+            auditService.record(userId, taskId, eventTypeFor(type), payload);
+        } catch (Exception e) {
+            log.warn("Действие {} применено, но не записалось в аудит: {}", ordinal, e.getMessage());
+        }
+    }
+
+    private UUID dispatch(UUID userId, ProposalJpaEntity proposal, AssistantActionType type,
+                           UUID targetTaskId, Map<String, Object> payload) {
         return switch (type) {
-            case CREATE -> createTask(userId, payload);
+            case CREATE -> createTask(userId, proposal, payload);
             case COMPLETE -> {
                 taskService.complete(userId, targetTaskId);
                 yield targetTaskId;
@@ -118,6 +134,12 @@ public class ProposalApplier {
                 yield targetTaskId;
             }
             case UPDATE -> {
+                // payload["group"] намеренно не читаем: UpdateTaskRequest несёт только
+                // groupId (UUID), а модель даёт название группы строкой — разрешение
+                // имени в UUID инкапсулировано в TaskServiceImpl.create и недоступно
+                // через публичный TaskService. Смена группы через update_task пока
+                // молча не применяется; расширение UpdateTaskRequest полем groupName
+                // по аналогии с CreateTaskRequest — отдельная задача.
                 UpdateTaskRequest request = new UpdateTaskRequest(
                         asString(payload.get("title")),
                         asString(payload.get("description")),
@@ -135,7 +157,7 @@ public class ProposalApplier {
         };
     }
 
-    private UUID createTask(UUID userId, Map<String, Object> payload) {
+    private UUID createTask(UUID userId, ProposalJpaEntity proposal, Map<String, Object> payload) {
         CreateTaskRequest request = new CreateTaskRequest(
                 asString(payload.get("title")),
                 asString(payload.get("description")),
@@ -145,10 +167,17 @@ public class ProposalApplier {
                 asString(payload.get("group")),
                 asTags(payload.get("tags")),
                 null,
-                null
+                sourceOf(proposal)
         );
         TaskResponse created = taskService.createQuick(userId, request);
         return created.id();
+    }
+
+    private TaskSource sourceOf(ProposalJpaEntity proposal) {
+        if ("WEB".equals(proposal.getSourceChannel())) {
+            return TaskSource.WEB;
+        }
+        return "VOICE".equals(proposal.getInputKind()) ? TaskSource.BOT_VOICE : TaskSource.BOT_TEXT;
     }
 
     private ProposalStatus resolveStatus(int appliedCount, int totalCount) {
@@ -200,10 +229,9 @@ public class ProposalApplier {
         return value.isBlank() ? null : value;
     }
 
-    @SuppressWarnings("unchecked")
     private List<String> asTags(Object raw) {
         if (raw instanceof List<?> list) {
-            return (List<String>) list.stream().map(String::valueOf).toList();
+            return list.stream().map(String::valueOf).toList();
         }
         return null;
     }

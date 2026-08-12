@@ -16,6 +16,7 @@ import ru.taskflow.task.api.TaskPriority;
 import ru.taskflow.task.api.TaskService;
 import ru.taskflow.task.api.TaskSource;
 import ru.taskflow.task.api.TaskStatus;
+import ru.taskflow.task.api.dto.CreateTaskRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
 
 import java.time.OffsetDateTime;
@@ -279,6 +280,66 @@ class ProposalApplierTest {
         applier.apply(userId, entity);
 
         assertThat(a1.getAppliedTaskId()).isEqualTo(createdId);
+    }
+
+    @Test
+    void apply_survivesAuditFailure() {
+        UUID t1 = UUID.randomUUID();
+        ProposalActionJpaEntity a1 = action(0, AssistantActionType.COMPLETE, t1, null, true);
+        ProposalJpaEntity entity = proposal("TELEGRAM", "TEXT", a1);
+
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.COMPLETE, t1))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, t1));
+        org.mockito.Mockito.doThrow(new RuntimeException("audit down"))
+                .when(auditService).record(eq(userId), eq(t1), any(), any());
+
+        ApplyResult result = applier.apply(userId, entity);
+
+        assertThat(result.status()).isEqualTo(ProposalStatus.APPLIED);
+        assertThat(result.appliedCount()).isEqualTo(1);
+        assertThat(a1.getApplyError()).isNull();
+        assertThat(a1.getAppliedTaskId()).isEqualTo(t1);
+        verify(taskService).complete(userId, t1);
+    }
+
+    @Test
+    void apply_survivesUnexpectedRevalidationException() {
+        UUID t1 = UUID.randomUUID();
+        UUID t2 = UUID.randomUUID();
+        ProposalActionJpaEntity a1 = action(0, AssistantActionType.COMPLETE, t1, null, true);
+        ProposalActionJpaEntity a2 = action(1, AssistantActionType.COMPLETE, t2, null, true);
+        ProposalJpaEntity entity = proposal("TELEGRAM", "TEXT", a1, a2);
+
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.COMPLETE, t1))
+                .thenThrow(new RuntimeException("база недоступна"));
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.COMPLETE, t2))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, t2));
+
+        ApplyResult result = applier.apply(userId, entity);
+
+        assertThat(result.status()).isEqualTo(ProposalStatus.PARTIALLY_APPLIED);
+        assertThat(result.appliedCount()).isEqualTo(1);
+        assertThat(result.totalCount()).isEqualTo(2);
+        assertThat(a1.getApplyError()).isNotNull();
+        assertThat(a1.getApplyError()).doesNotContain("база недоступна");
+        verify(taskService).complete(userId, t2);
+    }
+
+    @Test
+    void apply_derivesTaskSourceFromProposalChannel() {
+        UUID createdId = UUID.randomUUID();
+        ProposalActionJpaEntity a1 = action(0, AssistantActionType.CREATE, null, "{\"title\":\"новая\"}", true);
+        ProposalJpaEntity entity = proposal("TELEGRAM", "VOICE", a1);
+
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.CREATE, null))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, null));
+        when(taskService.createQuick(eq(userId), any())).thenReturn(taskResponse(createdId));
+
+        applier.apply(userId, entity);
+
+        var captor = org.mockito.ArgumentCaptor.forClass(CreateTaskRequest.class);
+        verify(taskService).createQuick(eq(userId), captor.capture());
+        assertThat(captor.getValue().source()).isEqualTo(TaskSource.BOT_VOICE);
     }
 
     @Test
