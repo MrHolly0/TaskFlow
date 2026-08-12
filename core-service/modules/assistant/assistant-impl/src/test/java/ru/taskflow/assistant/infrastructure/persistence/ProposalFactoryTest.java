@@ -90,13 +90,13 @@ class ProposalFactoryTest {
 
     @Test
     void from_preservesActionOrder() {
-        ProposedAction first = new ProposedAction(1, AssistantActionType.CREATE, null, Map.of("title", "a"), "a", true);
-        ProposedAction second = new ProposedAction(2, AssistantActionType.CREATE, null, Map.of("title", "b"), "b", true);
+        ProposedAction first = new ProposedAction(5, AssistantActionType.CREATE, null, Map.of("title", "a"), "a", true);
+        ProposedAction second = new ProposedAction(3, AssistantActionType.CREATE, null, Map.of("title", "b"), "b", true);
 
         ProposalJpaEntity entity = factory.from(userId, "текст", AssistantChannel.TELEGRAM, "TEXT",
                 outcome(List.of(first, second), null, Map.of()));
 
-        assertThat(entity.getActions()).extracting(ProposalActionJpaEntity::getOrdinal).containsExactly(1, 2);
+        assertThat(entity.getActions()).extracting(ProposalActionJpaEntity::getOrdinal).containsExactly(5, 3);
     }
 
     @Test
