@@ -18,7 +18,6 @@ interface Task {
   status: string;
   deadline?: string;
   estimateMinutes?: number;
-  isDraft: boolean;
   groupId?: string;
   groupName?: string;
 }
@@ -50,7 +49,6 @@ export function AllTasksPage() {
 
   const filteredTasks = (allTasks || []).filter((task) => {
     if (search && !task.title.toLowerCase().includes(search.toLowerCase())) return false;
-    if (task.isDraft) return false;
 
     const now = new Date();
     const deadline = task.deadline ? new Date(task.deadline) : null;

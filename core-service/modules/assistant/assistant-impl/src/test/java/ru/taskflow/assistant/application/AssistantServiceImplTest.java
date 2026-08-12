@@ -273,7 +273,7 @@ class AssistantServiceImplTest {
     }
 
     private TaskResponse taskResponse() {
-        return new TaskResponse(UUID.randomUUID(), "х", null, null, null, null, null, false, null, null, null,
+        return new TaskResponse(UUID.randomUUID(), "х", null, null, null, null, null, null, null, null,
                 List.of(), now, now, null);
     }
 }

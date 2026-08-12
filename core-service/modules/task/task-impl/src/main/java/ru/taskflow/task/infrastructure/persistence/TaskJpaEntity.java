@@ -57,9 +57,6 @@ public class TaskJpaEntity {
     @Column(name = "estimate_minutes")
     private Integer estimateMinutes;
 
-    @Column(name = "is_draft")
-    private boolean isDraft = false;
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private TaskSource source = TaskSource.MANUAL;

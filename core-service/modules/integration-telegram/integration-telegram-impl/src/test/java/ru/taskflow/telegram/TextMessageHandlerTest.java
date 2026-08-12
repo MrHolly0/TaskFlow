@@ -76,7 +76,7 @@ class TextMessageHandlerTest {
     }
 
     private static TaskResponse taskResponse(UUID id, String title) {
-        return new TaskResponse(id, title, null, null, null, null, null, false, null, null, null, null, null, null, null);
+        return new TaskResponse(id, title, null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     private static NlpParseResult parsedTask(String title) {

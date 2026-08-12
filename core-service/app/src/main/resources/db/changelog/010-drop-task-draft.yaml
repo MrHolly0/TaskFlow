@@ -1,0 +1,8 @@
+databaseChangeLog:
+  - changeSet:
+      id: 010-drop-task-draft
+      author: taskflow
+      changes:
+        - dropColumn:
+            tableName: tasks
+            columnName: is_draft

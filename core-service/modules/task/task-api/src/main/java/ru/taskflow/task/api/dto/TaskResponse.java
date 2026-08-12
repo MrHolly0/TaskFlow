@@ -16,7 +16,6 @@ public record TaskResponse(
         TaskStatus status,
         OffsetDateTime deadline,
         Integer estimateMinutes,
-        boolean isDraft,
         TaskSource source,
         UUID groupId,
         String groupName,

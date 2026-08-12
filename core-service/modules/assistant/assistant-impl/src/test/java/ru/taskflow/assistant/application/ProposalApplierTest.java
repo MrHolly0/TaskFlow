@@ -82,7 +82,7 @@ class ProposalApplierTest {
     private TaskResponse taskResponse(UUID id) {
         return new TaskResponse(
                 id, "задача", null, TaskPriority.MEDIUM, TaskStatus.TODO, null,
-                null, false, TaskSource.MANUAL, null, null,
+                null, TaskSource.MANUAL, null, null,
                 List.of(), OffsetDateTime.now(), OffsetDateTime.now(), null
         );
     }

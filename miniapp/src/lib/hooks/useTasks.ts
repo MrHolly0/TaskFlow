@@ -11,7 +11,6 @@ interface Task {
   status: string;
   deadline?: string;
   estimateMinutes?: number;
-  isDraft: boolean;
   source: string;
   groupId?: string;
   groupName?: string;

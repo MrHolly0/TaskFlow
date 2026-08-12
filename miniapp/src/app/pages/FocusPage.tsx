@@ -17,7 +17,6 @@ interface Task {
   status: string;
   deadline?: string;
   estimateMinutes?: number;
-  isDraft: boolean;
   groupName?: string;
 }
 
@@ -163,7 +162,7 @@ export function FocusPage() {
   const { mutate: completeTask } = useCompleteTask();
   const { mutate: updateTask } = useUpdateTask();
 
-  const pendingCount = allTasks.filter((t: any) => t.status !== 'DONE' && t.status !== 'CANCELLED' && !t.isDraft).length;
+  const pendingCount = allTasks.filter((t: any) => t.status !== 'DONE' && t.status !== 'CANCELLED').length;
   const remainingCount = Math.max(0, pendingCount - focusTasks.length);
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);

@@ -362,7 +362,6 @@ public class TaskServiceImpl implements TaskService {
         task.setDeadline(request.deadline());
         task.setEstimateMinutes(request.estimateMinutes());
         task.setSource(request.source());
-        task.setDraft(false);
         task.setStatus(TaskStatus.TODO);
 
         task.setGroup(resolveGroup(userId, request.groupId(), request.groupName()));

@@ -11,7 +11,6 @@ public interface TaskMapper {
     @Mapping(target = "groupId", source = "group.id")
     @Mapping(target = "groupName", source = "group.name")
     @Mapping(target = "tags", expression = "java(tagNames(entity))")
-    @Mapping(target = "isDraft", expression = "java(entity.isDraft())")
     TaskResponse toResponse(TaskJpaEntity entity);
 
     default List<String> tagNames(TaskJpaEntity entity) {
