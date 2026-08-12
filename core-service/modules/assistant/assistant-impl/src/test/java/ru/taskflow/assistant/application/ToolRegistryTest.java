@@ -13,10 +13,10 @@ class ToolRegistryTest {
     private final ToolRegistry registry = new ToolRegistry();
 
     @Test
-    void toolDefinitions_containsAllSevenTools() {
+    void toolDefinitions_containsAllSixTools() {
         List<Map<String, Object>> definitions = registry.toolDefinitions();
 
-        assertThat(definitions).hasSize(7);
+        assertThat(definitions).hasSize(6);
         assertThat(definitions).allSatisfy(d -> assertThat(d).containsKey("function"));
     }
 
@@ -33,9 +33,18 @@ class ToolRegistryTest {
                 ToolRegistry.RESCHEDULE_TASK,
                 ToolRegistry.UPDATE_TASK,
                 ToolRegistry.CANCEL_TASK,
-                ToolRegistry.SEARCH_TASKS,
-                ToolRegistry.ASK_USER
+                ToolRegistry.SEARCH_TASKS
         );
+    }
+
+    @Test
+    void toolDefinitions_noLongerOffersAskUser() {
+        List<String> names = registry.toolDefinitions().stream()
+                .map(d -> (Map<String, Object>) d.get("function"))
+                .map(f -> (String) f.get("name"))
+                .toList();
+
+        assertThat(names).doesNotContain(ToolRegistry.ASK_USER);
     }
 
     @Test

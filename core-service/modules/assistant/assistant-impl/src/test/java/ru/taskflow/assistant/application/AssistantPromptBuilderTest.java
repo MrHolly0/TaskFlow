@@ -110,6 +110,13 @@ class AssistantPromptBuilderTest {
         assertThat(parts.systemPrompt()).contains("активных задач нет");
     }
 
+    @Test
+    void build_noLongerMentionsAskUser() {
+        var parts = builder.build(emptyWindow(), "любой текст", ZONE);
+
+        assertThat(parts.systemPrompt()).doesNotContain("ask_user");
+    }
+
     private TaskContextWindow emptyWindow() {
         return new TaskContextWindow("", Map.of(), Map.of());
     }

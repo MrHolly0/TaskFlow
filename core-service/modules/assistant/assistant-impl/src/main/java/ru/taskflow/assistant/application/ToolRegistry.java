@@ -74,12 +74,7 @@ public class ToolRegistry {
                 tool(SEARCH_TASKS, "Найти задачи пользователя, если нужной нет в показанном списке", Map.of(
                         "query", stringParam("Поисковая фраза"),
                         "include_completed", Map.of("type", "boolean", "description", "Искать среди выполненных тоже")
-                ), List.of("query")),
-
-                tool(ASK_USER, "Задать пользователю один уточняющий вопрос. Использовать только когда ошибка привела бы к изменению не той задачи", Map.of(
-                        "question", stringParam("Вопрос одним предложением"),
-                        "options", arrayParam("Варианты ответа, от двух до четырёх")
-                ), List.of("question", "options"))
+                ), List.of("query"))
         );
     }
 
