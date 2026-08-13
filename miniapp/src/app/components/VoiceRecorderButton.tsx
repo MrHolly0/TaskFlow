@@ -12,9 +12,10 @@ interface VoiceRecorderButtonProps {
   mode: VoiceInputMode;
   onRecorded: (file: File) => void;
   disabled?: boolean;
+  className?: string;
 }
 
-export function VoiceRecorderButton({ mode, onRecorded, disabled }: VoiceRecorderButtonProps) {
+export function VoiceRecorderButton({ mode, onRecorded, disabled, className }: VoiceRecorderButtonProps) {
   const recorder = useVoiceRecorder();
   const [locked, setLocked] = useState(false);
   const [dragX, setDragX] = useState(0);
@@ -142,7 +143,7 @@ export function VoiceRecorderButton({ mode, onRecorded, disabled }: VoiceRecorde
         disabled={disabled || recorder.status === 'requesting'}
         onClick={handleSilenceClick}
         title={recorder.status === 'recording' ? 'Идёт запись — остановится сама после паузы' : 'Голосовое сообщение'}
-        className={cn(recorder.status === 'recording' && 'animate-pulse')}
+        className={cn(recorder.status === 'recording' && 'animate-pulse', className)}
       >
         <IconMicrophone className="h-4 w-4" />
       </Button>
@@ -158,7 +159,7 @@ export function VoiceRecorderButton({ mode, onRecorded, disabled }: VoiceRecorde
         disabled={disabled || recorder.status === 'requesting'}
         onClick={handleToggleClick}
         title={recorder.status === 'recording' ? 'Остановить и отправить' : 'Начать запись'}
-        className={cn(recorder.status === 'recording' && 'animate-pulse')}
+        className={cn(recorder.status === 'recording' && 'animate-pulse', className)}
       >
         <IconMicrophone className="h-4 w-4" />
       </Button>
@@ -196,7 +197,7 @@ export function VoiceRecorderButton({ mode, onRecorded, disabled }: VoiceRecorde
         onPointerUp={handleHoldPointerUp}
         onPointerCancel={finishCancel}
         title="Зажми и говори"
-        className={cn('touch-none select-none', isRecording && cancelProgress < 1 && 'animate-pulse')}
+        className={cn('touch-none select-none', isRecording && cancelProgress < 1 && 'animate-pulse', className)}
         style={isRecording ? { transform: `translate(${dragX}px, ${dragY}px)` } : undefined}
       >
         <IconMicrophone className="h-4 w-4" />

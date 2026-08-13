@@ -162,10 +162,15 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
                   <VoiceRecorderButton
                     mode={voiceMode}
                     onRecorded={(file) => send({ file })}
+                    className="h-11 w-11 sm:size-9"
                   />
-                  <Button variant="outline" onClick={() => fileInputRef.current?.click()} className="gap-2 h-11">
+                  <Button
+                    variant="outline"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="gap-2 h-11 w-11 sm:w-auto sm:px-4"
+                  >
                     <IconPaperclip className="h-4 w-4" />
-                    Файл
+                    <span className="hidden sm:inline">Файл</span>
                   </Button>
                   <input
                     ref={fileInputRef}
@@ -177,7 +182,7 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
                   <Button onClick={handleSubmit} disabled={!text.trim()} className="flex-1 gap-2 h-11 min-w-[140px]">
                     <IconSend className="h-4 w-4" />
                     Отправить
-                    <span className="text-xs opacity-60 ml-1">⌘↵</span>
+                    <span className="hidden sm:inline text-xs opacity-60 ml-1">⌘↵</span>
                   </Button>
                 </div>
               </motion.div>
