@@ -71,21 +71,22 @@ function DraggableTaskCard({
     : undefined;
 
   return (
-    <div ref={setNodeRef} style={style} className={cn(isDragging && 'opacity-40')}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn('touch-pan-y select-none', isDragging && 'opacity-40')}
+      {...attributes}
+      {...listeners}
+    >
       <Card
         className="p-3.5 space-y-2.5 cursor-pointer hover:shadow-md transition-shadow border border-border/60 group"
         onClick={() => !isDragging && onClick(task)}
       >
         <div className="flex items-start gap-2">
-          {/* Drag handle */}
-          <button
-            {...attributes}
-            {...listeners}
-            className="mt-0.5 opacity-0 group-hover:opacity-40 hover:!opacity-100 transition-opacity cursor-grab active:cursor-grabbing flex-shrink-0 touch-none"
-            onClick={(e) => e.stopPropagation()}
-          >
+          {/* Ручка — визуальная подсказка, зажатие работает с любой точки карточки */}
+          <div className="mt-0.5 opacity-0 group-hover:opacity-40 transition-opacity cursor-grab active:cursor-grabbing flex-shrink-0">
             <IconGripVertical className="h-4 w-4 text-muted-foreground" />
-          </button>
+          </div>
 
           <div className="flex-1 min-w-0 space-y-1.5">
             <div className="flex items-center gap-1.5">
