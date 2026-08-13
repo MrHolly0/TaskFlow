@@ -8,13 +8,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 
-import java.io.IOException;
-import ru.taskflow.nlp.api.NlpGatewayService;
 import ru.taskflow.shared.security.AuthenticatedUser;
 import ru.taskflow.task.api.TaskPriority;
 import ru.taskflow.task.api.TaskService;
@@ -27,7 +23,6 @@ import ru.taskflow.task.api.dto.TaskResponse;
 import ru.taskflow.task.api.dto.UpdateTaskRequest;
 
 import java.time.LocalDate;
-import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -37,7 +32,6 @@ import java.util.Map;
 public class TaskController {
 
     private final TaskService taskService;
-    private final NlpGatewayService nlpGatewayService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -134,32 +128,5 @@ public class TaskController {
             @AuthenticationPrincipal AuthenticatedUser user
     ) {
         return taskService.createQuick(user.userId(), request);
-    }
-
-    @PostMapping("/parse-text")
-    @Operation(summary = "NLP-парсинг текста", description = "Извлекает название, дедлайн, приоритет из произвольного текста через Groq LLM")
-    public Map<String, Object> parseText(
-            @RequestBody Map<String, String> request,
-            @AuthenticationPrincipal AuthenticatedUser user
-    ) {
-        String text = request.get("text");
-        String userTimezone = request.getOrDefault("userTimezone", "Europe/Moscow");
-        String userLanguage = request.getOrDefault("userLanguage", "ru");
-
-        List<String> groups = taskService.findGroupNames(user.userId());
-        var result = nlpGatewayService.parseText(text, userTimezone, groups);
-        return Map.of("tasks", result.tasks());
-    }
-
-    @PostMapping(value = "/parse-voice", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @Operation(summary = "NLP-парсинг голосового файла")
-    public Map<String, Object> parseVoice(
-            @RequestParam("file") MultipartFile file,
-            @RequestParam(value = "userTimezone", defaultValue = "Europe/Moscow") String userTimezone,
-            @AuthenticationPrincipal AuthenticatedUser user
-    ) throws IOException {
-        List<String> groups = taskService.findGroupNames(user.userId());
-        var result = nlpGatewayService.parseVoice(file.getBytes(), userTimezone, groups);
-        return Map.of("tasks", result.tasks());
     }
 }

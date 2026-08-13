@@ -134,45 +134,6 @@ export interface CreateGroupRequest {
   icon?: string;
 }
 
-export interface ParsedTask {
-  title: string;
-  priority: string;
-  estimateMinutes?: number;
-  groupId?: string;
-  tags?: string[];
-}
-
-export interface ParseResponse {
-  tasks: ParsedTask[];
-}
-
-export const useParseText = () => {
-  return useMutation({
-    mutationFn: async (text: string) => {
-      const response = await getClient().post<ParseResponse>('/tasks/parse-text', {
-        text,
-        userTimezone: 'Europe/Moscow',
-        userLanguage: 'ru',
-      });
-      return response.data.tasks ?? [];
-    },
-  });
-};
-
-export const useParseVoice = () => {
-  return useMutation({
-    mutationFn: async (file: File) => {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('userTimezone', 'Europe/Moscow');
-      const response = await getClient().post<ParseResponse>('/tasks/parse-voice', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      return response.data.tasks ?? [];
-    },
-  });
-};
-
 export const useCreateTask = () => {
   const queryClient = useQueryClient();
 

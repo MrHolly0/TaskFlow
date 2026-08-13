@@ -60,6 +60,11 @@ export interface ApplyResult {
   outcomes: ActionOutcome[];
 }
 
+export interface QuickResult {
+  proposal: Proposal;
+  applied: ApplyResult | null;
+}
+
 export const useSendAssistantMessage = () => {
   return useMutation({
     mutationFn: async ({ text, file }: { text?: string; file?: File }) => {
@@ -70,6 +75,26 @@ export const useSendAssistantMessage = () => {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       return response.data;
+    },
+  });
+};
+
+export const useQuickAdd = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ text, file }: { text?: string; file?: File }) => {
+      const formData = new FormData();
+      if (text) formData.append('text', text);
+      if (file) formData.append('file', file);
+      const response = await getClient().post<QuickResult>('/assistant/quick', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return response.data;
+    },
+    onSuccess: (result) => {
+      if (result.applied) {
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      }
     },
   });
 };

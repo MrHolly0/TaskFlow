@@ -18,16 +18,21 @@ import ru.taskflow.assistant.api.AssistantService;
 import ru.taskflow.assistant.api.ProposalStatus;
 import ru.taskflow.assistant.api.dto.ApplyResult;
 import ru.taskflow.assistant.api.dto.Proposal;
+import ru.taskflow.assistant.api.AssistantActionType;
+import ru.taskflow.assistant.api.dto.ProposedAction;
 import ru.taskflow.assistant.api.exception.ProposalNotFoundException;
 import ru.taskflow.assistant.application.AssistantRateLimiter;
+import ru.taskflow.assistant.application.QuickAddPolicy;
 import ru.taskflow.shared.security.AuthenticatedUser;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -35,6 +40,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ExtendWith(MockitoExtension.class)
@@ -50,9 +56,11 @@ class AssistantControllerTest {
     private final UUID userId = UUID.randomUUID();
     private MockMvc mockMvc;
 
+    private final QuickAddPolicy quickAddPolicy = new QuickAddPolicy();
+
     @BeforeEach
     void setUp() {
-        var controller = new AssistantController(assistantService, rateLimiter);
+        var controller = new AssistantController(assistantService, rateLimiter, quickAddPolicy);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                 .build();
@@ -146,8 +154,71 @@ class AssistantControllerTest {
         verify(assistantService).reject(userId, id);
     }
 
+    @Test
+    void quick_autoAppliesCreateOnlyProposal() throws Exception {
+        when(rateLimiter.allow(userId)).thenReturn(true);
+        Proposal proposal = proposalWithActions(ProposalStatus.PENDING, null,
+                new ProposedAction(1, AssistantActionType.CREATE, null, Map.of(), "создать «купить хлеб»", true));
+        when(assistantService.handleText(eq(userId), eq("купи хлеб"), eq(AssistantChannel.WEB)))
+                .thenReturn(proposal);
+        ApplyResult applyResult = new ApplyResult(ProposalStatus.APPLIED, 1, 1, List.of());
+        when(assistantService.apply(userId, proposal.id())).thenReturn(applyResult);
+
+        mockMvc.perform(multipart("/api/v1/assistant/quick").param("text", "купи хлеб"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.applied.status").value("APPLIED"));
+
+        verify(assistantService).apply(userId, proposal.id());
+    }
+
+    @Test
+    void quick_returnsForConfirmationWhenActionTouchesExistingTask() throws Exception {
+        when(rateLimiter.allow(userId)).thenReturn(true);
+        Proposal proposal = proposalWithActions(ProposalStatus.PENDING, null,
+                new ProposedAction(1, AssistantActionType.COMPLETE, UUID.randomUUID(), Map.of(), "закрыть «молоко»", true));
+        when(assistantService.handleText(eq(userId), eq("закрой молоко"), eq(AssistantChannel.WEB)))
+                .thenReturn(proposal);
+
+        mockMvc.perform(multipart("/api/v1/assistant/quick").param("text", "закрой молоко"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.applied").doesNotExist());
+
+        verify(assistantService, never()).apply(any(), any());
+    }
+
+    @Test
+    void quick_doesNotAutoApplyDegradedProposal() throws Exception {
+        when(rateLimiter.allow(userId)).thenReturn(true);
+        Proposal degraded = new Proposal(null, null, userId, ProposalStatus.FAILED,
+                "закрой молоко", "не удалось разобрать сообщение", List.of(),
+                OffsetDateTime.now(), OffsetDateTime.now().plusHours(24));
+        when(assistantService.handleText(eq(userId), eq("закрой молоко"), eq(AssistantChannel.WEB)))
+                .thenReturn(degraded);
+
+        mockMvc.perform(multipart("/api/v1/assistant/quick").param("text", "закрой молоко"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.applied").doesNotExist());
+
+        verify(assistantService, never()).apply(any(), any());
+    }
+
+    @Test
+    void quick_rejectsWhenRateLimited() throws Exception {
+        when(rateLimiter.allow(userId)).thenReturn(false);
+
+        mockMvc.perform(multipart("/api/v1/assistant/quick").param("text", "купи хлеб"))
+                .andExpect(status().isTooManyRequests());
+
+        verifyNoInteractions(assistantService);
+    }
+
     private Proposal proposal() {
         return new Proposal(UUID.randomUUID(), "CODE1234", userId, ProposalStatus.PENDING,
                 "закрой молоко", null, List.of(), OffsetDateTime.now(), OffsetDateTime.now().plusHours(24));
+    }
+
+    private Proposal proposalWithActions(ProposalStatus status, String clarification, ProposedAction... actions) {
+        return new Proposal(UUID.randomUUID(), "CODE1234", userId, status,
+                "любой текст", clarification, List.of(actions), OffsetDateTime.now(), OffsetDateTime.now().plusHours(24));
     }
 }

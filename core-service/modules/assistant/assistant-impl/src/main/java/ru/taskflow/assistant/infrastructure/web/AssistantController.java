@@ -25,6 +25,8 @@ import ru.taskflow.assistant.api.AssistantService;
 import ru.taskflow.assistant.api.dto.ApplyResult;
 import ru.taskflow.assistant.api.dto.Proposal;
 import ru.taskflow.assistant.application.AssistantRateLimiter;
+import ru.taskflow.assistant.application.QuickAddPolicy;
+import ru.taskflow.assistant.infrastructure.web.dto.QuickResult;
 import ru.taskflow.assistant.infrastructure.web.dto.SetActionAcceptedRequest;
 import ru.taskflow.shared.exception.NotFoundException;
 import ru.taskflow.shared.security.AuthenticatedUser;
@@ -46,6 +48,7 @@ public class AssistantController {
 
     private final AssistantService assistantService;
     private final AssistantRateLimiter rateLimiter;
+    private final QuickAddPolicy quickAddPolicy;
 
     @PostMapping(value = "/messages", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
@@ -59,15 +62,42 @@ public class AssistantController {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
                     "слишком много обращений, попробуйте через минуту");
         }
-        // Файл в приоритете над текстом, если пришли оба — клиент не должен
-        // присылать оба поля одновременно, но если пришлёт, голос не теряем молча.
+        return resolveProposal(user.userId(), text, file);
+    }
+
+    @PostMapping(value = "/quick", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ResponseStatus(HttpStatus.CREATED)
+    @Operation(summary = "Быстрое добавление", description = """
+            Текст или аудио -> предложение, применённое сразу, если оно состоит \
+            только из создания новых задач. Иначе — предложение на подтверждение, \
+            applied == null.""")
+    public QuickResult quick(
+            @RequestParam(value = "text", required = false) String text,
+            @RequestParam(value = "file", required = false) MultipartFile file,
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) throws IOException {
+        if (!rateLimiter.allow(user.userId())) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                    "слишком много обращений, попробуйте через минуту");
+        }
+        Proposal proposal = resolveProposal(user.userId(), text, file);
+        if (!quickAddPolicy.shouldAutoApply(proposal)) {
+            return new QuickResult(proposal, null);
+        }
+        ApplyResult applied = assistantService.apply(user.userId(), proposal.id());
+        return new QuickResult(proposal, applied);
+    }
+
+    // Файл в приоритете над текстом, если пришли оба — клиент не должен
+    // присылать оба поля одновременно, но если пришлёт, голос не теряем молча.
+    private Proposal resolveProposal(UUID userId, String text, MultipartFile file) throws IOException {
         if (file != null && !file.isEmpty()) {
-            return assistantService.handleVoice(user.userId(), file.getBytes(), AssistantChannel.WEB);
+            return assistantService.handleVoice(userId, file.getBytes(), AssistantChannel.WEB);
         }
         if (text == null || text.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "нужен текст или аудио");
         }
-        return assistantService.handleText(user.userId(), text, AssistantChannel.WEB);
+        return assistantService.handleText(userId, text, AssistantChannel.WEB);
     }
 
     @GetMapping("/proposals/{id}")
