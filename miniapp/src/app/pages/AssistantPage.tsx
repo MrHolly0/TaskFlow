@@ -10,8 +10,10 @@ import {
   ApplyResult,
 } from '@/lib/hooks/useAssistant';
 import { useEffectiveVoiceMode } from '@/lib/hooks/useVoiceMode';
+import { useVoiceRecording } from '@/lib/hooks/useVoiceRecording';
 import { ProposalCard } from '@/app/components/ProposalCard';
-import { VoiceRecorderButton } from '@/app/components/VoiceRecorderButton';
+import { VoiceRecorderTrigger } from '@/app/components/VoiceRecorderTrigger';
+import { VoiceRecordingBar } from '@/app/components/VoiceRecordingBar';
 import { Button } from '@/app/components/ui/button';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Card } from '@/app/components/ui/card';
@@ -50,6 +52,7 @@ export function AssistantPage() {
   const applyProposal = useApplyProposal();
   const rejectProposal = useRejectProposal();
   const voiceMode = useEffectiveVoiceMode();
+  const recording = useVoiceRecording(voiceMode, (file) => send({ file }));
 
   const replaceEntry = (localId: string, entry: Entry) => {
     setEntries((prev) => prev.map((e) => ('localId' in e && e.localId === localId ? entry : e)));
@@ -75,10 +78,6 @@ export function AssistantPage() {
     const text = input.trim();
     if (!text) return;
     send({ text });
-  };
-
-  const handleVoiceRecorded = (file: File) => {
-    send({ file });
   };
 
   const toggleAction = (proposal: Proposal, localId: string, ordinal: number, accepted: boolean) => {
@@ -173,22 +172,28 @@ export function AssistantPage() {
       </div>
 
       <div className="flex items-end gap-2 border-t border-border pt-3">
-        <Textarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              handleSubmit();
-            }
-          }}
-          placeholder="Например: закрой молоко и позвони Марку завтра"
-          className="min-h-16 max-h-32 resize-none"
-        />
-        <VoiceRecorderButton mode={voiceMode} onRecorded={handleVoiceRecorded} disabled={sendMessage.isPending} />
-        <Button size="icon" onClick={handleSubmit} disabled={!input.trim() || sendMessage.isPending} title="Отправить">
-          <IconSend className="h-4 w-4" />
-        </Button>
+        {recording.isRecording ? (
+          <VoiceRecordingBar recording={recording} />
+        ) : (
+          <Textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSubmit();
+              }
+            }}
+            placeholder="Например: закрой молоко и позвони Марку завтра"
+            className="min-h-16 max-h-32 resize-none"
+          />
+        )}
+        <VoiceRecorderTrigger recording={recording} disabled={sendMessage.isPending} />
+        {!recording.isRecording && (
+          <Button size="icon" onClick={handleSubmit} disabled={!input.trim() || sendMessage.isPending} title="Отправить">
+            <IconSend className="h-4 w-4" />
+          </Button>
+        )}
       </div>
     </div>
   );

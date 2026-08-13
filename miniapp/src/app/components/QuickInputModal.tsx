@@ -3,8 +3,10 @@ import { IconSend, IconSparkles, IconArrowLeft, IconPaperclip, IconAlertTriangle
 import { motion, AnimatePresence } from 'motion/react';
 import { useQuickAdd, useSetActionAccepted, useApplyProposal, useRejectProposal, Proposal } from '@/lib/hooks/useAssistant';
 import { useEffectiveVoiceMode } from '@/lib/hooks/useVoiceMode';
+import { useVoiceRecording } from '@/lib/hooks/useVoiceRecording';
 import { ProposalCard } from '@/app/components/ProposalCard';
-import { VoiceRecorderButton } from '@/app/components/VoiceRecorderButton';
+import { VoiceRecorderTrigger } from '@/app/components/VoiceRecorderTrigger';
+import { VoiceRecordingBar } from '@/app/components/VoiceRecordingBar';
 import { Button } from '@/app/components/ui/button';
 import { Textarea } from '@/app/components/ui/textarea';
 import {
@@ -47,6 +49,7 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const voiceMode = useEffectiveVoiceMode();
+  const recording = useVoiceRecording(voiceMode, (file) => send({ file }));
 
   useEffect(() => {
     if (open) {
@@ -141,17 +144,23 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
           <AnimatePresence mode="wait">
             {phase === 'input' && (
               <motion.div key="input" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="space-y-3">
-                <Textarea
-                  ref={textareaRef}
-                  value={text}
-                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => { setText(e.target.value); setError(null); }}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Погулять с собакой, купить хлеба, позвонить маме..."
-                  className="resize-none min-h-[100px] text-base"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Ассистент применит сразу, если это только новые задачи — иначе спросит подтверждения
-                </p>
+                {recording.isRecording ? (
+                  <VoiceRecordingBar recording={recording} />
+                ) : (
+                  <>
+                    <Textarea
+                      ref={textareaRef}
+                      value={text}
+                      onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => { setText(e.target.value); setError(null); }}
+                      onKeyDown={handleKeyDown}
+                      placeholder="Погулять с собакой, купить хлеба, позвонить маме..."
+                      className="resize-none min-h-[100px] text-base"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Ассистент применит сразу, если это только новые задачи — иначе спросит подтверждения
+                    </p>
+                  </>
+                )}
                 {error && (
                   <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-lg flex items-start gap-2">
                     <IconAlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
@@ -159,31 +168,31 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
                   </div>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <VoiceRecorderButton
-                    mode={voiceMode}
-                    onRecorded={(file) => send({ file })}
-                    className="h-11 w-11 sm:size-9"
-                  />
-                  <Button
-                    variant="outline"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="gap-2 h-11 w-11 sm:w-auto sm:px-4"
-                  >
-                    <IconPaperclip className="h-4 w-4" />
-                    <span className="hidden sm:inline">Файл</span>
-                  </Button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="audio/*"
-                    className="hidden"
-                    onChange={handleFileSelect}
-                  />
-                  <Button onClick={handleSubmit} disabled={!text.trim()} className="flex-1 gap-2 h-11 min-w-[140px]">
-                    <IconSend className="h-4 w-4" />
-                    Отправить
-                    <span className="hidden sm:inline text-xs opacity-60 ml-1">⌘↵</span>
-                  </Button>
+                  <VoiceRecorderTrigger recording={recording} className="h-11 w-11 sm:size-9" />
+                  {!recording.isRecording && (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="gap-2 h-11 w-11 sm:w-auto sm:px-4"
+                      >
+                        <IconPaperclip className="h-4 w-4" />
+                        <span className="hidden sm:inline">Файл</span>
+                      </Button>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="audio/*"
+                        className="hidden"
+                        onChange={handleFileSelect}
+                      />
+                      <Button onClick={handleSubmit} disabled={!text.trim()} className="flex-1 gap-2 h-11 min-w-[140px]">
+                        <IconSend className="h-4 w-4" />
+                        Отправить
+                        <span className="hidden sm:inline text-xs opacity-60 ml-1">⌘↵</span>
+                      </Button>
+                    </>
+                  )}
                 </div>
               </motion.div>
             )}
