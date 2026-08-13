@@ -128,7 +128,7 @@ export function AssistantPage() {
               exit={{ opacity: 0 }}
             >
               {entry.kind === 'user' && (
-                <div className="ml-auto max-w-[80%] rounded-2xl rounded-br-sm bg-primary text-primary-foreground px-4 py-2 text-sm">
+                <div className="ml-auto max-w-[80%] break-words rounded-2xl rounded-br-sm bg-primary text-primary-foreground px-4 py-2 text-sm">
                   {entry.text}
                 </div>
               )}
@@ -142,7 +142,7 @@ export function AssistantPage() {
               {entry.kind === 'error' && (
                 <Card className="max-w-[85%] border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive flex items-start gap-2">
                   <IconAlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                  <span>{entry.message}</span>
+                  <span className="min-w-0 break-words">{entry.message}</span>
                 </Card>
               )}
 
@@ -182,7 +182,7 @@ export function AssistantPage() {
             }
           }}
           placeholder="Например: закрой молоко и позвони Марку завтра"
-          className="min-h-[44px] max-h-32 resize-none"
+          className="min-h-16 max-h-32 resize-none"
         />
         <input
           ref={fileInputRef}
@@ -225,7 +225,7 @@ function ApplyResultCard({ result }: { result: ApplyResult }) {
       {failures.length > 0 && (
         <ul className="space-y-1 text-muted-foreground">
           {failures.map((f) => (
-            <li key={f.ordinal}>
+            <li key={f.ordinal} className="break-words">
               {f.summary} — {f.error}
             </li>
           ))}

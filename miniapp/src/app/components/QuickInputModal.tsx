@@ -175,7 +175,7 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           <AnimatePresence mode="wait">
             {phase === 'input' && (
               <motion.div key="input" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="space-y-3">
@@ -193,10 +193,10 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
                 {error && (
                   <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-lg flex items-start gap-2">
                     <IconAlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                    <span>{error}</span>
+                    <span className="min-w-0 break-words">{error}</span>
                   </div>
                 )}
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button variant="outline" onClick={handleVoice} className="gap-2 h-11">
                     <IconMicrophone className="h-4 w-4" />
                     Голос
@@ -212,7 +212,7 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
                     className="hidden"
                     onChange={handleFileSelect}
                   />
-                  <Button onClick={handleSubmit} disabled={!text.trim()} className="flex-1 gap-2 h-11">
+                  <Button onClick={handleSubmit} disabled={!text.trim()} className="flex-1 gap-2 h-11 min-w-[140px]">
                     <IconSend className="h-4 w-4" />
                     Отправить
                     <span className="text-xs opacity-60 ml-1">⌘↵</span>
@@ -254,7 +254,7 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
                 {error && (
                   <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-lg flex items-start gap-2">
                     <IconAlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                    <span>{error}</span>
+                    <span className="min-w-0 break-words">{error}</span>
                   </div>
                 )}
 

@@ -26,14 +26,14 @@ export function ProposalCard({
     return (
       <Card className="max-w-[85%] px-4 py-3 text-sm flex items-start gap-2 border-amber-400/40 bg-amber-50 dark:bg-amber-950/30">
         <IconAlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0 text-amber-600" />
-        <span>{proposal.clarification ?? 'Не удалось разобрать сообщение — сохранил его как отдельную задачу целиком.'}</span>
+        <span className="min-w-0 break-words">{proposal.clarification ?? 'Не удалось разобрать сообщение — сохранил его как отдельную задачу целиком.'}</span>
       </Card>
     );
   }
 
   if (isClarification) {
     return (
-      <Card className="max-w-[85%] px-4 py-3 text-sm">
+      <Card className="max-w-[85%] px-4 py-3 text-sm break-words">
         {proposal.clarification}
       </Card>
     );
@@ -60,9 +60,9 @@ export function ProposalCard({
               type="checkbox"
               checked={action.accepted}
               onChange={(e) => onToggle(action.ordinal, e.target.checked)}
-              className="mt-0.5"
+              className="mt-0.5 flex-shrink-0"
             />
-            <span className={cn(!action.accepted && 'text-muted-foreground line-through')}>
+            <span className={cn('min-w-0 break-words', !action.accepted && 'text-muted-foreground line-through')}>
               {action.summary}
             </span>
           </label>
