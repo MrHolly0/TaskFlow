@@ -151,9 +151,7 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
           <AnimatePresence mode="wait">
             {phase === 'input' && (
               <motion.div key="input" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="space-y-3">
-                {recording.isRecording ? (
-                  <VoiceRecordingBar recording={recording} />
-                ) : (
+                {!recording.isRecording && (
                   <>
                     <Textarea
                       ref={textareaRef}
@@ -174,32 +172,48 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
                     <span className="min-w-0 break-words">{error}</span>
                   </div>
                 )}
-                <div className="flex flex-wrap gap-2">
-                  <VoiceRecorderTrigger recording={recording} className="h-11 w-11 sm:size-9" />
-                  {!recording.isRecording && (
-                    <>
-                      <Button
-                        variant="outline"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="gap-2 h-11 w-11 sm:w-auto sm:px-4"
-                      >
-                        <IconPaperclip className="h-4 w-4" />
-                        <span className="hidden sm:inline">Файл</span>
-                      </Button>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="audio/*"
-                        className="hidden"
-                        onChange={handleFileSelect}
-                      />
-                      <Button onClick={handleSubmit} disabled={!text.trim()} className="flex-1 gap-2 h-11 min-w-[140px]">
-                        <IconSend className="h-4 w-4" />
-                        Отправить
-                        <span className="hidden sm:inline text-xs opacity-60 ml-1">⌘↵</span>
-                      </Button>
-                    </>
+                {/* Полоса записи и кнопка — всегда в одной строке; кнопка держит ключ
+                    "trigger" и остаётся тем же узлом DOM при старте/остановке записи,
+                    иначе удержание теряло бы pointer capture на середине жеста. */}
+                <div className="flex items-center gap-2">
+                  {recording.isRecording && (
+                    <VoiceRecordingBar key="bar" recording={recording} />
                   )}
+                  {!recording.isRecording && (
+                    <Button
+                      key="file"
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="gap-2 h-11 w-11 sm:w-auto sm:px-4"
+                    >
+                      <IconPaperclip className="h-4 w-4" />
+                      <span className="hidden sm:inline">Файл</span>
+                    </Button>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="audio/*"
+                    className="hidden"
+                    onChange={handleFileSelect}
+                  />
+                  {!recording.isRecording && (
+                    <Button
+                      key="send"
+                      onClick={handleSubmit}
+                      disabled={!text.trim()}
+                      className="flex-1 gap-2 h-11 min-w-[140px]"
+                    >
+                      <IconSend className="h-4 w-4" />
+                      Отправить
+                      <span className="hidden sm:inline text-xs opacity-60 ml-1">⌘↵</span>
+                    </Button>
+                  )}
+                  <VoiceRecorderTrigger
+                    key="trigger"
+                    recording={recording}
+                    className="h-11 w-11 sm:size-9 flex-shrink-0"
+                  />
                 </div>
               </motion.div>
             )}

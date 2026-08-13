@@ -12,10 +12,10 @@ function formatElapsed(ms: number): string {
 function hintFor(recording: VoiceRecordingController): string {
   const { mode, locked } = recording;
   if (mode === 'HOLD') {
-    return locked ? 'Запись продолжается — нажми кнопку, чтобы отправить' : 'Веди палец влево — сюда, к корзине';
+    return locked ? 'Нажми, чтобы отправить' : 'Влево — отмена';
   }
-  if (mode === 'SILENCE') return 'Остановится сама после паузы';
-  return 'Нажми кнопку ещё раз, чтобы отправить';
+  if (mode === 'SILENCE') return 'Остановится после паузы';
+  return 'Нажми, чтобы отправить';
 }
 
 export function VoiceRecordingBar({ recording, className }: { recording: VoiceRecordingController; className?: string }) {
@@ -44,7 +44,7 @@ export function VoiceRecordingBar({ recording, className }: { recording: VoiceRe
         </span>
       )}
       <span className="flex-shrink-0 text-sm font-medium tabular-nums">{formatElapsed(recording.elapsedMs)}</span>
-      <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{hintFor(recording)}</span>
+      <span className="min-w-0 flex-1 text-xs text-muted-foreground">{hintFor(recording)}</span>
       {!showDragTarget && (
         <button
           type="button"

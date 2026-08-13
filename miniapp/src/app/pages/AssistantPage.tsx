@@ -173,9 +173,10 @@ export function AssistantPage() {
 
       <div className="flex items-end gap-2 border-t border-border pt-3">
         {recording.isRecording ? (
-          <VoiceRecordingBar recording={recording} />
+          <VoiceRecordingBar key="bar" recording={recording} />
         ) : (
           <Textarea
+            key="input"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
@@ -188,9 +189,9 @@ export function AssistantPage() {
             className="min-h-16 max-h-32 resize-none"
           />
         )}
-        <VoiceRecorderTrigger recording={recording} disabled={sendMessage.isPending} />
+        <VoiceRecorderTrigger key="trigger" recording={recording} disabled={sendMessage.isPending} />
         {!recording.isRecording && (
-          <Button size="icon" onClick={handleSubmit} disabled={!input.trim() || sendMessage.isPending} title="Отправить">
+          <Button key="send" size="icon" onClick={handleSubmit} disabled={!input.trim() || sendMessage.isPending} title="Отправить">
             <IconSend className="h-4 w-4" />
           </Button>
         )}
