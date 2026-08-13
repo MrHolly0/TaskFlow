@@ -216,10 +216,12 @@ function SingleStatusView({
   tasksByStatus,
   onTaskClick,
   onAddTask,
+  dragActive,
 }: {
   tasksByStatus: Record<Status, Task[]>;
   onTaskClick: (task: Task) => void;
   onAddTask: () => void;
+  dragActive: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [index, setIndex] = useState(0);
@@ -283,7 +285,13 @@ function SingleStatusView({
           <IconChevronRight className="h-4 w-4" />
         </Button>
       </div>
-      <div ref={containerRef} className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-1 -mx-4 px-4">
+      <div
+        ref={containerRef}
+        className={cn(
+          'flex gap-3 overflow-x-auto pb-1 -mx-4 px-4',
+          dragActive ? 'snap-none' : 'snap-x snap-mandatory'
+        )}
+      >
         {COLUMNS.map((column) => (
           <div key={column.id} className="w-[87%] shrink-0 snap-center">
             <DroppableColumn
@@ -415,6 +423,7 @@ export function BoardPage() {
                 tasksByStatus={tasksByStatus}
                 onTaskClick={handleTaskClick}
                 onAddTask={() => setQuickInputOpen(true)}
+                dragActive={activeTask !== null}
               />
             )
           ) : (
