@@ -231,7 +231,7 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
                   <VoiceRecorderTrigger
                     key="trigger"
                     recording={recording}
-                    className="h-11 w-11 sm:size-9 flex-shrink-0"
+                    className="h-11 w-11 flex-shrink-0"
                   />
                 </div>
               </motion.div>
