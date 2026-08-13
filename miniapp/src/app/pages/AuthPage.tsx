@@ -24,7 +24,16 @@ function TelegramLoginWidget({ onAuth }: { onAuth: (user: Record<string, string 
     return () => { delete (window as any).onTelegramWidgetAuth; };
   }, [onAuth]);
 
-  return <div ref={containerRef} className="flex justify-center" />;
+  // Виджет — чужой iframe, его внутреннее содержимое не стилизуется отсюда.
+  // [&_iframe]:!border-0 снимает рамку, которую браузер или сам скрипт
+  // Telegram ставят на iframe по умолчанию — без !important проигрывает
+  // инлайн-стилю, который иногда проставляет сам виджет.
+  return (
+    <div
+      ref={containerRef}
+      className="flex justify-center overflow-hidden rounded-2xl [&_iframe]:!border-0 [&_iframe]:rounded-2xl"
+    />
+  );
 }
 
 const features = [
