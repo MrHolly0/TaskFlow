@@ -3,6 +3,8 @@ import { Button } from '@/app/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { VoiceRecordingController } from '@/lib/hooks/useVoiceRecording';
 
+const RECORDING_CLASS = 'bg-destructive text-white border-destructive hover:bg-destructive/90';
+
 interface VoiceRecorderTriggerProps {
   recording: VoiceRecordingController;
   disabled?: boolean;
@@ -38,7 +40,7 @@ export function VoiceRecorderTrigger({ recording, disabled, className }: VoiceRe
         disabled={disabled || recorder.status === 'requesting'}
         onClick={recording.handleSilenceClick}
         title={isRecording ? 'Идёт запись — остановится сама после паузы' : 'Голосовое сообщение'}
-        className={cn(isRecording && 'animate-pulse', className)}
+        className={cn(isRecording && RECORDING_CLASS, isRecording && 'animate-pulse', className)}
       >
         <IconMicrophone className="h-4 w-4" />
       </Button>
@@ -54,7 +56,7 @@ export function VoiceRecorderTrigger({ recording, disabled, className }: VoiceRe
         disabled={disabled || recorder.status === 'requesting'}
         onClick={recording.handleToggleClick}
         title={isRecording ? 'Остановить и отправить' : 'Начать запись'}
-        className={cn(isRecording && 'animate-pulse', className)}
+        className={cn(isRecording && RECORDING_CLASS, isRecording && 'animate-pulse', className)}
       >
         <IconMicrophone className="h-4 w-4" />
       </Button>
@@ -73,7 +75,12 @@ export function VoiceRecorderTrigger({ recording, disabled, className }: VoiceRe
       onPointerUp={recording.handleHoldPointerUp}
       onPointerCancel={recording.finishCancel}
       title="Зажми и говори"
-      className={cn('touch-none select-none', isRecording && recording.cancelProgress < 1 && 'animate-pulse', className)}
+      className={cn(
+        'touch-none select-none',
+        isRecording && RECORDING_CLASS,
+        isRecording && recording.cancelProgress < 1 && 'animate-pulse',
+        className
+      )}
       style={isRecording ? { transform: `translate(${recording.dragX}px, ${recording.dragY}px)` } : undefined}
     >
       <IconMicrophone className="h-4 w-4" />

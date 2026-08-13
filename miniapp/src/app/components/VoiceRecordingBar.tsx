@@ -1,4 +1,4 @@
-import { IconMicrophone, IconX } from '@tabler/icons-react';
+import { IconMicrophone, IconX, IconTrash } from '@tabler/icons-react';
 import { cn } from '@/lib/utils';
 import type { VoiceRecordingController } from '@/lib/hooks/useVoiceRecording';
 
@@ -12,13 +12,17 @@ function formatElapsed(ms: number): string {
 function hintFor(recording: VoiceRecordingController): string {
   const { mode, locked } = recording;
   if (mode === 'HOLD') {
-    return locked ? 'Запись продолжается — нажми кнопку, чтобы отправить' : 'Веди влево — отмена, вверх — закрепить';
+    return locked ? 'Запись продолжается — нажми кнопку, чтобы отправить' : 'Веди палец влево — сюда, к корзине';
   }
   if (mode === 'SILENCE') return 'Остановится сама после паузы';
   return 'Нажми кнопку ещё раз, чтобы отправить';
 }
 
 export function VoiceRecordingBar({ recording, className }: { recording: VoiceRecordingController; className?: string }) {
+  // Во время активного удержания (не закреплено) — корзина висит на фиксированном
+  // месте в строке, а не рядом с пальцем: именно к ней ведёт свайп, а не она к пальцу.
+  const showDragTarget = recording.mode === 'HOLD' && !recording.locked;
+
   return (
     <div
       className={cn(
@@ -26,20 +30,31 @@ export function VoiceRecordingBar({ recording, className }: { recording: VoiceRe
         className
       )}
     >
-      <span className="relative flex h-6 w-6 flex-shrink-0 items-center justify-center">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive/40" />
-        <IconMicrophone className="relative h-4 w-4 text-destructive" />
-      </span>
+      {showDragTarget ? (
+        <IconTrash
+          className={cn(
+            'h-5 w-5 flex-shrink-0 transition-colors',
+            recording.cancelProgress >= 1 ? 'text-destructive' : 'text-muted-foreground'
+          )}
+        />
+      ) : (
+        <span className="relative flex h-6 w-6 flex-shrink-0 items-center justify-center">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive/40" />
+          <IconMicrophone className="relative h-4 w-4 text-destructive" />
+        </span>
+      )}
       <span className="flex-shrink-0 text-sm font-medium tabular-nums">{formatElapsed(recording.elapsedMs)}</span>
       <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{hintFor(recording)}</span>
-      <button
-        type="button"
-        onClick={recording.finishCancel}
-        className="flex-shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-        title="Отменить запись"
-      >
-        <IconX className="h-4 w-4" />
-      </button>
+      {!showDragTarget && (
+        <button
+          type="button"
+          onClick={recording.finishCancel}
+          className="flex-shrink-0 rounded-md p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+          title="Отменить запись"
+        >
+          <IconX className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
 }
