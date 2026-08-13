@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { IconTrash, IconClock } from '@tabler/icons-react';
+import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { Priority, Status } from '@/lib/store';
 import { useUpdateTask, useDeleteTask, useGroups } from '@/lib/hooks/useTasks';
+import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -54,22 +56,35 @@ interface TaskDetailModalProps {
   onClose: () => void;
 }
 
-function isoToLocalDate(iso?: string): string {
+// d.getFullYear()/getHours() и т.п. здесь — не браузерный локальный час:
+// toZonedTime подменяет представление даты так, что стандартные геттеры
+// отдают компоненты времени в переданном поясе, а не в поясе устройства.
+function isoToZonedDate(iso: string | undefined, timezone: string): string {
   if (!iso) return '';
-  const d = new Date(iso);
+  const d = toZonedTime(iso, timezone);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function isoToLocalTime(iso?: string): string {
+function isoToZonedTime(iso: string | undefined, timezone: string): string {
   if (!iso) return '';
-  const d = new Date(iso);
+  const d = toZonedTime(iso, timezone);
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+// Обратное преобразование: дата/время, введённые пользователем как есть
+// (без указания пояса), интерпретируются как момент в его домашнем поясе.
+function zonedInputToIso(date: string, time: string, timezone: string): string {
+  const [year, month, day] = date.split('-').map(Number);
+  const [hour, minute] = time.split(':').map(Number);
+  const wallClock = new Date(year, month - 1, day, hour, minute);
+  return fromZonedTime(wallClock, timezone).toISOString();
 }
 
 export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
   const { mutateAsync: updateTask } = useUpdateTask();
   const { mutate: deleteTask } = useDeleteTask();
   const { data: groups = [] } = useGroups();
+  const { timezone, isReady: timezoneReady } = useUserTimezone();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -87,8 +102,6 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
       setDescription(task.description ?? '');
       setPriority((task.priority as Priority) ?? 'MEDIUM');
       setStatus((task.status as Status) ?? 'TODO');
-      setDeadlineDate(isoToLocalDate(task.deadline));
-      setDeadlineTime(isoToLocalTime(task.deadline) || '20:59');
       const estimate = task.estimateMinutes ?? task.estimatedTime;
       setEstimatedTime(estimate ? String(estimate) : '');
       // resolve initial group id
@@ -102,6 +115,16 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
     }
   }, [task?.id, groups.length]);
 
+  // Отдельный эффект — срок зависит от часового пояса из настроек, который
+  // может подгрузиться позже остального. Пока не готов, поля остаются пустыми,
+  // а не показывают дату/время, посчитанные в поясе браузера.
+  useEffect(() => {
+    if (task && timezoneReady) {
+      setDeadlineDate(isoToZonedDate(task.deadline, timezone));
+      setDeadlineTime(isoToZonedTime(task.deadline, timezone) || '20:59');
+    }
+  }, [task?.id, timezoneReady, timezone]);
+
   const taskId = task?.id;
 
   const handleSave = async () => {
@@ -114,7 +137,7 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
         description: description || undefined,
         priority,
         status,
-        deadline: deadlineDate ? new Date(`${deadlineDate}T${deadlineTime || '20:59'}`).toISOString() : undefined,
+        deadline: deadlineDate ? zonedInputToIso(deadlineDate, deadlineTime || '20:59', timezone) : undefined,
         groupId: selectedGroupId || undefined,
         estimateMinutes: estimatedTime ? parseInt(estimatedTime) : undefined,
       });
@@ -212,21 +235,21 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
               Дедлайн
             </label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <div className="relative">
                 <IconClock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   type="date"
                   value={deadlineDate}
                   onChange={(e) => setDeadlineDate(e.target.value)}
-                  className="pl-9 h-10 text-sm"
+                  className="pl-9 h-10 text-sm w-full"
                 />
               </div>
               <Input
                 type="time"
                 value={deadlineTime}
                 onChange={(e) => setDeadlineTime(e.target.value)}
-                className="h-10 text-sm"
+                className="h-10 text-sm w-full"
                 disabled={!deadlineDate}
               />
             </div>
