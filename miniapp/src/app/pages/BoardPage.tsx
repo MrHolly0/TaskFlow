@@ -20,8 +20,8 @@ import {
   IconCircleDashed,
   IconProgress,
   IconCircleCheck,
-  IconColumns3,
-  IconLayoutList,
+  IconArrowsVertical,
+  IconSwipe,
   IconChevronLeft,
   IconChevronRight,
 } from '@tabler/icons-react';
@@ -188,13 +188,13 @@ function DroppableColumn({
   );
 }
 
-/* ────────────── Узкий экран: колонки или один статус ────────────── */
-type BoardView = 'columns' | 'single';
+/* ────────────── Узкий экран: статусы друг под другом или по одному со свайпом ────────────── */
+type BoardView = 'vertical' | 'horizontal';
 const BOARD_VIEW_KEY = 'taskflow.boardView';
 const CAROUSEL_GAP = 12; // px, соответствует gap-3 у контейнера карусели
 
 function readBoardView(): BoardView {
-  return localStorage.getItem(BOARD_VIEW_KEY) === 'single' ? 'single' : 'columns';
+  return localStorage.getItem(BOARD_VIEW_KEY) === 'horizontal' ? 'horizontal' : 'vertical';
 }
 
 function useIsNarrow(): boolean {
@@ -383,10 +383,10 @@ export function BoardPage() {
             variant="outline"
             size="icon"
             className="md:hidden h-8 w-8"
-            onClick={() => setBoardView(boardView === 'columns' ? 'single' : 'columns')}
-            title={boardView === 'columns' ? 'Показать по одному статусу' : 'Показать колонками'}
+            onClick={() => setBoardView(boardView === 'vertical' ? 'horizontal' : 'vertical')}
+            title={boardView === 'vertical' ? 'Показать по одному статусу, со свайпом' : 'Показать статусы друг под другом'}
           >
-            {boardView === 'columns' ? <IconLayoutList className="h-4 w-4" /> : <IconColumns3 className="h-4 w-4" />}
+            {boardView === 'vertical' ? <IconSwipe className="h-4 w-4" /> : <IconArrowsVertical className="h-4 w-4" />}
           </Button>
         </div>
 
@@ -398,17 +398,16 @@ export function BoardPage() {
           onDragEnd={handleDragEnd}
         >
           {isNarrow ? (
-            boardView === 'columns' ? (
-              <div className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-2 -mx-4 px-4">
+            boardView === 'vertical' ? (
+              <div className="flex flex-col gap-4">
                 {COLUMNS.map((column) => (
-                  <div key={column.id} className="min-w-[85%] shrink-0 snap-start">
-                    <DroppableColumn
-                      column={column}
-                      tasks={tasksByStatus[column.id]}
-                      onTaskClick={handleTaskClick}
-                      onAddTask={() => setQuickInputOpen(true)}
-                    />
-                  </div>
+                  <DroppableColumn
+                    key={column.id}
+                    column={column}
+                    tasks={tasksByStatus[column.id]}
+                    onTaskClick={handleTaskClick}
+                    onAddTask={() => setQuickInputOpen(true)}
+                  />
                 ))}
               </div>
             ) : (
