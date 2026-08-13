@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Status, Task } from '@/lib/store';
 import { useTasksList, useUpdateTask } from '@/lib/hooks/useTasks';
 import {
@@ -20,6 +20,10 @@ import {
   IconCircleDashed,
   IconProgress,
   IconCircleCheck,
+  IconColumns3,
+  IconLayoutList,
+  IconChevronLeft,
+  IconChevronRight,
 } from '@tabler/icons-react';
 import { formatDeadline, cn } from '@/lib/utils';
 import { Badge } from '@/app/components/ui/badge';
@@ -184,6 +188,117 @@ function DroppableColumn({
   );
 }
 
+/* ────────────── Узкий экран: колонки или один статус ────────────── */
+type BoardView = 'columns' | 'single';
+const BOARD_VIEW_KEY = 'taskflow.boardView';
+const CAROUSEL_GAP = 12; // px, соответствует gap-3 у контейнера карусели
+
+function readBoardView(): BoardView {
+  return localStorage.getItem(BOARD_VIEW_KEY) === 'single' ? 'single' : 'columns';
+}
+
+function useIsNarrow(): boolean {
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
+  );
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 767px)');
+    const handler = () => setNarrow(mql.matches);
+    handler();
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, []);
+  return narrow;
+}
+
+/* ────────────── Карусель «один статус на экран» ────────────── */
+function SingleStatusView({
+  tasksByStatus,
+  onTaskClick,
+  onAddTask,
+}: {
+  tasksByStatus: Record<Status, Task[]>;
+  onTaskClick: (task: Task) => void;
+  onAddTask: () => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    let frame: number;
+    const onScroll = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const first = el.children[0] as HTMLElement | undefined;
+        if (!first) return;
+        const step = first.offsetWidth + CAROUSEL_GAP;
+        const i = Math.round(el.scrollLeft / step);
+        setIndex(Math.min(COLUMNS.length - 1, Math.max(0, i)));
+      });
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      cancelAnimationFrame(frame);
+    };
+  }, []);
+
+  const goTo = (i: number) => {
+    const el = containerRef.current;
+    const first = el?.children[0] as HTMLElement | undefined;
+    if (!el || !first) return;
+    const clamped = Math.min(COLUMNS.length - 1, Math.max(0, i));
+    el.scrollTo({ left: (first.offsetWidth + CAROUSEL_GAP) * clamped, behavior: 'smooth' });
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-center gap-3">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          disabled={index === 0}
+          onClick={() => goTo(index - 1)}
+        >
+          <IconChevronLeft className="h-4 w-4" />
+        </Button>
+        <div className="flex items-center gap-1.5">
+          {COLUMNS.map((c, i) => (
+            <span
+              key={c.id}
+              className={cn('h-1.5 w-1.5 rounded-full', i === index ? 'bg-primary' : 'bg-muted-foreground/30')}
+            />
+          ))}
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          disabled={index === COLUMNS.length - 1}
+          onClick={() => goTo(index + 1)}
+        >
+          <IconChevronRight className="h-4 w-4" />
+        </Button>
+      </div>
+      <div ref={containerRef} className="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-1 -mx-4 px-4">
+        {COLUMNS.map((column) => (
+          <div key={column.id} className="w-[87%] shrink-0 snap-center">
+            <DroppableColumn
+              column={column}
+              tasks={tasksByStatus[column.id]}
+              onTaskClick={onTaskClick}
+              onAddTask={onAddTask}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function toTask(t: any): Task {
   return {
     id: String(t.id),
@@ -211,6 +326,13 @@ export function BoardPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [quickInputOpen, setQuickInputOpen] = useState(false);
+  const [boardView, setBoardViewState] = useState<BoardView>(readBoardView);
+  const isNarrow = useIsNarrow();
+
+  const setBoardView = (view: BoardView) => {
+    localStorage.setItem(BOARD_VIEW_KEY, view);
+    setBoardViewState(view);
+  };
 
   const sensors = useSensors(
     useSensor(MouseSensor, {
@@ -257,7 +379,16 @@ export function BoardPage() {
       <div className="max-w-7xl mx-auto space-y-5">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-semibold">Доска</h1>
-                  </div>
+          <Button
+            variant="outline"
+            size="icon"
+            className="md:hidden h-8 w-8"
+            onClick={() => setBoardView(boardView === 'columns' ? 'single' : 'columns')}
+            title={boardView === 'columns' ? 'Показать по одному статусу' : 'Показать колонками'}
+          >
+            {boardView === 'columns' ? <IconLayoutList className="h-4 w-4" /> : <IconColumns3 className="h-4 w-4" />}
+          </Button>
+        </div>
 
         <DndContext
           sensors={sensors}
@@ -265,17 +396,40 @@ export function BoardPage() {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {COLUMNS.map((column) => (
-              <DroppableColumn
-                key={column.id}
-                column={column}
-                tasks={tasksByStatus[column.id]}
+          {isNarrow ? (
+            boardView === 'columns' ? (
+              <div className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-2 -mx-4 px-4">
+                {COLUMNS.map((column) => (
+                  <div key={column.id} className="min-w-[85%] shrink-0 snap-start">
+                    <DroppableColumn
+                      column={column}
+                      tasks={tasksByStatus[column.id]}
+                      onTaskClick={handleTaskClick}
+                      onAddTask={() => setQuickInputOpen(true)}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <SingleStatusView
+                tasksByStatus={tasksByStatus}
                 onTaskClick={handleTaskClick}
                 onAddTask={() => setQuickInputOpen(true)}
               />
-            ))}
-          </div>
+            )
+          ) : (
+            <div className="grid grid-cols-3 gap-4">
+              {COLUMNS.map((column) => (
+                <DroppableColumn
+                  key={column.id}
+                  column={column}
+                  tasks={tasksByStatus[column.id]}
+                  onTaskClick={handleTaskClick}
+                  onAddTask={() => setQuickInputOpen(true)}
+                />
+              ))}
+            </div>
+          )}
 
           <DragOverlay>
             {activeTask && <OverlayTaskCard task={activeTask} />}
