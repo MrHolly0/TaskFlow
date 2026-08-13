@@ -17,6 +17,7 @@ import { VoiceRecordingBar } from '@/app/components/VoiceRecordingBar';
 import { Button } from '@/app/components/ui/button';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Card } from '@/app/components/ui/card';
+import { cn } from '@/lib/utils';
 
 type Entry =
   | { kind: 'user'; text: string }
@@ -172,9 +173,10 @@ export function AssistantPage() {
       </div>
 
       <div className="flex items-end gap-2 border-t border-border pt-3">
-        {recording.isRecording ? (
-          <VoiceRecordingBar key="bar" recording={recording} />
-        ) : (
+        {/* Textarea и полоса записи лежат в одной ячейке грида — высота слота
+            определяется большей из них и не меняется при старте записи, иначе
+            кнопка справа подпрыгивает в момент, когда палец уже на ней. */}
+        <div className="grid flex-1">
           <Textarea
             key="input"
             value={input}
@@ -186,9 +188,16 @@ export function AssistantPage() {
               }
             }}
             placeholder="Например: закрой молоко и позвони Марку завтра"
-            className="min-h-16 max-h-32 resize-none"
+            className={cn('col-start-1 row-start-1 min-h-16 max-h-32 resize-none', recording.isRecording && 'invisible pointer-events-none')}
+            aria-hidden={recording.isRecording}
           />
-        )}
+          <div
+            className={cn('col-start-1 row-start-1 flex items-center', !recording.isRecording && 'invisible pointer-events-none')}
+            aria-hidden={!recording.isRecording}
+          >
+            <VoiceRecordingBar key="bar" recording={recording} />
+          </div>
+        </div>
         <VoiceRecorderTrigger key="trigger" recording={recording} disabled={sendMessage.isPending} />
         {!recording.isRecording && (
           <Button key="send" size="icon" onClick={handleSubmit} disabled={!input.trim() || sendMessage.isPending} title="Отправить">

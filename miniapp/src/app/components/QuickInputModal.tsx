@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { IconSend, IconSparkles, IconArrowLeft, IconPaperclip, IconAlertTriangle } from '@tabler/icons-react';
+import { IconSend, IconSparkles, IconArrowLeft, IconPaperclip, IconAlertTriangle, IconMicrophone } from '@tabler/icons-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useQuickAdd, useSetActionAccepted, useApplyProposal, useRejectProposal, Proposal } from '@/lib/hooks/useAssistant';
 import { useEffectiveVoiceMode } from '@/lib/hooks/useVoiceMode';
@@ -151,8 +151,14 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
           <AnimatePresence mode="wait">
             {phase === 'input' && (
               <motion.div key="input" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="space-y-3">
-                {!recording.isRecording && (
-                  <>
+                {/* Обе части лежат в одной ячейке грида, чтобы высота блока определялась
+                    большей из них и не менялась при старте записи — иначе строка с кнопкой
+                    подпрыгивает в момент, когда палец уже прижат к ней. */}
+                <div className="grid">
+                  <div
+                    className={cn('col-start-1 row-start-1 space-y-3', recording.isRecording && 'invisible pointer-events-none')}
+                    aria-hidden={recording.isRecording}
+                  >
                     <Textarea
                       ref={textareaRef}
                       value={text}
@@ -164,8 +170,21 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
                     <p className="text-xs text-muted-foreground">
                       Ассистент применит сразу, если это только новые задачи — иначе спросит подтверждения
                     </p>
-                  </>
-                )}
+                  </div>
+                  <div
+                    className={cn(
+                      'col-start-1 row-start-1 flex flex-col items-center justify-center gap-2 py-6',
+                      !recording.isRecording && 'invisible pointer-events-none'
+                    )}
+                    aria-hidden={!recording.isRecording}
+                  >
+                    <span className="relative flex h-8 w-8 items-center justify-center">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive/30" />
+                      <IconMicrophone className="relative h-5 w-5 text-destructive" />
+                    </span>
+                    <p className="text-sm text-muted-foreground">Идёт запись…</p>
+                  </div>
+                </div>
                 {error && (
                   <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-lg flex items-start gap-2">
                     <IconAlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
