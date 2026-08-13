@@ -206,9 +206,15 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
 
             {phase === 'confirm' && proposal && (
               <motion.div key="confirm" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="space-y-3">
-                <p className="text-xs text-muted-foreground">
-                  Здесь есть изменения к существующим задачам — проверь перед подтверждением.
-                </p>
+                {proposal.actions.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Не разобрал, что нужно сделать — попробуй переформулировать.
+                  </p>
+                ) : proposal.actions.some((a) => a.targetTaskId) ? (
+                  <p className="text-xs text-muted-foreground">
+                    Здесь есть изменения к существующим задачам — проверь перед подтверждением.
+                  </p>
+                ) : null}
 
                 {error && (
                   <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-lg flex items-start gap-2">
