@@ -159,7 +159,13 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg w-full max-h-[90vh] overflow-y-auto">
+      <DialogContent
+        className={cn(
+          'sm:max-w-lg w-full overflow-y-auto',
+          'top-4 translate-y-0 max-h-[calc(100dvh-2rem)]',
+          'sm:top-[50%] sm:translate-y-[-50%] sm:max-h-[90dvh]'
+        )}
+      >
         <DialogHeader>
           <DialogTitle className="sr-only">Задача</DialogTitle>
         </DialogHeader>
