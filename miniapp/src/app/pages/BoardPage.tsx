@@ -7,7 +7,8 @@ import {
   DragStartEvent,
   DragOverlay,
   closestCorners,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
@@ -74,7 +75,7 @@ function DraggableTaskCard({
     <div
       ref={setNodeRef}
       style={style}
-      className={cn('touch-pan-y select-none', isDragging && 'opacity-40')}
+      className={cn('touch-none select-none', isDragging && 'opacity-40')}
       {...attributes}
       {...listeners}
     >
@@ -84,7 +85,7 @@ function DraggableTaskCard({
       >
         <div className="flex items-start gap-2">
           {/* Ручка — визуальная подсказка, зажатие работает с любой точки карточки */}
-          <div className="mt-0.5 opacity-0 group-hover:opacity-40 transition-opacity cursor-grab active:cursor-grabbing flex-shrink-0">
+          <div className="mt-0.5 opacity-0 group-hover:opacity-40 [@media(pointer:coarse)]:opacity-40 transition-opacity cursor-grab active:cursor-grabbing flex-shrink-0">
             <IconGripVertical className="h-4 w-4 text-muted-foreground" />
           </div>
 
@@ -212,8 +213,11 @@ export function BoardPage() {
   const [quickInputOpen, setQuickInputOpen] = useState(false);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
       activationConstraint: { distance: 8 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 5 },
     })
   );
 
