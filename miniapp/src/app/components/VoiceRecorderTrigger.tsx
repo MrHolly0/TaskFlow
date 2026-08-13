@@ -5,6 +5,15 @@ import type { VoiceRecordingController } from '@/lib/hooks/useVoiceRecording';
 
 const RECORDING_CLASS = 'bg-destructive text-white border-destructive hover:bg-destructive/90';
 
+// Кнопка визуально следует за пальцем, но не должна уезжать так далеко, чтобы
+// наехать на полосу записи или на подсказку закрепления над собой — порог отмены
+// (CANCEL_THRESHOLD) при этом считается по настоящему смещению пальца, не по этому пределу.
+const VISUAL_DRAG_LIMIT = 24;
+
+function clampDrag(value: number): number {
+  return Math.max(-VISUAL_DRAG_LIMIT, Math.min(0, value));
+}
+
 interface VoiceRecorderTriggerProps {
   recording: VoiceRecordingController;
   disabled?: boolean;
@@ -81,7 +90,7 @@ export function VoiceRecorderTrigger({ recording, disabled, className }: VoiceRe
         isRecording && recording.cancelProgress < 1 && 'animate-pulse',
         className
       )}
-      style={isRecording ? { transform: `translate(${recording.dragX}px, ${recording.dragY}px)` } : undefined}
+      style={isRecording ? { transform: `translate(${clampDrag(recording.dragX)}px, ${clampDrag(recording.dragY)}px)` } : undefined}
     >
       <IconMicrophone className="h-4 w-4" />
     </Button>
