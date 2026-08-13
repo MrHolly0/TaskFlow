@@ -5,5 +5,7 @@ public record UserSettingsDto(
         int defaultReminderMinutes,
         boolean urgentExtraReminder,
         String preferredLlm,
-        Integer autoCleanCompletedDays
+        Integer autoCleanCompletedDays,
+        String voiceInputModeDesktop,
+        String voiceInputModeMobile
 ) {}

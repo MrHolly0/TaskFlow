@@ -1,8 +1,10 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { IconMicrophone, IconSend, IconSparkles, IconArrowLeft, IconPaperclip, IconAlertTriangle } from '@tabler/icons-react';
+import { useState, useRef, useEffect } from 'react';
+import { IconSend, IconSparkles, IconArrowLeft, IconPaperclip, IconAlertTriangle } from '@tabler/icons-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useQuickAdd, useSetActionAccepted, useApplyProposal, useRejectProposal, Proposal } from '@/lib/hooks/useAssistant';
+import { useEffectiveVoiceMode } from '@/lib/hooks/useVoiceMode';
 import { ProposalCard } from '@/app/components/ProposalCard';
+import { VoiceRecorderButton } from '@/app/components/VoiceRecorderButton';
 import { Button } from '@/app/components/ui/button';
 import { Textarea } from '@/app/components/ui/textarea';
 import {
@@ -12,7 +14,7 @@ import {
   DialogTitle,
 } from '@/app/components/ui/dialog';
 
-type Phase = 'input' | 'recording' | 'processing' | 'confirm' | 'done';
+type Phase = 'input' | 'processing' | 'confirm' | 'done';
 
 interface QuickInputModalProps {
   open: boolean;
@@ -43,8 +45,8 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
   const [error, setError] = useState<string | null>(null);
   const [doneLabel, setDoneLabel] = useState('Добавлено!');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const recognitionRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const voiceMode = useEffectiveVoiceMode();
 
   useEffect(() => {
     if (open) {
@@ -54,47 +56,7 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
       setError(null);
       setTimeout(() => textareaRef.current?.focus(), 100);
     }
-    return () => { recognitionRef.current?.stop(); };
   }, [open]);
-
-  const handleVoice = useCallback(() => {
-    const isInTelegram = (window as any).Telegram?.WebApp?.initData;
-    if (isInTelegram) {
-      setError('Голосовой ввод недоступен в Telegram Mini App — введи текст вручную.');
-      return;
-    }
-
-    const SpeechRecognition =
-      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
-      setError('Голосовой ввод недоступен. Используй Chrome или Safari.');
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'ru-RU';
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-    recognitionRef.current = recognition;
-
-    let resultReceived = false;
-
-    recognition.onresult = (event: any) => {
-      resultReceived = true;
-      setText(event.results[0][0].transcript);
-      setPhase('input');
-      setTimeout(() => textareaRef.current?.focus(), 100);
-    };
-    recognition.onerror = () => {
-      setError('Не удалось распознать речь. Попробуй ещё раз.');
-      setPhase('input');
-    };
-    recognition.onend = () => { if (!resultReceived) setPhase('input'); };
-
-    setPhase('recording');
-    recognition.start();
-  }, []);
 
   const closeWithSuccess = (label: string) => {
     setDoneLabel(label);
@@ -163,7 +125,7 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSubmit();
   };
 
-  const handleClose = () => { recognitionRef.current?.stop(); onClose(); };
+  const handleClose = () => { onClose(); };
 
   return (
     <Dialog open={open} onOpenChange={(o: boolean) => !o && handleClose()}>
@@ -197,10 +159,10 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
                   </div>
                 )}
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" onClick={handleVoice} className="gap-2 h-11">
-                    <IconMicrophone className="h-4 w-4" />
-                    Голос
-                  </Button>
+                  <VoiceRecorderButton
+                    mode={voiceMode}
+                    onRecorded={(file) => send({ file })}
+                  />
                   <Button variant="outline" onClick={() => fileInputRef.current?.click()} className="gap-2 h-11">
                     <IconPaperclip className="h-4 w-4" />
                     Файл
@@ -217,23 +179,6 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
                     Отправить
                     <span className="text-xs opacity-60 ml-1">⌘↵</span>
                   </Button>
-                </div>
-              </motion.div>
-            )}
-
-            {phase === 'recording' && (
-              <motion.div key="recording" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="flex flex-col items-center justify-center py-8 space-y-4">
-                <div className="relative">
-                  <motion.div animate={{ scale: [1, 1.3, 1] }} transition={{ duration: 1, repeat: Infinity }} className="absolute inset-0 bg-red-500/20 rounded-full" />
-                  <div className="relative w-16 h-16 bg-red-500 rounded-full flex items-center justify-center">
-                    <IconMicrophone className="h-7 w-7 text-white" />
-                  </div>
-                </div>
-                <p className="text-muted-foreground text-sm">Говори...</p>
-                <div className="flex gap-1 items-end h-6">
-                  {[1, 2, 3, 4, 5].map((i) => (
-                    <motion.div key={i} className="w-1 bg-red-400 rounded-full" animate={{ height: ['8px', '20px', '8px'] }} transition={{ duration: 0.8, repeat: Infinity, delay: i * 0.1 }} />
-                  ))}
                 </div>
               </motion.div>
             )}

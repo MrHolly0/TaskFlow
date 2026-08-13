@@ -73,6 +73,8 @@ public class UserServiceImpl implements UserService {
         if (request.urgentExtraReminder() != null) settings.setUrgentExtraReminder(request.urgentExtraReminder());
         if (request.preferredLlm() != null) settings.setPreferredLlm(request.preferredLlm());
         if (request.autoCleanCompletedDays() != null) settings.setAutoCleanCompletedDays(request.autoCleanCompletedDays());
+        if (request.voiceInputModeDesktop() != null) settings.setVoiceInputModeDesktop(request.voiceInputModeDesktop());
+        if (request.voiceInputModeMobile() != null) settings.setVoiceInputModeMobile(request.voiceInputModeMobile());
 
         settingsRepository.save(settings);
     }
@@ -91,12 +93,14 @@ public class UserServiceImpl implements UserService {
                 e.getDefaultReminderMinutes(),
                 e.isUrgentExtraReminder(),
                 e.getPreferredLlm(),
-                e.getAutoCleanCompletedDays()
+                e.getAutoCleanCompletedDays(),
+                e.getVoiceInputModeDesktop(),
+                e.getVoiceInputModeMobile()
         );
     }
 
     private UserSettingsDto defaultSettings() {
-        return new UserSettingsDto(true, 60, true, "groq", null);
+        return new UserSettingsDto(true, 60, true, "groq", null, "SILENCE", "SILENCE");
     }
 
     private UserDto toDto(UserJpaEntity e) {

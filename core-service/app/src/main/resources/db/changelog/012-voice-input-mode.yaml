@@ -1,0 +1,20 @@
+databaseChangeLog:
+  - changeSet:
+      id: 012-voice-input-mode
+      author: taskflow
+      changes:
+        - addColumn:
+            tableName: user_settings
+            columns:
+              - column:
+                  name: voice_input_mode_desktop
+                  type: VARCHAR(16)
+                  defaultValue: 'SILENCE'
+                  constraints:
+                    nullable: false
+              - column:
+                  name: voice_input_mode_mobile
+                  type: VARCHAR(16)
+                  defaultValue: 'SILENCE'
+                  constraints:
+                    nullable: false

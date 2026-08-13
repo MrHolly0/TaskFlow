@@ -5,5 +5,7 @@ public record UpdateSettingsRequest(
         Integer defaultReminderMinutes,
         Boolean urgentExtraReminder,
         String preferredLlm,
-        Integer autoCleanCompletedDays
+        Integer autoCleanCompletedDays,
+        String voiceInputModeDesktop,
+        String voiceInputModeMobile
 ) {}

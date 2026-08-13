@@ -24,7 +24,8 @@ import {
   AlertDialogTrigger,
 } from '@/app/components/ui/alert-dialog';
 import { useStore } from '@/lib/store';
-import { useSettings, useUpdateSettings, useClearCompleted } from '@/lib/hooks/useSettings';
+import { useSettings, useUpdateSettings, useClearCompleted, VoiceInputMode } from '@/lib/hooks/useSettings';
+import { isTouchDevice } from '@/lib/device';
 
 function useSetting(key: string, defaultValue: string): [string, (v: string) => void] {
   const stored = localStorage.getItem(key) ?? defaultValue;
@@ -45,6 +46,17 @@ const AUTO_CLEAN_OPTIONS = [
   { value: '14', label: 'Через 2 недели', days: 14 },
   { value: '30', label: 'Через месяц', days: 30 },
   { value: '90', label: 'Через 3 месяца', days: 90 },
+];
+
+const VOICE_MODE_DESKTOP_OPTIONS: { value: VoiceInputMode; label: string }[] = [
+  { value: 'SILENCE', label: 'Останавливать по тишине' },
+  { value: 'TOGGLE', label: 'Нажать — начать, нажать — отправить' },
+];
+
+const VOICE_MODE_MOBILE_OPTIONS: { value: VoiceInputMode; label: string }[] = [
+  { value: 'SILENCE', label: 'Останавливать по тишине' },
+  { value: 'TOGGLE', label: 'Нажать — начать, нажать — отправить' },
+  { value: 'HOLD', label: 'Удерживать, пока говоришь' },
 ];
 
 export function SettingsPage() {
@@ -70,6 +82,18 @@ export function SettingsPage() {
     const option = AUTO_CLEAN_OPTIONS.find((o) => o.value === value);
     if (!option) return;
     updateSettings.mutate({ autoCleanCompletedDays: option.days });
+  };
+
+  const touchDevice = isTouchDevice();
+  const currentVoiceModeDesktop = serverSettings?.voiceInputModeDesktop ?? 'SILENCE';
+  const currentVoiceModeMobile = serverSettings?.voiceInputModeMobile ?? 'SILENCE';
+
+  const handleVoiceModeDesktopChange = (value: string) => {
+    updateSettings.mutate({ voiceInputModeDesktop: value as VoiceInputMode });
+  };
+
+  const handleVoiceModeMobileChange = (value: string) => {
+    updateSettings.mutate({ voiceInputModeMobile: value as VoiceInputMode });
   };
 
   const handleClearCompleted = () => {
@@ -174,6 +198,50 @@ export function SettingsPage() {
             <p className="text-sm text-muted-foreground">
               Используется <span className="font-medium text-foreground">Groq (llama3)</span> с автоматическим переключением на YandexGPT при недоступности. Настраивается в переменных окружения сервера.
             </p>
+          </div>
+        </section>
+
+        <Separator />
+
+        <section className="flex flex-col gap-4">
+          <h2 className="text-base font-semibold">Голосовой ввод</h2>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="voice-mode-desktop">На компьютере</Label>
+            <Select
+              value={currentVoiceModeDesktop}
+              onValueChange={handleVoiceModeDesktopChange}
+              disabled={updateSettings.isPending}
+            >
+              <SelectTrigger id="voice-mode-desktop" className="h-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {VOICE_MODE_DESKTOP_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="voice-mode-mobile">На телефоне{touchDevice ? ' (это устройство)' : ''}</Label>
+            <Select
+              value={currentVoiceModeMobile}
+              onValueChange={handleVoiceModeMobileChange}
+              disabled={updateSettings.isPending}
+            >
+              <SelectTrigger id="voice-mode-mobile" className="h-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {VOICE_MODE_MOBILE_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </section>
 

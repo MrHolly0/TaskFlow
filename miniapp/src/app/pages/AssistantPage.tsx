@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { IconSend, IconMicrophone, IconSparkles, IconAlertTriangle } from '@tabler/icons-react';
+import { useState } from 'react';
+import { IconSend, IconSparkles, IconAlertTriangle } from '@tabler/icons-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   useSendAssistantMessage,
@@ -9,7 +9,9 @@ import {
   Proposal,
   ApplyResult,
 } from '@/lib/hooks/useAssistant';
+import { useEffectiveVoiceMode } from '@/lib/hooks/useVoiceMode';
 import { ProposalCard } from '@/app/components/ProposalCard';
+import { VoiceRecorderButton } from '@/app/components/VoiceRecorderButton';
 import { Button } from '@/app/components/ui/button';
 import { Textarea } from '@/app/components/ui/textarea';
 import { Card } from '@/app/components/ui/card';
@@ -47,7 +49,7 @@ export function AssistantPage() {
   const setActionAccepted = useSetActionAccepted();
   const applyProposal = useApplyProposal();
   const rejectProposal = useRejectProposal();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const voiceMode = useEffectiveVoiceMode();
 
   const replaceEntry = (localId: string, entry: Entry) => {
     setEntries((prev) => prev.map((e) => ('localId' in e && e.localId === localId ? entry : e)));
@@ -75,8 +77,7 @@ export function AssistantPage() {
     send({ text });
   };
 
-  const handleFile = (file: File | null) => {
-    if (!file) return;
+  const handleVoiceRecorded = (file: File) => {
     send({ file });
   };
 
@@ -184,16 +185,7 @@ export function AssistantPage() {
           placeholder="Например: закрой молоко и позвони Марку завтра"
           className="min-h-16 max-h-32 resize-none"
         />
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="audio/*"
-          className="hidden"
-          onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
-        />
-        <Button variant="outline" size="icon" onClick={() => fileInputRef.current?.click()} title="Голосовое сообщение">
-          <IconMicrophone className="h-4 w-4" />
-        </Button>
+        <VoiceRecorderButton mode={voiceMode} onRecorded={handleVoiceRecorded} disabled={sendMessage.isPending} />
         <Button size="icon" onClick={handleSubmit} disabled={!input.trim() || sendMessage.isPending} title="Отправить">
           <IconSend className="h-4 w-4" />
         </Button>

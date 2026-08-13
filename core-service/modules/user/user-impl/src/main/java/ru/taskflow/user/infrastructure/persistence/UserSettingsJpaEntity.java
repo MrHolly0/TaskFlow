@@ -34,4 +34,10 @@ public class UserSettingsJpaEntity {
 
     @Column(name = "auto_clean_completed_days")
     private Integer autoCleanCompletedDays;
+
+    @Column(name = "voice_input_mode_desktop", length = 16)
+    private String voiceInputModeDesktop = "SILENCE";
+
+    @Column(name = "voice_input_mode_mobile", length = 16)
+    private String voiceInputModeMobile = "SILENCE";
 }

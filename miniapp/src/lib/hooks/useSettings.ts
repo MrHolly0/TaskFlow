@@ -11,12 +11,16 @@ const getClient = () => {
   });
 };
 
+export type VoiceInputMode = 'SILENCE' | 'TOGGLE' | 'HOLD';
+
 export interface UserSettings {
   notificationsEnabled: boolean;
   defaultReminderMinutes: number;
   urgentExtraReminder: boolean;
   preferredLlm: string;
   autoCleanCompletedDays: number | null;
+  voiceInputModeDesktop: VoiceInputMode;
+  voiceInputModeMobile: VoiceInputMode;
 }
 
 interface UpdateSettingsRequest {
@@ -25,6 +29,8 @@ interface UpdateSettingsRequest {
   defaultReminderMinutes?: number;
   urgentExtraReminder?: boolean;
   preferredLlm?: string;
+  voiceInputModeDesktop?: VoiceInputMode;
+  voiceInputModeMobile?: VoiceInputMode;
 }
 
 export const useSettings = () => {
