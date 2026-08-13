@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.taskflow.shared.exception.NotFoundException;
+import ru.taskflow.shared.exception.ValidationException;
 import ru.taskflow.user.api.UserDto;
 import ru.taskflow.user.api.UserService;
 import ru.taskflow.user.api.dto.UpdateSettingsRequest;
@@ -13,12 +14,15 @@ import ru.taskflow.user.infrastructure.persistence.UserRepository;
 import ru.taskflow.user.infrastructure.persistence.UserSettingsJpaEntity;
 import ru.taskflow.user.infrastructure.persistence.UserSettingsRepository;
 
+import java.time.DateTimeException;
 import java.time.ZoneId;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class UserServiceImpl implements UserService {
+
+    private static final String DEFAULT_TIMEZONE = "Europe/Moscow";
 
     private final UserRepository userRepository;
     private final UserSettingsRepository settingsRepository;
@@ -49,9 +53,12 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional(readOnly = true)
     public UserSettingsDto getSettings(UUID userId) {
+        String timezone = userRepository.findById(userId)
+                .map(UserJpaEntity::getTimezone)
+                .orElse(DEFAULT_TIMEZONE);
         return settingsRepository.findByUserId(userId)
-                .map(this::toSettingsDto)
-                .orElseGet(this::defaultSettings);
+                .map(e -> toSettingsDto(e, timezone))
+                .orElseGet(() -> defaultSettings(timezone));
     }
 
     @Override
@@ -65,6 +72,10 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public void updateSettings(UUID userId, UpdateSettingsRequest request) {
+        if (request.timezone() != null) {
+            validateTimezone(request.timezone());
+        }
+
         var settings = settingsRepository.findByUserId(userId)
                 .orElseGet(() -> createDefaultSettings(userId));
 
@@ -77,6 +88,21 @@ public class UserServiceImpl implements UserService {
         if (request.voiceInputModeMobile() != null) settings.setVoiceInputModeMobile(request.voiceInputModeMobile());
 
         settingsRepository.save(settings);
+
+        if (request.timezone() != null) {
+            var user = userRepository.findById(userId)
+                    .orElseThrow(() -> new NotFoundException("User not found: " + userId));
+            user.setTimezone(request.timezone());
+            userRepository.save(user);
+        }
+    }
+
+    private void validateTimezone(String timezone) {
+        try {
+            ZoneId.of(timezone);
+        } catch (DateTimeException e) {
+            throw new ValidationException("Неизвестный часовой пояс: " + timezone);
+        }
     }
 
     private UserSettingsJpaEntity createDefaultSettings(UUID userId) {
@@ -87,7 +113,7 @@ public class UserServiceImpl implements UserService {
         return settings;
     }
 
-    private UserSettingsDto toSettingsDto(UserSettingsJpaEntity e) {
+    private UserSettingsDto toSettingsDto(UserSettingsJpaEntity e, String timezone) {
         return new UserSettingsDto(
                 e.isNotificationsEnabled(),
                 e.getDefaultReminderMinutes(),
@@ -95,12 +121,13 @@ public class UserServiceImpl implements UserService {
                 e.getPreferredLlm(),
                 e.getAutoCleanCompletedDays(),
                 e.getVoiceInputModeDesktop(),
-                e.getVoiceInputModeMobile()
+                e.getVoiceInputModeMobile(),
+                timezone
         );
     }
 
-    private UserSettingsDto defaultSettings() {
-        return new UserSettingsDto(true, 60, true, "groq", null, "SILENCE", "SILENCE");
+    private UserSettingsDto defaultSettings(String timezone) {
+        return new UserSettingsDto(true, 60, true, "groq", null, "SILENCE", "SILENCE", timezone);
     }
 
     private UserDto toDto(UserJpaEntity e) {

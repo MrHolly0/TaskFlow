@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import ru.taskflow.shared.exception.AccessDeniedException;
 import ru.taskflow.shared.exception.NotFoundException;
+import ru.taskflow.shared.exception.ValidationException;
 
 import java.net.URI;
 import java.util.stream.Collectors;
@@ -36,6 +37,16 @@ public class GlobalExceptionHandler {
         );
         problemDetail.setType(URI.create("about:blank"));
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(problemDetail);
+    }
+
+    @ExceptionHandler(ValidationException.class)
+    public ResponseEntity<ProblemDetail> handleValidationException(ValidationException ex, WebRequest request) {
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
+            HttpStatus.BAD_REQUEST,
+            ex.getMessage()
+        );
+        problemDetail.setType(URI.create("about:blank"));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(problemDetail);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

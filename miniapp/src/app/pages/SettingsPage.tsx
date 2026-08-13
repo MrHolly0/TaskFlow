@@ -59,12 +59,20 @@ const VOICE_MODE_MOBILE_OPTIONS: { value: VoiceInputMode; label: string }[] = [
   { value: 'HOLD', label: 'Удерживать, пока говоришь' },
 ];
 
+const TIMEZONE_OPTIONS = [
+  { value: 'Europe/Moscow', label: 'Europe/Moscow (UTC+3)' },
+  { value: 'Europe/Kaliningrad', label: 'Europe/Kaliningrad (UTC+2)' },
+  { value: 'Asia/Yekaterinburg', label: 'Asia/Yekaterinburg (UTC+5)' },
+  { value: 'Asia/Novosibirsk', label: 'Asia/Novosibirsk (UTC+7)' },
+  { value: 'Asia/Vladivostok', label: 'Asia/Vladivostok (UTC+10)' },
+  { value: 'UTC', label: 'UTC' },
+];
+
 export function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const user = useStore((s) => s.user);
   const logout = useStore((s) => s.logout);
 
-  const [timezone, setTimezone] = useSetting('settings.timezone', 'europe-moscow');
   const [notifications, setNotifications] = useBoolSetting('settings.notifications', true);
   const [reminderTime, setReminderTime] = useSetting('settings.reminderTime', '1h');
   const [urgentExtra, setUrgentExtra] = useBoolSetting('settings.urgentExtra', true);
@@ -82,6 +90,12 @@ export function SettingsPage() {
     const option = AUTO_CLEAN_OPTIONS.find((o) => o.value === value);
     if (!option) return;
     updateSettings.mutate({ autoCleanCompletedDays: option.days });
+  };
+
+  const currentTimezone = serverSettings?.timezone ?? 'Europe/Moscow';
+
+  const handleTimezoneChange = (value: string) => {
+    updateSettings.mutate({ timezone: value });
   };
 
   const touchDevice = isTouchDevice();
@@ -126,17 +140,20 @@ export function SettingsPage() {
           )}
           <div className="flex flex-col gap-2">
             <Label htmlFor="timezone">Часовой пояс</Label>
-            <Select value={timezone} onValueChange={setTimezone}>
+            <Select
+              value={currentTimezone}
+              onValueChange={handleTimezoneChange}
+              disabled={updateSettings.isPending}
+            >
               <SelectTrigger id="timezone" className="h-10">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="europe-moscow">Europe/Moscow (UTC+3)</SelectItem>
-                <SelectItem value="europe-kaliningrad">Europe/Kaliningrad (UTC+2)</SelectItem>
-                <SelectItem value="asia-yekaterinburg">Asia/Yekaterinburg (UTC+5)</SelectItem>
-                <SelectItem value="asia-novosibirsk">Asia/Novosibirsk (UTC+7)</SelectItem>
-                <SelectItem value="asia-vladivostok">Asia/Vladivostok (UTC+10)</SelectItem>
-                <SelectItem value="utc">UTC</SelectItem>
+                {TIMEZONE_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

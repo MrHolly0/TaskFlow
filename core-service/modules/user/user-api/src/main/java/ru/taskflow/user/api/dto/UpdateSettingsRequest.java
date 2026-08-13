@@ -7,5 +7,6 @@ public record UpdateSettingsRequest(
         String preferredLlm,
         Integer autoCleanCompletedDays,
         String voiceInputModeDesktop,
-        String voiceInputModeMobile
+        String voiceInputModeMobile,
+        String timezone
 ) {}

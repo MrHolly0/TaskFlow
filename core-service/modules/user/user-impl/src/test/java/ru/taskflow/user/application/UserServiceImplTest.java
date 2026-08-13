@@ -6,6 +6,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import ru.taskflow.shared.exception.NotFoundException;
+import ru.taskflow.shared.exception.ValidationException;
 import ru.taskflow.user.api.dto.UpdateSettingsRequest;
 import ru.taskflow.user.api.dto.UserSettingsDto;
 import ru.taskflow.user.infrastructure.persistence.UserJpaEntity;
@@ -20,6 +21,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -70,7 +72,7 @@ class UserServiceImplTest {
     void updateSettings_updatesVoiceModes() {
         UUID userId = UUID.randomUUID();
         var entity = new UserSettingsJpaEntity();
-        var request = new UpdateSettingsRequest(null, null, null, null, null, "TOGGLE", "HOLD");
+        var request = new UpdateSettingsRequest(null, null, null, null, null, "TOGGLE", "HOLD", null);
         when(settingsRepository.findByUserId(userId)).thenReturn(Optional.of(entity));
         UserServiceImpl service = new UserServiceImpl(userRepository, settingsRepository);
 
@@ -80,5 +82,49 @@ class UserServiceImplTest {
         verify(settingsRepository).save(captor.capture());
         assertThat(captor.getValue().getVoiceInputModeDesktop()).isEqualTo("TOGGLE");
         assertThat(captor.getValue().getVoiceInputModeMobile()).isEqualTo("HOLD");
+    }
+
+    @Test
+    void getSettings_returnsStoredTimezone() {
+        UUID userId = UUID.randomUUID();
+        var user = new UserJpaEntity();
+        user.setTimezone("Asia/Yekaterinburg");
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(settingsRepository.findByUserId(userId)).thenReturn(Optional.empty());
+        UserServiceImpl service = new UserServiceImpl(userRepository, settingsRepository);
+
+        UserSettingsDto settings = service.getSettings(userId);
+
+        assertThat(settings.timezone()).isEqualTo("Asia/Yekaterinburg");
+    }
+
+    @Test
+    void updateSettings_savesValidTimezone() {
+        UUID userId = UUID.randomUUID();
+        var settingsEntity = new UserSettingsJpaEntity();
+        var user = new UserJpaEntity();
+        var request = new UpdateSettingsRequest(null, null, null, null, null, null, null, "Asia/Yekaterinburg");
+        when(settingsRepository.findByUserId(userId)).thenReturn(Optional.of(settingsEntity));
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        UserServiceImpl service = new UserServiceImpl(userRepository, settingsRepository);
+
+        service.updateSettings(userId, request);
+
+        ArgumentCaptor<UserJpaEntity> captor = ArgumentCaptor.forClass(UserJpaEntity.class);
+        verify(userRepository).save(captor.capture());
+        assertThat(captor.getValue().getTimezone()).isEqualTo("Asia/Yekaterinburg");
+    }
+
+    @Test
+    void updateSettings_rejectsUnknownTimezone() {
+        UUID userId = UUID.randomUUID();
+        var request = new UpdateSettingsRequest(null, null, null, null, null, null, null, "Mars/Colony");
+        UserServiceImpl service = new UserServiceImpl(userRepository, settingsRepository);
+
+        assertThatThrownBy(() -> service.updateSettings(userId, request))
+                .isInstanceOf(ValidationException.class);
+
+        verify(userRepository, never()).save(any());
+        verify(settingsRepository, never()).save(any());
     }
 }

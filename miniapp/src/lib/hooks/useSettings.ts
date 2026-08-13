@@ -21,6 +21,7 @@ export interface UserSettings {
   autoCleanCompletedDays: number | null;
   voiceInputModeDesktop: VoiceInputMode;
   voiceInputModeMobile: VoiceInputMode;
+  timezone: string;
 }
 
 interface UpdateSettingsRequest {
@@ -31,6 +32,7 @@ interface UpdateSettingsRequest {
   preferredLlm?: string;
   voiceInputModeDesktop?: VoiceInputMode;
   voiceInputModeMobile?: VoiceInputMode;
+  timezone?: string;
 }
 
 export const useSettings = () => {
