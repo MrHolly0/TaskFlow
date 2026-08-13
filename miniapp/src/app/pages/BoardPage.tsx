@@ -28,6 +28,7 @@ import {
   IconChevronRight,
 } from '@tabler/icons-react';
 import { formatDeadline, cn } from '@/lib/utils';
+import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
 import { Badge } from '@/app/components/ui/badge';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
@@ -86,6 +87,7 @@ function DraggableTaskCard({
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: task.id,
   });
+  const { timezone, isReady: timezoneReady } = useUserTimezone();
 
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
@@ -116,10 +118,10 @@ function DraggableTaskCard({
             </div>
 
             <div className="flex flex-wrap gap-2 items-center">
-              {task.deadline && (
+              {task.deadline && timezoneReady && (
                 <span className="flex items-center gap-1 text-xs text-muted-foreground">
                   <IconClock className="h-3 w-3" />
-                  {formatDeadline(task.deadline)}
+                  {formatDeadline(task.deadline, timezone)}
                 </span>
               )}
               {task.group && (

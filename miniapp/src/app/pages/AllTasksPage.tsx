@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { IconSearch, IconPlus, IconClock, IconInbox } from '@tabler/icons-react';
 import { Status } from '@/lib/store';
-import { formatDeadline, cn } from '@/lib/utils';
+import { formatDeadline, endOfZonedDay, cn } from '@/lib/utils';
 import { getStatusLabel } from '@/lib/store';
 import { useTasksList } from '@/lib/hooks/useTasks';
+import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
@@ -46,6 +47,7 @@ export function AllTasksPage() {
   const [quickInputOpen, setQuickInputOpen] = useState(false);
 
   const { data: allTasks = [], isLoading, error } = useTasksList();
+  const { timezone, isReady: timezoneReady } = useUserTimezone();
 
   const filteredTasks = (allTasks || []).filter((task) => {
     if (search && !task.title.toLowerCase().includes(search.toLowerCase())) return false;
@@ -61,12 +63,12 @@ export function AllTasksPage() {
       );
     }
     if (context === 'today') {
-      const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+      const endOfToday = endOfZonedDay(0, timezone, now);
       return task.status !== 'DONE' && task.status !== 'CANCELLED' &&
         (deadline === null || deadline <= endOfToday);
     }
     if (context === 'week') {
-      const endOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 6, 23, 59, 59);
+      const endOfWeek = endOfZonedDay(6, timezone, now);
       return task.status !== 'DONE' && task.status !== 'CANCELLED' &&
         (deadline === null || deadline <= endOfWeek);
     }
@@ -78,7 +80,7 @@ export function AllTasksPage() {
     setTaskModalOpen(true);
   };
 
-  if (isLoading) {
+  if (isLoading || !timezoneReady) {
     return (
       <div className="max-w-4xl mx-auto flex items-center justify-center min-h-[60vh]">
         <p className="text-muted-foreground">Загружаем задачи...</p>
@@ -179,7 +181,7 @@ export function AllTasksPage() {
                     {task.deadline && (
                       <span className="flex items-center gap-1">
                         <IconClock className="h-3 w-3" />
-                        {formatDeadline(task.deadline)}
+                        {formatDeadline(task.deadline, timezone)}
                       </span>
                     )}
                     {task.groupName && <span>{task.groupName}</span>}

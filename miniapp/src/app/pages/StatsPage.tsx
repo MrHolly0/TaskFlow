@@ -1,9 +1,12 @@
 import { Card } from '@/app/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { useTasksList } from '@/lib/hooks/useTasks';
+import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
+import { isSameZonedDay, zonedDayKey } from '@/lib/utils';
 
 export function StatsPage() {
   const { data: allTasks = [] } = useTasksList();
+  const { timezone, isReady: timezoneReady } = useUserTimezone();
 
   const now = new Date();
   const weekAgo = new Date(now);
@@ -15,29 +18,28 @@ export function StatsPage() {
     t.deadline && new Date(t.deadline) < now && t.status !== 'DONE' && t.status !== 'CANCELLED'
   ).length;
 
-  const activityData = Array.from({ length: 7 }, (_, i) => {
+  const activityData = timezoneReady ? Array.from({ length: 7 }, (_, i) => {
     const date = new Date();
     date.setDate(date.getDate() - (6 - i));
-    const dayStr = date.toDateString();
 
     const totalDay = allTasks.filter((task: any) =>
-      new Date(task.createdAt).toDateString() === dayStr
+      isSameZonedDay(task.createdAt, date, timezone)
     ).length;
 
     const completedDay = allTasks.filter((task: any) =>
-      task.completedAt && new Date(task.completedAt).toDateString() === dayStr
+      task.completedAt && isSameZonedDay(task.completedAt, date, timezone)
     ).length;
 
     return {
-      name: date.toLocaleDateString('ru-RU', { weekday: 'short' }),
+      name: date.toLocaleDateString('ru-RU', { weekday: 'short', timeZone: timezone }),
       создано: totalDay,
       сделано: completedDay,
     };
-  });
+  }) : [];
 
-  const activeDays = new Set(
-    allTasks.map((t: any) => new Date(t.createdAt).toDateString())
-  ).size;
+  const activeDays = timezoneReady
+    ? new Set(allTasks.map((t: any) => zonedDayKey(t.createdAt, timezone))).size
+    : 0;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">

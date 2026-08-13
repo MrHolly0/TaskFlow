@@ -1,12 +1,40 @@
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { Priority, Task } from './store';
+import { toZonedTime, fromZonedTime } from 'date-fns-tz';
+import { isSameDay, addDays, format } from 'date-fns';
+import { Priority } from './store';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatDeadline(deadline: string): string {
+/** Тот же календарный день в указанном поясе — не в поясе браузера. */
+export function isSameZonedDay(a: Date | string, b: Date | string, timezone: string): boolean {
+  return isSameDay(toZonedTime(a, timezone), toZonedTime(b, timezone));
+}
+
+/** Ключ календарного дня (yyyy-MM-dd) в указанном поясе — для группировки/подсчёта уникальных дней. */
+export function zonedDayKey(date: Date | string, timezone: string): string {
+  return format(toZonedTime(date, timezone), 'yyyy-MM-dd');
+}
+
+/**
+ * Конец календарного дня (23:59:59), отстоящего на daysFromNow дней от `now`,
+ * посчитанный в указанном поясе, возвращённый как настоящий момент времени (UTC-инстант).
+ */
+export function endOfZonedDay(daysFromNow: number, timezone: string, now: Date = new Date()): Date {
+  const zonedNow = toZonedTime(now, timezone);
+  const zonedTarget = addDays(zonedNow, daysFromNow);
+  const wallClockEnd = new Date(
+    zonedTarget.getFullYear(),
+    zonedTarget.getMonth(),
+    zonedTarget.getDate(),
+    23, 59, 59
+  );
+  return fromZonedTime(wallClockEnd, timezone);
+}
+
+export function formatDeadline(deadline: string, timezone: string): string {
   const date = new Date(deadline);
   const now = new Date();
   const diff = date.getTime() - now.getTime();
@@ -44,7 +72,8 @@ export function formatDeadline(deadline: string): string {
 
   return date.toLocaleDateString('ru-RU', {
     day: 'numeric',
-    month: 'long'
+    month: 'long',
+    timeZone: timezone,
   });
 }
 
@@ -80,40 +109,3 @@ export function getPriorityBgColor(priority: Priority): string {
   return colors[priority];
 }
 
-export function getFocusTasks(tasks: Task[]): Task[] {
-  const now = new Date();
-
-  const overdue = tasks.filter(
-    (task) => task.status === 'TODO' && task.deadline && new Date(task.deadline) < now
-  );
-
-  if (overdue.length > 0) {
-    return overdue.slice(0, 3);
-  }
-
-  const urgent = tasks.filter(
-    (task) => task.status === 'TODO' && task.priority === 'URGENT'
-  );
-
-  if (urgent.length > 0) {
-    return urgent.slice(0, 3);
-  }
-
-  const today = tasks.filter((task) => {
-    if (task.status !== 'TODO' || !task.deadline) return false;
-    const deadline = new Date(task.deadline);
-    return deadline.toDateString() === now.toDateString();
-  });
-
-  if (today.length > 0) {
-    return today.slice(0, 3);
-  }
-
-  return tasks
-    .filter((task) => task.status === 'TODO')
-    .sort((a, b) => {
-      const priorityOrder = { URGENT: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
-      return priorityOrder[a.priority] - priorityOrder[b.priority];
-    })
-    .slice(0, 3);
-}

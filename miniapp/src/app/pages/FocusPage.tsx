@@ -2,9 +2,12 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { IconFlame, IconBolt, IconSquare, IconClock, IconArrowRight, IconPencil } from '@tabler/icons-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { fromZonedTime, toZonedTime } from 'date-fns-tz';
+import { addDays } from 'date-fns';
 import { useStore, Priority } from '@/lib/store';
 import { formatDeadline, getPriorityBgColor, cn } from '@/lib/utils';
 import { useFocusTasks, useCompleteTask, useUpdateTask, useTasksList } from '@/lib/hooks/useTasks';
+import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
 import { TaskDetailModal } from '@/app/components/TaskDetailModal';
@@ -58,12 +61,13 @@ function getPriorityLabel(priority: Priority): string {
 interface FocusTaskCardProps {
   task: Task;
   index: number;
+  timezone: string;
   onComplete: (id: string) => void;
   onSnooze: (id: string) => void;
   onClick: (task: Task) => void;
 }
 
-function FocusTaskCard({ task, index, onComplete, onSnooze, onClick }: FocusTaskCardProps) {
+function FocusTaskCard({ task, index, timezone, onComplete, onSnooze, onClick }: FocusTaskCardProps) {
   const [completing, setCompleting] = useState(false);
 
   const handleComplete = () => {
@@ -109,7 +113,7 @@ function FocusTaskCard({ task, index, onComplete, onSnooze, onClick }: FocusTask
             {task.deadline && (
               <div className="flex items-center gap-1.5">
                 <IconClock className="h-3.5 w-3.5" />
-                <span>{formatDeadline(task.deadline)}</span>
+                <span>{formatDeadline(task.deadline, timezone)}</span>
               </div>
             )}
             {task.groupName && (
@@ -161,6 +165,7 @@ export function FocusPage() {
   const { data: allTasks = [] } = useTasksList();
   const { mutate: completeTask } = useCompleteTask();
   const { mutate: updateTask } = useUpdateTask();
+  const { timezone, isReady: timezoneReady } = useUserTimezone();
 
   const pendingCount = allTasks.filter((t: any) => t.status !== 'DONE' && t.status !== 'CANCELLED').length;
   const remainingCount = Math.max(0, pendingCount - focusTasks.length);
@@ -173,13 +178,20 @@ export function FocusPage() {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
+    timeZone: timezone,
   });
 
   const handleSnooze = (id: string) => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(9, 0, 0, 0);
-    updateTask({ id, deadline: tomorrow.toISOString() });
+    const zonedNow = toZonedTime(new Date(), timezone);
+    const zonedTomorrow = addDays(zonedNow, 1);
+    const wallClockTomorrow9am = new Date(
+      zonedTomorrow.getFullYear(),
+      zonedTomorrow.getMonth(),
+      zonedTomorrow.getDate(),
+      9, 0, 0
+    );
+    const tomorrow9am = fromZonedTime(wallClockTomorrow9am, timezone);
+    updateTask({ id, deadline: tomorrow9am.toISOString() });
   };
 
   const handleOpenTask = (task: Task) => {
@@ -191,7 +203,7 @@ export function FocusPage() {
     completeTask(id);
   };
 
-  if (isLoading) {
+  if (isLoading || !timezoneReady) {
     return (
       <div className="max-w-2xl mx-auto flex items-center justify-center min-h-[60vh]">
         <p className="text-muted-foreground">Загружаем задачи...</p>
@@ -269,6 +281,7 @@ export function FocusPage() {
                 key={task.id}
                 task={task}
                 index={index}
+                timezone={timezone}
                 onComplete={handleCompleteTask}
                 onSnooze={handleSnooze}
                 onClick={handleOpenTask}
