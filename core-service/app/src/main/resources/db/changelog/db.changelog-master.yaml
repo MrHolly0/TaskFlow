@@ -19,3 +19,5 @@ databaseChangeLog:
       file: db/changelog/009-assistant-failed-status.yaml
   - include:
       file: db/changelog/010-drop-task-draft.yaml
+  - include:
+      file: db/changelog/011-backfill-group-style.yaml

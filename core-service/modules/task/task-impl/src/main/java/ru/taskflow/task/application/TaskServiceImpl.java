@@ -51,6 +51,7 @@ public class TaskServiceImpl implements TaskService {
     private final TaskMapper taskMapper;
     private final NotificationService notificationService;
     private final AuditService auditService;
+    private final GroupStyleResolver groupStyleResolver;
 
     /**
      * Создаёт новую задачу для пользователя.
@@ -260,6 +261,9 @@ public class TaskServiceImpl implements TaskService {
                         var g = new GroupJpaEntity();
                         g.setUserId(userId);
                         g.setName(groupName);
+                        var style = groupStyleResolver.resolve(groupName);
+                        g.setColor(style.color());
+                        g.setIcon(style.icon());
                         return groupRepository.save(g);
                     });
         }

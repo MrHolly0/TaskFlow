@@ -1,0 +1,7 @@
+databaseChangeLog:
+  - changeSet:
+      id: 011-backfill-group-style
+      author: taskflow
+      changes:
+        - customChange:
+            class: ru.taskflow.app.migration.BackfillGroupStyleChange

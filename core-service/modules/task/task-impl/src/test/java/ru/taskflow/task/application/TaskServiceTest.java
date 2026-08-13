@@ -42,6 +42,8 @@ class TaskServiceTest {
     private NotificationService notificationService;
     @Mock
     private AuditService auditService;
+    @Mock
+    private GroupStyleResolver groupStyleResolver;
 
     @InjectMocks
     private TaskServiceImpl taskService;
@@ -149,6 +151,7 @@ class TaskServiceTest {
 
         when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
         when(groupRepository.findByUserIdAndName(userId, "Новая группа")).thenReturn(Optional.empty());
+        when(groupStyleResolver.resolve("Новая группа")).thenReturn(new GroupStyleResolver.GroupStyle("blue", "folder"));
         when(groupRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         when(taskRepository.save(any())).thenReturn(entity);
         when(taskMapper.toResponse(entity)).thenReturn(response);
@@ -159,6 +162,27 @@ class TaskServiceTest {
         verify(groupRepository).save(groupCaptor.capture());
         assertThat(groupCaptor.getValue().getName()).isEqualTo("Новая группа");
         assertThat(entity.getGroup()).isEqualTo(groupCaptor.getValue());
+    }
+
+    @Test
+    void update_setsColorAndIconOnAutoCreatedGroup() {
+        var entity = taskEntity();
+        var request = new UpdateTaskRequest(null, null, null, null, null, null, "Спорт", null, null);
+        var response = mockResponse(taskId, "задача");
+
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(groupRepository.findByUserIdAndName(userId, "Спорт")).thenReturn(Optional.empty());
+        when(groupStyleResolver.resolve("Спорт")).thenReturn(new GroupStyleResolver.GroupStyle("cyan", "run"));
+        when(groupRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(taskRepository.save(any())).thenReturn(entity);
+        when(taskMapper.toResponse(entity)).thenReturn(response);
+
+        taskService.update(userId, taskId, request);
+
+        ArgumentCaptor<GroupJpaEntity> groupCaptor = ArgumentCaptor.forClass(GroupJpaEntity.class);
+        verify(groupRepository).save(groupCaptor.capture());
+        assertThat(groupCaptor.getValue().getColor()).isEqualTo("cyan");
+        assertThat(groupCaptor.getValue().getIcon()).isEqualTo("run");
     }
 
     @Test
