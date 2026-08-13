@@ -51,8 +51,9 @@ public class NotificationDispatcher {
             Map<String, Object> payload = objectMapper.readValue(notification.payload(), Map.class);
             String title = (String) payload.get("taskTitle");
             String deadline = (String) payload.get("deadline");
+            String timezone = (String) payload.get("timezone");
 
-            sender.sendTaskReminder(notification.telegramChatId(), title, deadline);
+            sender.sendTaskReminder(notification.telegramChatId(), title, deadline, timezone);
         } catch (Exception e) {
             log.error("Failed to parse task reminder payload: {}", notification.payload(), e);
             throw new RuntimeException("Failed to dispatch task reminder", e);

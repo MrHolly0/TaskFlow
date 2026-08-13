@@ -8,11 +8,13 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.taskflow.notify.api.NotificationService;
 import ru.taskflow.notify.infrastructure.persistence.ScheduledNotificationJpaEntity;
 import ru.taskflow.notify.infrastructure.persistence.ScheduledNotificationRepository;
+import ru.taskflow.user.api.UserService;
 import ru.taskflow.user.infrastructure.persistence.UserRepository;
 import ru.taskflow.user.infrastructure.persistence.UserSettingsJpaEntity;
 import ru.taskflow.user.infrastructure.persistence.UserSettingsRepository;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -31,6 +33,7 @@ public class NotificationServiceImpl implements NotificationService {
     private final ScheduledNotificationRepository scheduledNotificationRepository;
     private final UserRepository userRepository;
     private final UserSettingsRepository userSettingsRepository;
+    private final UserService userService;
     private final ObjectMapper objectMapper;
 
     @Override
@@ -47,6 +50,7 @@ public class NotificationServiceImpl implements NotificationService {
         }
 
         Long telegramChatId = user.get().getTelegramId();
+        ZoneId timezone = userService.getTimezone(userId);
 
         var userSettings = userSettingsRepository.findByUserId(userId);
         int offsetMinutes = userSettings
@@ -71,7 +75,7 @@ public class NotificationServiceImpl implements NotificationService {
         notification.setTelegramChatId(telegramChatId);
         notification.setFireAt(fireAt);
         notification.setPayloadType("TASK_REMINDER");
-        notification.setPayload(buildPayload(title, deadline));
+        notification.setPayload(buildPayload(title, deadline, timezone));
         notification.setSent(false);
         notification.setRetryCount(0);
 
@@ -86,11 +90,12 @@ public class NotificationServiceImpl implements NotificationService {
         log.debug("Cancelled unsent notifications for task: {}", taskId);
     }
 
-    private String buildPayload(String title, OffsetDateTime deadline) {
+    private String buildPayload(String title, OffsetDateTime deadline, ZoneId timezone) {
         try {
             Map<String, Object> payload = new HashMap<>();
             payload.put("taskTitle", title);
             payload.put("deadline", deadline.toString());
+            payload.put("timezone", timezone.getId());
             return objectMapper.writeValueAsString(payload);
         } catch (Exception e) {
             log.error("Failed to serialize notification payload", e);

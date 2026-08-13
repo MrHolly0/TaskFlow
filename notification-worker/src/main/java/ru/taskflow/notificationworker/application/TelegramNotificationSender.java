@@ -8,8 +8,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
-import java.time.Instant;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.Locale;
@@ -29,13 +31,12 @@ public class TelegramNotificationSender {
     @Value("${app.telegram.api-base-url:https://api.telegram.org}")
     private String apiBaseUrl;
 
-    private static final ZoneId MOSCOW = ZoneId.of("Europe/Moscow");
-    private static final DateTimeFormatter DEADLINE_FMT =
-            DateTimeFormatter.ofPattern("d MMMM, HH:mm", new Locale("ru")).withZone(MOSCOW);
+    private static final ZoneId DEFAULT_ZONE = ZoneId.of("Europe/Moscow");
+    private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("H:mm");
+    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("d MMMM", new Locale("ru"));
 
-    public void sendTaskReminder(Long chatId, String title, String deadline) {
-        String deadlineFormatted = formatDeadline(deadline);
-        String text = String.format("📌 Напоминание о задаче\n\n<b>%s</b>\nДедлайн: %s", title, deadlineFormatted);
+    public void sendTaskReminder(Long chatId, String title, String deadline, String timezone) {
+        String text = buildMessageText(title, deadline, timezone);
 
         try {
             sendMessage(chatId, text);
@@ -46,13 +47,50 @@ public class TelegramNotificationSender {
         }
     }
 
-    private String formatDeadline(String iso) {
-        if (iso == null || iso.isBlank()) return "не указан";
-        try {
-            return DEADLINE_FMT.format(Instant.parse(iso));
-        } catch (Exception e) {
-            return iso;
+    /**
+     * Собирает текст напоминания. Отдельная точка входа для тестов —
+     * не требует поднятия RestClient ради проверки чистой логики форматирования.
+     */
+    String buildMessageText(String title, String deadline, String timezone) {
+        return "📌 Напоминание о задаче\n\n<b>" + title + "</b>" + deadlineLine(deadline, timezone);
+    }
+
+    private String deadlineLine(String iso, String timezone) {
+        if (iso == null || iso.isBlank()) {
+            return "";
         }
+        ZoneId zone = resolveZone(timezone);
+        try {
+            ZonedDateTime local = OffsetDateTime.parse(iso).atZoneSameInstant(zone);
+            return "\nДедлайн: " + humanize(local, zone);
+        } catch (Exception e) {
+            return "\nДедлайн: " + iso;
+        }
+    }
+
+    private ZoneId resolveZone(String timezone) {
+        if (timezone == null || timezone.isBlank()) {
+            return DEFAULT_ZONE;
+        }
+        try {
+            return ZoneId.of(timezone);
+        } catch (Exception e) {
+            return DEFAULT_ZONE;
+        }
+    }
+
+    private String humanize(ZonedDateTime local, ZoneId zone) {
+        LocalDate today = LocalDate.now(zone);
+        LocalDate date = local.toLocalDate();
+        String time = TIME_FMT.format(local);
+
+        if (date.isEqual(today)) {
+            return "сегодня в " + time;
+        }
+        if (date.isEqual(today.plusDays(1))) {
+            return "завтра в " + time;
+        }
+        return DATE_FMT.format(local) + " в " + time;
     }
 
     private void sendMessage(Long chatId, String text) {
