@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { Status, Task } from '@/lib/store';
 import { useTasksList, useUpdateTask } from '@/lib/hooks/useTasks';
 import {
+  CollisionDetection,
   DndContext,
   DragEndEvent,
   DragStartEvent,
   DragOverlay,
-  closestCorners,
+  pointerWithin,
+  rectIntersection,
   MouseSensor,
   TouchSensor,
   useSensor,
@@ -37,6 +39,20 @@ const PRIORITY_DOT: Record<string, string> = {
   HIGH: 'bg-orange-500',
   MEDIUM: 'bg-blue-500',
   LOW: 'bg-gray-400',
+};
+
+/**
+ * Статус определяется по положению пальца внутри области — актуально для длинных
+ * секций, у которых closestCorners требовал тащить далеко за границу. Если палец
+ * не над одной из секций (например, ещё не долетел до соседней в горизонтальном
+ * режиме), запасной вариант — пересечение прямоугольников.
+ */
+const collisionDetection: CollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args);
+  if (pointerCollisions.length > 0) {
+    return pointerCollisions;
+  }
+  return rectIntersection(args);
 };
 
 const COLUMN_STYLE: Record<Status, string> = {
@@ -400,7 +416,7 @@ export function BoardPage() {
 
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={collisionDetection}
           autoScroll={{ threshold: { x: 0.25, y: 0.2 } }}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
