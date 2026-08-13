@@ -81,7 +81,13 @@ export function GroupDetailModal({ group, open, onClose }: GroupDetailModalProps
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md w-full max-h-[90vh] flex flex-col">
+      <DialogContent
+        className={cn(
+          'sm:max-w-md w-full flex flex-col',
+          'top-4 translate-y-0 max-h-[calc(100dvh-2rem)]',
+          'sm:top-[50%] sm:translate-y-[-50%] sm:max-h-[90dvh]'
+        )}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">

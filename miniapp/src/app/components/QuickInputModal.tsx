@@ -15,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/app/components/ui/dialog';
+import { cn } from '@/lib/utils';
 
 type Phase = 'input' | 'processing' | 'confirm' | 'done';
 
@@ -132,7 +133,13 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={(o: boolean) => !o && handleClose()}>
-      <DialogContent className="sm:max-w-md w-full max-h-[90vh] overflow-y-auto">
+      <DialogContent
+        className={cn(
+          'sm:max-w-md w-full overflow-y-auto',
+          'top-4 translate-y-0 max-h-[calc(100dvh-2rem)]',
+          'sm:top-[50%] sm:translate-y-[-50%] sm:max-h-[90dvh]'
+        )}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <IconSparkles className="h-5 w-5 text-primary" />
