@@ -128,7 +128,8 @@ public class TaskServiceImpl implements TaskService {
      * Обновляет параметры задачи.
      *
      * Если изменился дедлайн или название, отправляет обновление в сервис уведомлений.
-     * Записывает событие в аудит.
+     * Если статус переходит в DONE или CANCELLED, запланированные напоминания отменяются
+     * без переназначения. Записывает событие в аудит.
      *
      * @param userId ID пользователя
      * @param taskId ID задачи
@@ -184,8 +185,11 @@ public class TaskServiceImpl implements TaskService {
         }
         auditService.record(userId, taskId, AuditEventType.UPDATED, delta.isEmpty() ? null : delta);
 
-        if (deadlineChanged || titleChanged) {
-            notificationService.cancelTaskNotifications(taskId);
+        boolean becameTerminal = request.status() == TaskStatus.DONE || request.status() == TaskStatus.CANCELLED;
+        if (becameTerminal) {
+            cancelReminders(taskId);
+        } else if (deadlineChanged || titleChanged) {
+            cancelReminders(taskId);
             if (updatedTask.getDeadline() != null) {
                 notificationService.scheduleTaskReminder(userId, taskId, updatedTask.getTitle(), updatedTask.getDeadline());
             }
@@ -197,7 +201,8 @@ public class TaskServiceImpl implements TaskService {
     /**
      * Отмечает задачу как выполненную.
      *
-     * Устанавливает статус DONE и фиксирует время завершения.
+     * Устанавливает статус DONE, фиксирует время завершения
+     * и отменяет запланированные напоминания.
      *
      * @param userId ID пользователя
      * @param taskId ID задачи
@@ -211,13 +216,15 @@ public class TaskServiceImpl implements TaskService {
         task.setStatus(TaskStatus.DONE);
         task.setCompletedAt(OffsetDateTime.now());
         taskRepository.save(task);
+        cancelReminders(taskId);
         auditService.record(userId, taskId, AuditEventType.STATUS_CHANGED, Map.of("status", "DONE"));
     }
 
     /**
      * Удаляет задачу (мягкое удаление).
      *
-     * Задача помечается как удалённая с фиксацией времени.
+     * Задача помечается как удалённая с фиксацией времени,
+     * запланированные напоминания отменяются.
      *
      * @param userId ID пользователя
      * @param taskId ID задачи
@@ -231,7 +238,18 @@ public class TaskServiceImpl implements TaskService {
         task.setDeleted(true);
         task.setDeletedAt(OffsetDateTime.now());
         taskRepository.save(task);
+        cancelReminders(taskId);
         auditService.record(userId, taskId, AuditEventType.DELETED, null);
+    }
+
+    /**
+     * Отменяет запланированные напоминания задачи.
+     *
+     * Единая точка для всех переходов, после которых задача перестаёт быть
+     * актуальной: завершение, отмена, удаление, смена дедлайна/названия.
+     */
+    private void cancelReminders(UUID taskId) {
+        notificationService.cancelTaskNotifications(taskId);
     }
 
     private List<TagJpaEntity> resolveOrCreateTags(UUID userId, List<String> tagNames) {

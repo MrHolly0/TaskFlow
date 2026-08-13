@@ -10,6 +10,7 @@ import org.springframework.data.domain.Pageable;
 import ru.taskflow.audit.api.AuditEventType;
 import ru.taskflow.audit.api.AuditService;
 import ru.taskflow.notify.api.NotificationService;
+import ru.taskflow.task.api.TaskPriority;
 import ru.taskflow.task.api.TaskStatus;
 import ru.taskflow.task.api.dto.CreateTaskRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
@@ -219,6 +220,16 @@ class TaskServiceTest {
     }
 
     @Test
+    void complete_cancelsNotifications() {
+        var entity = taskEntity();
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+
+        taskService.complete(userId, taskId);
+
+        verify(notificationService).cancelTaskNotifications(taskId);
+    }
+
+    @Test
     void delete_marksAsDeleted() {
         var entity = taskEntity();
         when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
@@ -227,6 +238,47 @@ class TaskServiceTest {
 
         assertThat(entity.isDeleted()).isTrue();
         assertThat(entity.getDeletedAt()).isNotNull();
+    }
+
+    @Test
+    void delete_cancelsNotifications() {
+        var entity = taskEntity();
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+
+        taskService.delete(userId, taskId);
+
+        verify(notificationService).cancelTaskNotifications(taskId);
+    }
+
+    @Test
+    void update_cancelsNotifications_whenStatusBecomesCancelled() {
+        var entity = taskEntity();
+        var request = new UpdateTaskRequest(null, null, null, TaskStatus.CANCELLED, null, null, null, null, null);
+        var response = mockResponse(taskId, "задача");
+
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskRepository.save(any())).thenReturn(entity);
+        when(taskMapper.toResponse(entity)).thenReturn(response);
+
+        taskService.update(userId, taskId, request);
+
+        verify(notificationService).cancelTaskNotifications(taskId);
+        verify(notificationService, never()).scheduleTaskReminder(any(), any(), any(), any());
+    }
+
+    @Test
+    void update_doesNotCancelNotifications_whenOnlyUnrelatedFieldChanges() {
+        var entity = taskEntity();
+        var request = new UpdateTaskRequest(null, null, TaskPriority.HIGH, null, null, null, null, null, null);
+        var response = mockResponse(taskId, "задача");
+
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskRepository.save(any())).thenReturn(entity);
+        when(taskMapper.toResponse(entity)).thenReturn(response);
+
+        taskService.update(userId, taskId, request);
+
+        verify(notificationService, never()).cancelTaskNotifications(any());
     }
 
     @Test
