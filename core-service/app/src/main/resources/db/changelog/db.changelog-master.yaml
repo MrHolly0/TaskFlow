@@ -29,3 +29,5 @@ databaseChangeLog:
       file: db/changelog/014-telegram-id-nullable.yaml
   - include:
       file: db/changelog/015-drop-telegram-id.yaml
+  - include:
+      file: db/changelog/016-login-codes.yaml
