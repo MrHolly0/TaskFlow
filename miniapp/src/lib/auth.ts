@@ -70,6 +70,24 @@ export const authenticateAsDemoUser = async (): Promise<AuthResponse> => {
   }
 };
 
+// Ответ всегда успешный независимо от того, знаком адрес бэкенду или нет —
+// это защита от проверки чужих баз на регистрацию (часть 3а). Здесь нет
+// ветвления по результату, чтобы UI не мог случайно выдать разницу сам.
+export const requestEmailCode = async (email: string): Promise<void> => {
+  await axios.post(`${API_BASE}/auth/email/request-code`, { email });
+};
+
+export const verifyEmailCode = async (email: string, code: string): Promise<AuthResponse> => {
+  const response = await axios.post<AuthResponse>(`${API_BASE}/auth/email/verify`, { email, code });
+  const { token } = response.data;
+  setApiToken(token);
+  localStorage.setItem('auth_token', token);
+  if (response.data.refreshToken) {
+    localStorage.setItem('refresh_token', response.data.refreshToken);
+  }
+  return response.data;
+};
+
 export const authenticateViaLoginWidget = async (
   widgetData: Record<string, string | number>
 ): Promise<AuthResponse> => {
