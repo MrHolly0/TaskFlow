@@ -8,5 +8,6 @@ public record UserSettingsDto(
         Integer autoCleanCompletedDays,
         String voiceInputModeDesktop,
         String voiceInputModeMobile,
-        String timezone
+        String timezone,
+        String displayName
 ) {}

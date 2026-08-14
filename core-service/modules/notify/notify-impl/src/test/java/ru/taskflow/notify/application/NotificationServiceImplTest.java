@@ -90,6 +90,6 @@ class NotificationServiceImplTest {
     }
 
     private UserSettingsDto defaultSettings() {
-        return new UserSettingsDto(true, 60, true, "groq", null, "SILENCE", "SILENCE", "Europe/Moscow");
+        return new UserSettingsDto(true, 60, true, "groq", null, "SILENCE", "SILENCE", "Europe/Moscow", "user");
     }
 }

@@ -8,5 +8,6 @@ public record UpdateSettingsRequest(
         Integer autoCleanCompletedDays,
         String voiceInputModeDesktop,
         String voiceInputModeMobile,
-        String timezone
+        String timezone,
+        String displayName
 ) {}

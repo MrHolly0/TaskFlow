@@ -85,12 +85,12 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional(readOnly = true)
     public UserSettingsDto getSettings(UUID userId) {
-        String timezone = userRepository.findById(userId)
-                .map(UserJpaEntity::getTimezone)
-                .orElse(DEFAULT_TIMEZONE);
+        var user = userRepository.findById(userId);
+        String timezone = user.map(UserJpaEntity::getTimezone).orElse(DEFAULT_TIMEZONE);
+        String displayName = user.map(UserJpaEntity::getUsername).orElse(null);
         return settingsRepository.findByUserId(userId)
-                .map(e -> toSettingsDto(e, timezone))
-                .orElseGet(() -> defaultSettings(timezone));
+                .map(e -> toSettingsDto(e, timezone, displayName))
+                .orElseGet(() -> defaultSettings(timezone, displayName));
     }
 
     @Override
@@ -107,6 +107,9 @@ public class UserServiceImpl implements UserService {
         if (request.timezone() != null) {
             validateTimezone(request.timezone());
         }
+        if (request.displayName() != null) {
+            validateDisplayName(request.displayName());
+        }
 
         var settings = settingsRepository.findByUserId(userId)
                 .orElseGet(() -> createDefaultSettings(userId));
@@ -121,10 +124,15 @@ public class UserServiceImpl implements UserService {
 
         settingsRepository.save(settings);
 
-        if (request.timezone() != null) {
+        if (request.timezone() != null || request.displayName() != null) {
             var user = userRepository.findById(userId)
                     .orElseThrow(() -> new NotFoundException("User not found: " + userId));
-            user.setTimezone(request.timezone());
+            if (request.timezone() != null) {
+                user.setTimezone(request.timezone());
+            }
+            if (request.displayName() != null) {
+                user.setUsername(request.displayName());
+            }
             userRepository.save(user);
         }
     }
@@ -137,6 +145,15 @@ public class UserServiceImpl implements UserService {
         }
     }
 
+    private void validateDisplayName(String displayName) {
+        if (displayName.isBlank()) {
+            throw new ValidationException("Имя не может быть пустым");
+        }
+        if (displayName.length() > 64) {
+            throw new ValidationException("Имя слишком длинное (максимум 64 символа)");
+        }
+    }
+
     private UserSettingsJpaEntity createDefaultSettings(UUID userId) {
         var user = userRepository.findById(userId)
                 .orElseThrow(() -> new NotFoundException("User not found: " + userId));
@@ -145,7 +162,7 @@ public class UserServiceImpl implements UserService {
         return settings;
     }
 
-    private UserSettingsDto toSettingsDto(UserSettingsJpaEntity e, String timezone) {
+    private UserSettingsDto toSettingsDto(UserSettingsJpaEntity e, String timezone, String displayName) {
         return new UserSettingsDto(
                 e.isNotificationsEnabled(),
                 e.getDefaultReminderMinutes(),
@@ -154,12 +171,13 @@ public class UserServiceImpl implements UserService {
                 e.getAutoCleanCompletedDays(),
                 e.getVoiceInputModeDesktop(),
                 e.getVoiceInputModeMobile(),
-                timezone
+                timezone,
+                displayName
         );
     }
 
-    private UserSettingsDto defaultSettings(String timezone) {
-        return new UserSettingsDto(true, 60, true, "groq", null, "SILENCE", "SILENCE", timezone);
+    private UserSettingsDto defaultSettings(String timezone, String displayName) {
+        return new UserSettingsDto(true, 60, true, "groq", null, "SILENCE", "SILENCE", timezone, displayName);
     }
 
     private UserDto toDto(UserJpaEntity e) {

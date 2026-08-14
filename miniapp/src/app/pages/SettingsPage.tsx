@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTheme } from 'next-themes';
 import { Card } from '@/app/components/ui/card';
 import { Label } from '@/app/components/ui/label';
+import { Input } from '@/app/components/ui/input';
 import { Switch } from '@/app/components/ui/switch';
 import {
   Select,
@@ -64,6 +65,7 @@ const VOICE_MODE_MOBILE_OPTIONS: { value: VoiceInputMode; label: string }[] = [
 export function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const user = useStore((s) => s.user);
+  const login = useStore((s) => s.login);
   const logout = useStore((s) => s.logout);
 
   const [notifications, setNotifications] = useBoolSetting('settings.notifications', true);
@@ -89,6 +91,39 @@ export function SettingsPage() {
 
   const handleTimezoneChange = (value: string) => {
     updateSettings.mutate({ timezone: value });
+  };
+
+  // Локальная копия синхронизируется с сервером при загрузке/перезагрузке
+  // настроек, но дальше живёт своей жизнью — иначе набор текста дёргался бы
+  // назад к сохранённому значению между запросами.
+  const [displayName, setDisplayName] = useState('');
+  const [displayNameError, setDisplayNameError] = useState<string | null>(null);
+  useEffect(() => {
+    if (serverSettings?.displayName != null) setDisplayName(serverSettings.displayName);
+  }, [serverSettings?.displayName]);
+
+  const savedDisplayName = serverSettings?.displayName ?? '';
+  const trimmedDisplayName = displayName.trim();
+  const displayNameDirty = trimmedDisplayName.length > 0 && trimmedDisplayName !== savedDisplayName;
+
+  const handleSaveDisplayName = () => {
+    if (!trimmedDisplayName) {
+      setDisplayNameError('Имя не может быть пустым');
+      return;
+    }
+    if (trimmedDisplayName.length > 64) {
+      setDisplayNameError('Слишком длинное имя (максимум 64 символа)');
+      return;
+    }
+    setDisplayNameError(null);
+    updateSettings.mutate(
+      { displayName: trimmedDisplayName },
+      {
+        onSuccess: () => {
+          if (user) login({ ...user, name: trimmedDisplayName, username: trimmedDisplayName });
+        },
+      },
+    );
   };
 
   const touchDevice = isTouchDevice();
@@ -131,6 +166,31 @@ export function SettingsPage() {
           ) : (
             <p className="text-sm text-muted-foreground">Профиль не загружен</p>
           )}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="display-name">Отображаемое имя</Label>
+            <div className="flex gap-2">
+              <Input
+                id="display-name"
+                value={displayName}
+                onChange={(e) => {
+                  setDisplayName(e.target.value);
+                  setDisplayNameError(null);
+                }}
+                disabled={updateSettings.isPending}
+                maxLength={64}
+                className="h-10"
+              />
+              <Button
+                variant="outline"
+                onClick={handleSaveDisplayName}
+                disabled={updateSettings.isPending || !displayNameDirty}
+                className="h-10 shrink-0"
+              >
+                Сохранить
+              </Button>
+            </div>
+            {displayNameError && <p className="text-xs text-red-500">{displayNameError}</p>}
+          </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="timezone">Часовой пояс</Label>
             <TimezonePicker

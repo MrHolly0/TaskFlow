@@ -22,6 +22,7 @@ export interface UserSettings {
   voiceInputModeDesktop: VoiceInputMode;
   voiceInputModeMobile: VoiceInputMode;
   timezone: string;
+  displayName: string | null;
 }
 
 interface UpdateSettingsRequest {
@@ -33,6 +34,7 @@ interface UpdateSettingsRequest {
   voiceInputModeDesktop?: VoiceInputMode;
   voiceInputModeMobile?: VoiceInputMode;
   timezone?: string;
+  displayName?: string;
 }
 
 export const useSettings = () => {
