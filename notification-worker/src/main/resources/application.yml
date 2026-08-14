@@ -14,6 +14,10 @@ app:
     bot-token: ${TELEGRAM_BOT_TOKEN:}
     api-base-url: https://api.telegram.org
   notification:
-    poll-interval-ms: 3600000
+    # Интервал опроса задаёт точность напоминаний: при часовом опросе
+    # напоминание «за час до срока» приходило когда угодно между «за час»
+    # и самим сроком, то есть половина уведомлений теряла смысл.
+    # Запрос идёт по индексу idx_notif_fire_sent и стоит доли миллисекунды.
+    poll-interval-ms: ${NOTIFICATION_POLL_INTERVAL_MS:60000}
     batch-size: 50
     max-retries: 3

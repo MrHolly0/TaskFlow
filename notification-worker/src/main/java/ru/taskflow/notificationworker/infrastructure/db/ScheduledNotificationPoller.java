@@ -51,7 +51,7 @@ public class ScheduledNotificationPoller {
 
     public void markAsSent(UUID notificationId) {
         String sql = "UPDATE scheduled_notifications SET sent = true, sent_at = NOW() WHERE id = ?";
-        int updated = jdbcTemplate.update(sql, notificationId.toString());
+        int updated = jdbcTemplate.update(sql, notificationId);
         if (updated > 0) {
             log.debug("Marked notification {} as sent", notificationId);
         }
@@ -59,7 +59,7 @@ public class ScheduledNotificationPoller {
 
     public void incrementRetryCount(UUID notificationId) {
         String sql = "UPDATE scheduled_notifications SET retry_count = retry_count + 1 WHERE id = ?";
-        int updated = jdbcTemplate.update(sql, notificationId.toString());
+        int updated = jdbcTemplate.update(sql, notificationId);
         if (updated > 0) {
             log.debug("Incremented retry count for notification {}", notificationId);
         }
