@@ -9,13 +9,18 @@ import org.springframework.web.bind.annotation.*;
 import ru.taskflow.shared.security.JwtService;
 import ru.taskflow.shared.security.TelegramInitDataValidator;
 import ru.taskflow.shared.security.TelegramLoginWidgetValidator;
+import ru.taskflow.user.api.IdentityProvider;
+import ru.taskflow.user.api.UserProfile;
 import ru.taskflow.user.api.UserService;
+import ru.taskflow.user.application.EmailSender;
+import ru.taskflow.user.application.LoginCodeService;
 import ru.taskflow.user.application.RefreshTokenService;
 import ru.taskflow.user.infrastructure.web.dto.*;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -30,6 +35,8 @@ public class AuthController {
     private final JwtService jwtService;
     private final UserService userService;
     private final RefreshTokenService refreshTokenService;
+    private final LoginCodeService loginCodeService;
+    private final EmailSender emailSender;
 
     @PostMapping("/telegram-miniapp")
     @ResponseStatus(HttpStatus.OK)
@@ -67,6 +74,29 @@ public class AuthController {
                         HttpStatus.UNAUTHORIZED, "Invalid or expired refresh token"));
         refreshTokenService.revoke(request.refreshToken());
         var dto = userService.findById(userId);
+        return issueTokens(dto.id(), dto.username());
+    }
+
+    @PostMapping("/email/request-code")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(summary = "Запросить код входа на почту",
+            description = "Отвечает одинаково независимо от того, известен адрес или нет")
+    public void requestCode(@Valid @RequestBody RequestCodeRequest request) {
+        String code = loginCodeService.requestCode(request.email());
+        emailSender.sendLoginCode(request.email(), code);
+    }
+
+    @PostMapping("/email/verify")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(summary = "Подтвердить код и войти", description = "Создаёт учётку по идентичности EMAIL, если её ещё нет")
+    public AuthResponse verifyCode(@Valid @RequestBody VerifyCodeRequest request) {
+        if (!loginCodeService.verifyCode(request.email(), request.code())) {
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid code");
+        }
+        String normalizedEmail = request.email().toLowerCase(Locale.ROOT);
+        String localPart = normalizedEmail.substring(0, normalizedEmail.indexOf('@'));
+        var dto = userService.findOrCreateByIdentity(
+                IdentityProvider.EMAIL, normalizedEmail, new UserProfile(localPart, null, null, null));
         return issueTokens(dto.id(), dto.username());
     }
 

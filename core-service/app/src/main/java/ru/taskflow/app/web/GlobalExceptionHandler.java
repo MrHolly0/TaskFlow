@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import ru.taskflow.shared.exception.AccessDeniedException;
 import ru.taskflow.shared.exception.NotFoundException;
+import ru.taskflow.shared.exception.RateLimitExceededException;
 import ru.taskflow.shared.exception.ValidationException;
 
 import java.net.URI;
@@ -37,6 +38,16 @@ public class GlobalExceptionHandler {
         );
         problemDetail.setType(URI.create("about:blank"));
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(problemDetail);
+    }
+
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ProblemDetail> handleRateLimitExceeded(RateLimitExceededException ex, WebRequest request) {
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
+            HttpStatus.TOO_MANY_REQUESTS,
+            ex.getMessage()
+        );
+        problemDetail.setType(URI.create("about:blank"));
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(problemDetail);
     }
 
     @ExceptionHandler(ValidationException.class)
