@@ -22,6 +22,17 @@ spring:
       enabled: true
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.yaml
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USER:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
 
 server:
   port: ${SERVER_PORT:8080}
