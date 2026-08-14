@@ -21,6 +21,7 @@ class EmailSenderTest {
 
     private static final String EMAIL = "user@example.com";
     private static final String CODE = "123456";
+    private static final String FROM = "noreply@taskflow.example";
 
     @Mock
     private JavaMailSender mailSender;
@@ -29,8 +30,8 @@ class EmailSenderTest {
     private Environment environment;
 
     @Test
-    void sendLoginCode_smtpConfigured_sendsEmailContainingCode() {
-        var sender = new EmailSender(mailSender, environment, "smtp.example.com");
+    void sendLoginCode_smtpConfigured_sendsEmailContainingCodeAndFrom() {
+        var sender = new EmailSender(mailSender, environment, "smtp.example.com", FROM);
 
         sender.sendLoginCode(EMAIL, CODE);
 
@@ -38,12 +39,23 @@ class EmailSenderTest {
         verify(mailSender).send(captor.capture());
         assertThat(captor.getValue().getTo()).containsExactly(EMAIL);
         assertThat(captor.getValue().getText()).contains(CODE);
+        assertThat(captor.getValue().getFrom()).isEqualTo(FROM);
+    }
+
+    @Test
+    void sendLoginCode_smtpConfiguredButFromMissing_throwsWithoutSending() {
+        var sender = new EmailSender(mailSender, environment, "smtp.example.com", "");
+
+        assertThatThrownBy(() -> sender.sendLoginCode(EMAIL, CODE))
+                .isInstanceOf(IllegalStateException.class);
+
+        verify(mailSender, never()).send(any(SimpleMailMessage.class));
     }
 
     @Test
     void sendLoginCode_smtpNotConfiguredOutsideDev_throwsWithoutSending() {
         when(environment.acceptsProfiles(any(org.springframework.core.env.Profiles.class))).thenReturn(false);
-        var sender = new EmailSender(mailSender, environment, "");
+        var sender = new EmailSender(mailSender, environment, "", FROM);
 
         assertThatThrownBy(() -> sender.sendLoginCode(EMAIL, CODE))
                 .isInstanceOf(IllegalStateException.class);
@@ -54,7 +66,7 @@ class EmailSenderTest {
     @Test
     void sendLoginCode_smtpNotConfiguredInDev_logsWithoutSendingOrThrowing() {
         when(environment.acceptsProfiles(any(org.springframework.core.env.Profiles.class))).thenReturn(true);
-        var sender = new EmailSender(mailSender, environment, "");
+        var sender = new EmailSender(mailSender, environment, "", FROM);
 
         sender.sendLoginCode(EMAIL, CODE);
 

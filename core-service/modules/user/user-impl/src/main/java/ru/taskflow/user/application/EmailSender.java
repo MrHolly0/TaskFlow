@@ -21,15 +21,18 @@ public class EmailSender {
     private final JavaMailSender mailSender;
     private final Environment environment;
     private final String mailHost;
+    private final String mailFrom;
 
     public EmailSender(
             JavaMailSender mailSender,
             Environment environment,
-            @Value("${spring.mail.host:}") String mailHost
+            @Value("${spring.mail.host:}") String mailHost,
+            @Value("${app.mail.from:}") String mailFrom
     ) {
         this.mailSender = mailSender;
         this.environment = environment;
         this.mailHost = mailHost;
+        this.mailFrom = mailFrom;
     }
 
     public void sendLoginCode(String email, String code) {
@@ -40,8 +43,12 @@ public class EmailSender {
             }
             throw new IllegalStateException("SMTP не настроен");
         }
+        if (mailFrom.isBlank()) {
+            throw new IllegalStateException("SMTP_FROM не настроен");
+        }
 
         var message = new SimpleMailMessage();
+        message.setFrom(mailFrom);
         message.setTo(email);
         message.setSubject("Код входа в TaskFlow");
         message.setText("Код входа: " + code
