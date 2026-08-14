@@ -1,0 +1,8 @@
+databaseChangeLog:
+  - changeSet:
+      id: 015-drop-telegram-id
+      author: taskflow
+      changes:
+        - dropColumn:
+            tableName: users
+            columnName: telegram_id

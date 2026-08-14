@@ -47,9 +47,6 @@ public class UserServiceImpl implements UserService {
                     if (profile.languageCode() != null) {
                         user.setLanguageCode(profile.languageCode());
                     }
-                    if (provider == IdentityProvider.TELEGRAM) {
-                        user.setTelegramId(Long.parseLong(externalId));
-                    }
                     var savedUser = userRepository.save(user);
 
                     var identity = new UserIdentityJpaEntity();
@@ -166,6 +163,6 @@ public class UserServiceImpl implements UserService {
     }
 
     private UserDto toDto(UserJpaEntity e) {
-        return new UserDto(e.getId(), e.getTelegramId(), e.getUsername(), e.getFirstName(), e.getLastName());
+        return new UserDto(e.getId(), e.getUsername(), e.getFirstName(), e.getLastName());
     }
 }

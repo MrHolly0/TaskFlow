@@ -25,3 +25,7 @@ databaseChangeLog:
       file: db/changelog/012-voice-input-mode.yaml
   - include:
       file: db/changelog/013-user-identities.yaml
+  - include:
+      file: db/changelog/014-telegram-id-nullable.yaml
+  - include:
+      file: db/changelog/015-drop-telegram-id.yaml

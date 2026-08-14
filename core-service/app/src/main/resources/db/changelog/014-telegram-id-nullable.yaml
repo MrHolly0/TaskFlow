@@ -1,0 +1,15 @@
+databaseChangeLog:
+  - changeSet:
+      id: 014-telegram-id-nullable
+      author: taskflow
+      changes:
+        - dropUniqueConstraint:
+            tableName: users
+            constraintName: users_telegram_id_key
+        - dropIndex:
+            tableName: users
+            indexName: idx_users_telegram_id
+        - dropNotNullConstraint:
+            tableName: users
+            columnName: telegram_id
+            columnDataType: BIGINT

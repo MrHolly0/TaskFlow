@@ -140,7 +140,6 @@ class UserServiceImplTest {
         UUID userId = UUID.randomUUID();
         var user = new UserJpaEntity();
         user.setId(userId);
-        user.setTelegramId(42L);
         user.setUsername("someone");
         var identity = new UserIdentityJpaEntity();
         identity.setUser(user);

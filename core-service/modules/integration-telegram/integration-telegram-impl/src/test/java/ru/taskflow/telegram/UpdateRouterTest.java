@@ -87,7 +87,7 @@ class UpdateRouterTest {
         var userId = UUID.randomUUID();
         var tgUser = new TelegramUser(1L, "u", "Name", null);
         when(userService.findOrCreateByTelegram(anyLong(), anyString(), anyString(), any()))
-                .thenReturn(new UserDto(userId, 1L, "u", "Name", null));
+                .thenReturn(new UserDto(userId, "u", "Name", null));
         var cb = new TelegramCallbackQuery("cb1", tgUser,
                 new TelegramMessage(1L, tgUser, new TelegramChat(100L), null, null), "complete:abc");
 
@@ -100,7 +100,7 @@ class UpdateRouterTest {
     private UUID stubUser() {
         var userId = UUID.randomUUID();
         when(userService.findOrCreateByTelegram(anyLong(), anyString(), anyString(), any()))
-                .thenReturn(new UserDto(userId, 1L, "u", "Name", null));
+                .thenReturn(new UserDto(userId, "u", "Name", null));
         return userId;
     }
 

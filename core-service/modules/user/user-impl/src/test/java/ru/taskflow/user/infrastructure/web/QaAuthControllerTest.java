@@ -72,7 +72,7 @@ class QaAuthControllerTest {
     @Test
     void qaLogin_issuesTokenForSingleFixedUserOnCorrectSecret() throws Exception {
         UUID userId = UUID.randomUUID();
-        var user = new UserDto(userId, -1L, "qa_demo", "QA", "Demo");
+        var user = new UserDto(userId, "qa_demo", "QA", "Demo");
         when(userService.findOrCreateByTelegram(-1L, "qa_demo", "QA", "Demo")).thenReturn(user);
         when(jwtService.issueAccessToken(userId, "qa_demo")).thenReturn("access-token");
         when(refreshTokenService.issue(userId)).thenReturn("refresh-token");

@@ -55,7 +55,7 @@ class UserIdentityRepositoryTest {
 
     @Test
     void findByProviderAndExternalId_findsSavedIdentity() {
-        var user = userRepository.saveAndFlush(newUser(1L));
+        var user = userRepository.saveAndFlush(newUser());
         identityRepository.saveAndFlush(newIdentity(user, IdentityProvider.TELEGRAM, "1"));
 
         var found = identityRepository.findByProviderAndExternalId(IdentityProvider.TELEGRAM, "1");
@@ -66,7 +66,7 @@ class UserIdentityRepositoryTest {
 
     @Test
     void save_rejectsDuplicateProviderAndExternalIdPair() {
-        var user = userRepository.saveAndFlush(newUser(2L));
+        var user = userRepository.saveAndFlush(newUser());
         identityRepository.saveAndFlush(newIdentity(user, IdentityProvider.TELEGRAM, "2"));
 
         assertThatThrownBy(() ->
@@ -76,7 +76,7 @@ class UserIdentityRepositoryTest {
 
     @Test
     void deletingUser_cascadesToIdentities() {
-        var user = userRepository.saveAndFlush(newUser(3L));
+        var user = userRepository.saveAndFlush(newUser());
         identityRepository.saveAndFlush(newIdentity(user, IdentityProvider.TELEGRAM, "3"));
 
         userRepository.delete(user);
@@ -86,10 +86,8 @@ class UserIdentityRepositoryTest {
         assertThat(identityRepository.findByProviderAndExternalId(IdentityProvider.TELEGRAM, "3")).isEmpty();
     }
 
-    private UserJpaEntity newUser(long telegramId) {
-        var u = new UserJpaEntity();
-        u.setTelegramId(telegramId);
-        return u;
+    private UserJpaEntity newUser() {
+        return new UserJpaEntity();
     }
 
     private UserIdentityJpaEntity newIdentity(UserJpaEntity user, IdentityProvider provider, String externalId) {

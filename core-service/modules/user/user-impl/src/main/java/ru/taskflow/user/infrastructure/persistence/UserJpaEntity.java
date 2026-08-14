@@ -17,9 +17,6 @@ public class UserJpaEntity {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "telegram_id", nullable = false, unique = true)
-    private Long telegramId;
-
     @Column(length = 64)
     private String username;
 
