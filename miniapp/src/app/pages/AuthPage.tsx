@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { IconBrandTelegram, IconSparkles, IconBolt, IconShield } from '@tabler/icons-react';
 import { motion } from 'motion/react';
 import { useStore } from '@/lib/store';
@@ -134,7 +134,11 @@ export function AuthPage() {
     }
   };
 
-  const handleWidgetAuth = async (user: Record<string, string | number>) => {
+  // useCallback с пустыми зависимостями: виджет монтирует скрипт заново
+  // при каждой смене onAuth (эффект в TelegramLoginWidget зависит от него).
+  // Без стабилизации любой ввод в поле почты перерисовывает AuthPage,
+  // handleWidgetAuth пересоздаётся, и кнопка Telegram дёргается на глазах.
+  const handleWidgetAuth = useCallback(async (user: Record<string, string | number>) => {
     setLoading(true);
     setError(null);
     try {
@@ -146,7 +150,7 @@ export function AuthPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
