@@ -10,8 +10,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/app/components/ui/select';
-import { Button } from '@/app/components/ui/button';
+import { Button, buttonVariants } from '@/app/components/ui/button';
 import { Separator } from '@/app/components/ui/separator';
+import { TimezonePicker } from '@/app/components/TimezonePicker';
+import { cn } from '@/lib/utils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,15 +59,6 @@ const VOICE_MODE_MOBILE_OPTIONS: { value: VoiceInputMode; label: string }[] = [
   { value: 'SILENCE', label: 'Останавливать по тишине' },
   { value: 'TOGGLE', label: 'Нажать — начать, нажать — отправить' },
   { value: 'HOLD', label: 'Удерживать, пока говоришь' },
-];
-
-const TIMEZONE_OPTIONS = [
-  { value: 'Europe/Moscow', label: 'Europe/Moscow (UTC+3)' },
-  { value: 'Europe/Kaliningrad', label: 'Europe/Kaliningrad (UTC+2)' },
-  { value: 'Asia/Yekaterinburg', label: 'Asia/Yekaterinburg (UTC+5)' },
-  { value: 'Asia/Novosibirsk', label: 'Asia/Novosibirsk (UTC+7)' },
-  { value: 'Asia/Vladivostok', label: 'Asia/Vladivostok (UTC+10)' },
-  { value: 'UTC', label: 'UTC' },
 ];
 
 export function SettingsPage() {
@@ -140,22 +133,12 @@ export function SettingsPage() {
           )}
           <div className="flex flex-col gap-2">
             <Label htmlFor="timezone">Часовой пояс</Label>
-            <Select
+            <TimezonePicker
+              id="timezone"
               value={currentTimezone}
-              onValueChange={handleTimezoneChange}
+              onChange={handleTimezoneChange}
               disabled={updateSettings.isPending}
-            >
-              <SelectTrigger id="timezone" className="h-10">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {TIMEZONE_OPTIONS.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            />
           </div>
         </section>
 
@@ -204,17 +187,6 @@ export function SettingsPage() {
               onCheckedChange={setUrgentExtra}
               disabled={!notifications}
             />
-          </div>
-        </section>
-
-        <Separator />
-
-        <section className="flex flex-col gap-4">
-          <h2 className="text-base font-semibold">AI-разбор</h2>
-          <div className="flex flex-col gap-2">
-            <p className="text-sm text-muted-foreground">
-              Используется <span className="font-medium text-foreground">Groq (llama3)</span> с автоматическим переключением на YandexGPT при недоступности. Настраивается в переменных окружения сервера.
-            </p>
           </div>
         </section>
 
@@ -333,14 +305,16 @@ export function SettingsPage() {
               </p>
             )}
             <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="h-10 self-start"
-                  disabled={clearCompleted.isPending}
-                >
-                  {clearCompleted.isPending ? 'Очищаем...' : 'Очистить выполненные'}
-                </Button>
+              {/* Без asChild: Button — обычная функция без forwardRef, и Slot не может
+                  привязать к ней ref. Диалог открывался бы всё равно (onClick подставляется
+                  через проброс пропсов), но фокус не возвращался бы на кнопку при закрытии.
+                  Тот же приём, что у AlertDialogAction/Cancel — стили buttonVariants
+                  напрямую на триггере, без обёртки. */}
+              <AlertDialogTrigger
+                className={cn(buttonVariants({ variant: 'outline' }), 'h-10 self-start')}
+                disabled={clearCompleted.isPending}
+              >
+                {clearCompleted.isPending ? 'Очищаем...' : 'Очистить выполненные'}
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>

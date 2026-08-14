@@ -24,15 +24,24 @@ function TelegramLoginWidget({ onAuth }: { onAuth: (user: Record<string, string 
     return () => { delete (window as any).onTelegramWidgetAuth; };
   }, [onAuth]);
 
-  // Виджет — чужой iframe, его внутреннее содержимое не стилизуется отсюда.
-  // [&_iframe]:!border-0 снимает рамку, которую браузер или сам скрипт
-  // Telegram ставят на iframe по умолчанию — без !important проигрывает
-  // инлайн-стилю, который иногда проставляет сам виджет.
+  // Виджет — чужой iframe, его внутреннее содержимое отсюда не стилизуется.
+  //
+  // Тёмные уголки вокруг кнопки проявляются только в Safari: он рисует холст
+  // вложенного документа своей подложкой по цветовой схеме, тогда как Chrome
+  // и встроенный браузер Telegram оставляют его прозрачным.
+  //
+  // Поэтому здесь три меры сразу, а не одна: прозрачный фон и явно светлая
+  // схема (виджет нарисован под светлый фон и другого не знает) — плюс
+  // обрезка по скруглению. Обрезающий контейнер обязан обжимать iframe
+  // по размеру: раньше скругление стояло на блоке во всю ширину, до углов
+  // iframe не доставало и потому не работало.
   return (
-    <div
-      ref={containerRef}
-      className="flex justify-center overflow-hidden rounded-2xl [&_iframe]:!border-0 [&_iframe]:rounded-2xl"
-    />
+    <div className="flex justify-center">
+      <div
+        ref={containerRef}
+        className="w-fit overflow-hidden rounded-[20px] [&_iframe]:!border-0 [&_iframe]:!bg-transparent [&_iframe]:[color-scheme:light]"
+      />
+    </div>
   );
 }
 

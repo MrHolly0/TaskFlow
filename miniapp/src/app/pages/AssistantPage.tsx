@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { IconSend, IconSparkles, IconAlertTriangle } from '@tabler/icons-react';
+import { IconSend, IconAlertTriangle } from '@tabler/icons-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   useSendAssistantMessage,
@@ -109,8 +109,7 @@ export function AssistantPage() {
 
   return (
     <div className="mx-auto flex h-full max-w-2xl flex-col">
-      <div className="mb-4 flex items-center gap-2">
-        <IconSparkles className="h-5 w-5 text-primary" />
+      <div className="mb-4">
         <h1 className="text-lg font-semibold">Ассистент</h1>
       </div>
 
