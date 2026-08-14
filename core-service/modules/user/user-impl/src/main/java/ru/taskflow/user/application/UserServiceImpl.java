@@ -21,6 +21,7 @@ import ru.taskflow.user.infrastructure.persistence.UserSettingsRepository;
 import java.time.DateTimeException;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -60,6 +61,13 @@ public class UserServiceImpl implements UserService {
 
                     return toDto(savedUser);
                 });
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<String> findExternalId(UUID userId, IdentityProvider provider) {
+        return identityRepository.findByUser_IdAndProvider(userId, provider)
+                .map(UserIdentityJpaEntity::getExternalId);
     }
 
     @Override

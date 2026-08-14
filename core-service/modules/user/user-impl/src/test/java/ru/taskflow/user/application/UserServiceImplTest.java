@@ -194,6 +194,32 @@ class UserServiceImplTest {
         verify(identityRepository).findByProviderAndExternalId(IdentityProvider.TELEGRAM, "42");
     }
 
+    @Test
+    void findExternalId_returnsExternalIdWhenIdentityExists() {
+        UUID userId = UUID.randomUUID();
+        var identity = new UserIdentityJpaEntity();
+        identity.setExternalId("12345");
+        when(identityRepository.findByUser_IdAndProvider(userId, IdentityProvider.TELEGRAM))
+                .thenReturn(Optional.of(identity));
+        UserServiceImpl service = newService();
+
+        var externalId = service.findExternalId(userId, IdentityProvider.TELEGRAM);
+
+        assertThat(externalId).contains("12345");
+    }
+
+    @Test
+    void findExternalId_returnsEmptyWhenIdentityMissing() {
+        UUID userId = UUID.randomUUID();
+        when(identityRepository.findByUser_IdAndProvider(userId, IdentityProvider.TELEGRAM))
+                .thenReturn(Optional.empty());
+        UserServiceImpl service = newService();
+
+        var externalId = service.findExternalId(userId, IdentityProvider.TELEGRAM);
+
+        assertThat(externalId).isEmpty();
+    }
+
     private UserServiceImpl newService() {
         return new UserServiceImpl(userRepository, settingsRepository, identityRepository);
     }

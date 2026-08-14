@@ -9,10 +9,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import ru.taskflow.notify.infrastructure.persistence.ScheduledNotificationJpaEntity;
 import ru.taskflow.notify.infrastructure.persistence.ScheduledNotificationRepository;
+import ru.taskflow.user.api.IdentityProvider;
 import ru.taskflow.user.api.UserService;
-import ru.taskflow.user.infrastructure.persistence.UserJpaEntity;
-import ru.taskflow.user.infrastructure.persistence.UserRepository;
-import ru.taskflow.user.infrastructure.persistence.UserSettingsRepository;
+import ru.taskflow.user.api.dto.UserSettingsDto;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -22,6 +21,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -30,10 +30,6 @@ class NotificationServiceImplTest {
 
     @Mock
     private ScheduledNotificationRepository scheduledNotificationRepository;
-    @Mock
-    private UserRepository userRepository;
-    @Mock
-    private UserSettingsRepository userSettingsRepository;
     @Mock
     private UserService userService;
 
@@ -46,16 +42,13 @@ class NotificationServiceImplTest {
     @BeforeEach
     void setUp() {
         notificationService = new NotificationServiceImpl(
-                scheduledNotificationRepository, userRepository, userSettingsRepository, userService, objectMapper);
+                scheduledNotificationRepository, userService, objectMapper);
     }
 
     @Test
     void scheduleTaskReminder_stampsUserTimezoneIntoPayload() throws Exception {
-        var user = new UserJpaEntity();
-        user.setTelegramId(12345L);
-
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(userSettingsRepository.findByUserId(userId)).thenReturn(Optional.empty());
+        when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.of("12345"));
+        when(userService.getSettings(userId)).thenReturn(defaultSettings());
         when(userService.getTimezone(userId)).thenReturn(ZoneId.of("Asia/Yekaterinburg"));
 
         notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1));
@@ -66,15 +59,13 @@ class NotificationServiceImplTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> payload = objectMapper.readValue(captor.getValue().getPayload(), Map.class);
         assertThat(payload).containsEntry("timezone", "Asia/Yekaterinburg");
+        assertThat(captor.getValue().getTelegramChatId()).isEqualTo(12345L);
     }
 
     @Test
     void scheduleTaskReminder_usesTimezoneFromUserService_notHardcoded() {
-        var user = new UserJpaEntity();
-        user.setTelegramId(12345L);
-
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        when(userSettingsRepository.findByUserId(userId)).thenReturn(Optional.empty());
+        when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.of("12345"));
+        when(userService.getSettings(userId)).thenReturn(defaultSettings());
         when(userService.getTimezone(userId)).thenReturn(ZoneId.of("Europe/Kaliningrad"));
 
         notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1));
@@ -83,9 +74,22 @@ class NotificationServiceImplTest {
     }
 
     @Test
+    void scheduleTaskReminder_skipsWhenNoTelegramIdentity() {
+        when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.empty());
+
+        notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1));
+
+        verify(scheduledNotificationRepository, never()).save(any());
+    }
+
+    @Test
     void cancelTaskNotifications_deletesUnsentByTaskId() {
         notificationService.cancelTaskNotifications(taskId);
 
         verify(scheduledNotificationRepository).deleteUnsentByTaskId(taskId);
+    }
+
+    private UserSettingsDto defaultSettings() {
+        return new UserSettingsDto(true, 60, true, "groq", null, "SILENCE", "SILENCE", "Europe/Moscow");
     }
 }

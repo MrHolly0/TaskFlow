@@ -8,10 +8,8 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.taskflow.notify.api.NotificationService;
 import ru.taskflow.notify.infrastructure.persistence.ScheduledNotificationJpaEntity;
 import ru.taskflow.notify.infrastructure.persistence.ScheduledNotificationRepository;
+import ru.taskflow.user.api.IdentityProvider;
 import ru.taskflow.user.api.UserService;
-import ru.taskflow.user.infrastructure.persistence.UserRepository;
-import ru.taskflow.user.infrastructure.persistence.UserSettingsJpaEntity;
-import ru.taskflow.user.infrastructure.persistence.UserSettingsRepository;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -31,8 +29,6 @@ import java.util.UUID;
 public class NotificationServiceImpl implements NotificationService {
 
     private final ScheduledNotificationRepository scheduledNotificationRepository;
-    private final UserRepository userRepository;
-    private final UserSettingsRepository userSettingsRepository;
     private final UserService userService;
     private final ObjectMapper objectMapper;
 
@@ -43,19 +39,15 @@ public class NotificationServiceImpl implements NotificationService {
             return;
         }
 
-        var user = userRepository.findById(userId);
-        if (user.isEmpty()) {
-            log.warn("User not found: {}", userId);
+        var telegramExternalId = userService.findExternalId(userId, IdentityProvider.TELEGRAM);
+        if (telegramExternalId.isEmpty()) {
+            log.warn("No telegram identity for user: {}", userId);
             return;
         }
+        Long telegramChatId = Long.parseLong(telegramExternalId.get());
 
-        Long telegramChatId = user.get().getTelegramId();
         ZoneId timezone = userService.getTimezone(userId);
-
-        var userSettings = userSettingsRepository.findByUserId(userId);
-        int offsetMinutes = userSettings
-            .map(UserSettingsJpaEntity::getDefaultReminderMinutes)
-            .orElse(60);
+        int offsetMinutes = userService.getSettings(userId).defaultReminderMinutes();
 
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime fireAt = deadline.minusMinutes(offsetMinutes);
