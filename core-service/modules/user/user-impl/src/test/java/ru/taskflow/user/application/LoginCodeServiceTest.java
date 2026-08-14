@@ -41,14 +41,56 @@ class LoginCodeServiceTest {
     }
 
     @Test
-    void requestCode_noPriorCodes_savesHashedCode() {
+    void issueCode_noPriorCodes_returnsCodeWithoutPersisting() {
         when(repository.findByEmailOrderByCreatedAtDesc(EMAIL)).thenReturn(List.of());
         when(repository.countByEmailAndCreatedAtAfter(any(), any())).thenReturn(0L);
         newService();
 
-        String code = service.requestCode(EMAIL);
+        String code = service.issueCode(EMAIL);
 
         assertThat(code).matches("\\d{6}");
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void issueCode_lowercasesEmailForRateCheck() {
+        when(repository.findByEmailOrderByCreatedAtDesc("user@example.com")).thenReturn(List.of());
+        when(repository.countByEmailAndCreatedAtAfter(any(), any())).thenReturn(0L);
+        newService();
+
+        service.issueCode("User@Example.com");
+
+        verify(repository).findByEmailOrderByCreatedAtDesc("user@example.com");
+    }
+
+    @Test
+    void issueCode_withinCooldown_throwsRateLimitException() {
+        var recent = activeCode(now().minusSeconds(30), 0);
+        when(repository.findByEmailOrderByCreatedAtDesc(EMAIL)).thenReturn(List.of(recent));
+        newService();
+
+        assertThatThrownBy(() -> service.issueCode(EMAIL))
+                .isInstanceOf(RateLimitExceededException.class);
+    }
+
+    @Test
+    void issueCode_fiveInLastHour_throwsRateLimitException() {
+        when(repository.findByEmailOrderByCreatedAtDesc(EMAIL)).thenReturn(List.of());
+        when(repository.countByEmailAndCreatedAtAfter(EMAIL, now().minusHours(1))).thenReturn(5L);
+        newService();
+
+        assertThatThrownBy(() -> service.issueCode(EMAIL))
+                .isInstanceOf(RateLimitExceededException.class);
+    }
+
+    @Test
+    void confirmIssued_noPriorCodes_savesHashedCode() {
+        when(repository.findByEmailOrderByCreatedAtDesc(EMAIL)).thenReturn(List.of());
+        newService();
+        String code = "123456";
+
+        service.confirmIssued(EMAIL, code);
+
         ArgumentCaptor<LoginCodeJpaEntity> captor = ArgumentCaptor.forClass(LoginCodeJpaEntity.class);
         verify(repository).save(captor.capture());
         assertThat(captor.getValue().getEmail()).isEqualTo(EMAIL);
@@ -57,51 +99,25 @@ class LoginCodeServiceTest {
     }
 
     @Test
-    void requestCode_lowercasesEmail() {
+    void confirmIssued_lowercasesEmail() {
         when(repository.findByEmailOrderByCreatedAtDesc("user@example.com")).thenReturn(List.of());
-        when(repository.countByEmailAndCreatedAtAfter(any(), any())).thenReturn(0L);
         newService();
 
-        service.requestCode("User@Example.com");
+        service.confirmIssued("User@Example.com", "123456");
 
         verify(repository).findByEmailOrderByCreatedAtDesc("user@example.com");
     }
 
     @Test
-    void requestCode_withinCooldown_throwsRateLimitException() {
-        var recent = activeCode(now().minusSeconds(30), 0);
-        when(repository.findByEmailOrderByCreatedAtDesc(EMAIL)).thenReturn(List.of(recent));
-        newService();
-
-        assertThatThrownBy(() -> service.requestCode(EMAIL))
-                .isInstanceOf(RateLimitExceededException.class);
-
-        verify(repository, never()).save(any());
-    }
-
-    @Test
-    void requestCode_afterCooldown_allowedAndInvalidatesPrevious() {
+    void confirmIssued_invalidatesPreviousUnconsumedCode() {
         var previous = activeCode(now().minusSeconds(90), 0);
         when(repository.findByEmailOrderByCreatedAtDesc(EMAIL)).thenReturn(List.of(previous));
-        when(repository.countByEmailAndCreatedAtAfter(any(), any())).thenReturn(1L);
         newService();
 
-        service.requestCode(EMAIL);
+        service.confirmIssued(EMAIL, "123456");
 
         assertThat(previous.getConsumedAt()).isEqualTo(now());
         verify(repository).save(previous);
-    }
-
-    @Test
-    void requestCode_fiveInLastHour_throwsRateLimitException() {
-        when(repository.findByEmailOrderByCreatedAtDesc(EMAIL)).thenReturn(List.of());
-        when(repository.countByEmailAndCreatedAtAfter(EMAIL, now().minusHours(1))).thenReturn(5L);
-        newService();
-
-        assertThatThrownBy(() -> service.requestCode(EMAIL))
-                .isInstanceOf(RateLimitExceededException.class);
-
-        verify(repository, never()).save(any());
     }
 
     @Test

@@ -28,6 +28,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -69,8 +70,8 @@ class AuthControllerTest {
     }
 
     @Test
-    void requestCode_validEmail_returns200WithoutTouchingUserService() throws Exception {
-        when(loginCodeService.requestCode(EMAIL)).thenReturn(CODE);
+    void requestCode_sendSucceeds_confirmsIssuedAndReturns200() throws Exception {
+        when(loginCodeService.issueCode(EMAIL)).thenReturn(CODE);
 
         mockMvc.perform(post("/api/v1/auth/email/request-code")
                         .contentType("application/json")
@@ -78,7 +79,22 @@ class AuthControllerTest {
                 .andExpect(status().isOk());
 
         verify(emailSender).sendLoginCode(EMAIL, CODE);
+        verify(loginCodeService).confirmIssued(EMAIL, CODE);
         verifyNoInteractions(userService);
+    }
+
+    @Test
+    void requestCode_sendFails_doesNotConfirmIssuedButStillReturns200() throws Exception {
+        when(loginCodeService.issueCode(EMAIL)).thenReturn(CODE);
+        doThrow(new org.springframework.mail.MailSendException("smtp down"))
+                .when(emailSender).sendLoginCode(EMAIL, CODE);
+
+        mockMvc.perform(post("/api/v1/auth/email/request-code")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new RequestCodeRequest(EMAIL))))
+                .andExpect(status().isOk());
+
+        verify(loginCodeService, never()).confirmIssued(anyString(), anyString());
     }
 
     @Test
@@ -88,12 +104,12 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(new RequestCodeRequest("not-an-email"))))
                 .andExpect(status().isBadRequest());
 
-        verify(loginCodeService, never()).requestCode(anyString());
+        verify(loginCodeService, never()).issueCode(anyString());
     }
 
     @Test
     void requestCode_rateLimited_propagatesExceptionRatherThanSucceeding() {
-        when(loginCodeService.requestCode(EMAIL)).thenThrow(new RateLimitExceededException("too fast"));
+        when(loginCodeService.issueCode(EMAIL)).thenThrow(new RateLimitExceededException("too fast"));
 
         assertThatThrownBy(() -> controller.requestCode(new RequestCodeRequest(EMAIL)))
                 .isInstanceOf(RateLimitExceededException.class);

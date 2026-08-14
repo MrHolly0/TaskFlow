@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import ru.taskflow.shared.security.JwtService;
@@ -27,6 +28,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
+@Slf4j
 @Tag(name = "Auth", description = "Авторизация через Telegram и управление токенами")
 public class AuthController {
 
@@ -80,10 +82,15 @@ public class AuthController {
     @PostMapping("/email/request-code")
     @ResponseStatus(HttpStatus.OK)
     @Operation(summary = "Запросить код входа на почту",
-            description = "Отвечает одинаково независимо от того, известен адрес или нет")
+            description = "Отвечает одинаково независимо от того, известен адрес или дошло ли письмо")
     public void requestCode(@Valid @RequestBody RequestCodeRequest request) {
-        String code = loginCodeService.requestCode(request.email());
-        emailSender.sendLoginCode(request.email(), code);
+        String code = loginCodeService.issueCode(request.email());
+        try {
+            emailSender.sendLoginCode(request.email(), code);
+            loginCodeService.confirmIssued(request.email(), code);
+        } catch (RuntimeException e) {
+            log.warn("Не удалось отправить код входа: {}", e.getMessage());
+        }
     }
 
     @PostMapping("/email/verify")

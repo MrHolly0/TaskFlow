@@ -24,6 +24,12 @@ import java.util.Locale;
  *
  * Код хранится хэшем (SHA-256), не текстом — это учётные данные, и доступ
  * к базе на чтение не должен превращаться в возможность войти чужой учёткой.
+ *
+ * Выдача кода разбита на две фазы: issueCode() только проверяет лимиты
+ * и генерирует код, ничего не пишет в базу; confirmIssued() пишет —
+ * гасит прежние коды и сохраняет новый. Вызывающая сторона обязана звать
+ * confirmIssued() только после того, как код реально отправлен: иначе
+ * неудачная отправка письма расходовала бы лимит частоты впустую.
  */
 @Service
 @RequiredArgsConstructor
@@ -40,8 +46,8 @@ public class LoginCodeService {
 
     private final SecureRandom random = new SecureRandom();
 
-    @Transactional
-    public String requestCode(String email) {
+    @Transactional(readOnly = true)
+    public String issueCode(String email) {
         String normalizedEmail = normalize(email);
         OffsetDateTime now = OffsetDateTime.now(clock);
 
@@ -54,21 +60,26 @@ public class LoginCodeService {
             throw new RateLimitExceededException("Слишком много запросов кода за последний час");
         }
 
-        for (var prior : existing) {
+        return generateCode();
+    }
+
+    @Transactional
+    public void confirmIssued(String email, String code) {
+        String normalizedEmail = normalize(email);
+        OffsetDateTime now = OffsetDateTime.now(clock);
+
+        for (var prior : repository.findByEmailOrderByCreatedAtDesc(normalizedEmail)) {
             if (prior.getConsumedAt() == null) {
                 prior.setConsumedAt(now);
                 repository.save(prior);
             }
         }
 
-        String code = generateCode();
         var entity = new LoginCodeJpaEntity();
         entity.setEmail(normalizedEmail);
         entity.setCodeHash(hash(code));
         entity.setExpiresAt(now.plus(CODE_TTL));
         repository.save(entity);
-
-        return code;
     }
 
     @Transactional
