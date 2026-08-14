@@ -1,0 +1,60 @@
+databaseChangeLog:
+  - changeSet:
+      id: 013-user-identities
+      author: taskflow
+      changes:
+        - createTable:
+            tableName: user_identities
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: user_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_identities_users
+                    references: users(id)
+                    deleteCascade: true
+              - column:
+                  name: provider
+                  type: VARCHAR(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: external_id
+                  type: VARCHAR(320)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: verified_at
+                  type: TIMESTAMP WITH TIME ZONE
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: NOW()
+                  constraints:
+                    nullable: false
+        - sql:
+            sql: "ALTER TABLE user_identities ADD CONSTRAINT chk_identity_provider CHECK (provider IN ('TELEGRAM','EMAIL'));"
+        - addUniqueConstraint:
+            tableName: user_identities
+            columnNames: provider, external_id
+            constraintName: uq_identity_provider_external_id
+        - createIndex:
+            tableName: user_identities
+            indexName: idx_identities_user_id
+            columns:
+              - column:
+                  name: user_id
+
+  - changeSet:
+      id: 013-backfill-telegram-identities
+      author: taskflow
+      changes:
+        - customChange:
+            class: ru.taskflow.app.migration.BackfillTelegramIdentitiesChange

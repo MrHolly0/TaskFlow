@@ -23,3 +23,5 @@ databaseChangeLog:
       file: db/changelog/011-backfill-group-style.yaml
   - include:
       file: db/changelog/012-voice-input-mode.yaml
+  - include:
+      file: db/changelog/013-user-identities.yaml
