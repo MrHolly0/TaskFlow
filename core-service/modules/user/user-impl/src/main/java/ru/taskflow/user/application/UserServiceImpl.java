@@ -5,16 +5,21 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.taskflow.shared.exception.NotFoundException;
 import ru.taskflow.shared.exception.ValidationException;
+import ru.taskflow.user.api.IdentityProvider;
 import ru.taskflow.user.api.UserDto;
+import ru.taskflow.user.api.UserProfile;
 import ru.taskflow.user.api.UserService;
 import ru.taskflow.user.api.dto.UpdateSettingsRequest;
 import ru.taskflow.user.api.dto.UserSettingsDto;
+import ru.taskflow.user.infrastructure.persistence.UserIdentityJpaEntity;
+import ru.taskflow.user.infrastructure.persistence.UserIdentityRepository;
 import ru.taskflow.user.infrastructure.persistence.UserJpaEntity;
 import ru.taskflow.user.infrastructure.persistence.UserRepository;
 import ru.taskflow.user.infrastructure.persistence.UserSettingsJpaEntity;
 import ru.taskflow.user.infrastructure.persistence.UserSettingsRepository;
 
 import java.time.DateTimeException;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.UUID;
 
@@ -26,20 +31,42 @@ public class UserServiceImpl implements UserService {
 
     private final UserRepository userRepository;
     private final UserSettingsRepository settingsRepository;
+    private final UserIdentityRepository identityRepository;
+
+    @Override
+    @Transactional
+    public UserDto findOrCreateByIdentity(IdentityProvider provider, String externalId, UserProfile profile) {
+        return identityRepository.findByProviderAndExternalId(provider, externalId)
+                .map(identity -> toDto(identity.getUser()))
+                .orElseGet(() -> {
+                    var user = new UserJpaEntity();
+                    user.setUsername(profile.username());
+                    user.setFirstName(profile.firstName());
+                    user.setLastName(profile.lastName());
+                    if (profile.languageCode() != null) {
+                        user.setLanguageCode(profile.languageCode());
+                    }
+                    if (provider == IdentityProvider.TELEGRAM) {
+                        user.setTelegramId(Long.parseLong(externalId));
+                    }
+                    var savedUser = userRepository.save(user);
+
+                    var identity = new UserIdentityJpaEntity();
+                    identity.setUser(savedUser);
+                    identity.setProvider(provider);
+                    identity.setExternalId(externalId);
+                    identity.setVerifiedAt(OffsetDateTime.now());
+                    identityRepository.save(identity);
+
+                    return toDto(savedUser);
+                });
+    }
 
     @Override
     @Transactional
     public UserDto findOrCreateByTelegram(long telegramId, String username, String firstName, String lastName) {
-        return userRepository.findByTelegramId(telegramId)
-                .map(this::toDto)
-                .orElseGet(() -> {
-                    var entity = new UserJpaEntity();
-                    entity.setTelegramId(telegramId);
-                    entity.setUsername(username);
-                    entity.setFirstName(firstName);
-                    entity.setLastName(lastName);
-                    return toDto(userRepository.save(entity));
-                });
+        return findOrCreateByIdentity(IdentityProvider.TELEGRAM, Long.toString(telegramId),
+                new UserProfile(username, firstName, lastName, null));
     }
 
     @Override

@@ -7,8 +7,12 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import ru.taskflow.shared.exception.NotFoundException;
 import ru.taskflow.shared.exception.ValidationException;
+import ru.taskflow.user.api.IdentityProvider;
+import ru.taskflow.user.api.UserProfile;
 import ru.taskflow.user.api.dto.UpdateSettingsRequest;
 import ru.taskflow.user.api.dto.UserSettingsDto;
+import ru.taskflow.user.infrastructure.persistence.UserIdentityJpaEntity;
+import ru.taskflow.user.infrastructure.persistence.UserIdentityRepository;
 import ru.taskflow.user.infrastructure.persistence.UserJpaEntity;
 import ru.taskflow.user.infrastructure.persistence.UserRepository;
 import ru.taskflow.user.infrastructure.persistence.UserSettingsJpaEntity;
@@ -34,13 +38,16 @@ class UserServiceImplTest {
     @Mock
     private UserSettingsRepository settingsRepository;
 
+    @Mock
+    private UserIdentityRepository identityRepository;
+
     @Test
     void getTimezone_returnsStoredZone() {
         UUID userId = UUID.randomUUID();
         UserJpaEntity entity = new UserJpaEntity();
         entity.setTimezone("Asia/Yekaterinburg");
         when(userRepository.findById(userId)).thenReturn(Optional.of(entity));
-        UserServiceImpl service = new UserServiceImpl(userRepository, settingsRepository);
+        UserServiceImpl service = newService();
 
         ZoneId zone = service.getTimezone(userId);
 
@@ -51,7 +58,7 @@ class UserServiceImplTest {
     void getTimezone_throwsWhenUserMissing() {
         UUID userId = UUID.randomUUID();
         when(userRepository.findById(userId)).thenReturn(Optional.empty());
-        UserServiceImpl service = new UserServiceImpl(userRepository, settingsRepository);
+        UserServiceImpl service = newService();
 
         assertThatThrownBy(() -> service.getTimezone(userId)).isInstanceOf(NotFoundException.class);
     }
@@ -60,7 +67,7 @@ class UserServiceImplTest {
     void getSettings_defaultsVoiceModesToSilenceWhenNoneStored() {
         UUID userId = UUID.randomUUID();
         when(settingsRepository.findByUserId(userId)).thenReturn(Optional.empty());
-        UserServiceImpl service = new UserServiceImpl(userRepository, settingsRepository);
+        UserServiceImpl service = newService();
 
         UserSettingsDto settings = service.getSettings(userId);
 
@@ -74,7 +81,7 @@ class UserServiceImplTest {
         var entity = new UserSettingsJpaEntity();
         var request = new UpdateSettingsRequest(null, null, null, null, null, "TOGGLE", "HOLD", null);
         when(settingsRepository.findByUserId(userId)).thenReturn(Optional.of(entity));
-        UserServiceImpl service = new UserServiceImpl(userRepository, settingsRepository);
+        UserServiceImpl service = newService();
 
         service.updateSettings(userId, request);
 
@@ -91,7 +98,7 @@ class UserServiceImplTest {
         user.setTimezone("Asia/Yekaterinburg");
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(settingsRepository.findByUserId(userId)).thenReturn(Optional.empty());
-        UserServiceImpl service = new UserServiceImpl(userRepository, settingsRepository);
+        UserServiceImpl service = newService();
 
         UserSettingsDto settings = service.getSettings(userId);
 
@@ -106,7 +113,7 @@ class UserServiceImplTest {
         var request = new UpdateSettingsRequest(null, null, null, null, null, null, null, "Asia/Yekaterinburg");
         when(settingsRepository.findByUserId(userId)).thenReturn(Optional.of(settingsEntity));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
-        UserServiceImpl service = new UserServiceImpl(userRepository, settingsRepository);
+        UserServiceImpl service = newService();
 
         service.updateSettings(userId, request);
 
@@ -119,12 +126,75 @@ class UserServiceImplTest {
     void updateSettings_rejectsUnknownTimezone() {
         UUID userId = UUID.randomUUID();
         var request = new UpdateSettingsRequest(null, null, null, null, null, null, null, "Mars/Colony");
-        UserServiceImpl service = new UserServiceImpl(userRepository, settingsRepository);
+        UserServiceImpl service = newService();
 
         assertThatThrownBy(() -> service.updateSettings(userId, request))
                 .isInstanceOf(ValidationException.class);
 
         verify(userRepository, never()).save(any());
         verify(settingsRepository, never()).save(any());
+    }
+
+    @Test
+    void findOrCreateByIdentity_findsExistingUserByIdentity() {
+        UUID userId = UUID.randomUUID();
+        var user = new UserJpaEntity();
+        user.setId(userId);
+        user.setTelegramId(42L);
+        user.setUsername("someone");
+        var identity = new UserIdentityJpaEntity();
+        identity.setUser(user);
+        identity.setProvider(IdentityProvider.TELEGRAM);
+        identity.setExternalId("42");
+        when(identityRepository.findByProviderAndExternalId(IdentityProvider.TELEGRAM, "42"))
+                .thenReturn(Optional.of(identity));
+        UserServiceImpl service = newService();
+
+        var dto = service.findOrCreateByIdentity(IdentityProvider.TELEGRAM, "42",
+                new UserProfile("someone", "First", "Last", null));
+
+        assertThat(dto.id()).isEqualTo(userId);
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void findOrCreateByIdentity_createsUserAndIdentityWhenMissing() {
+        when(identityRepository.findByProviderAndExternalId(IdentityProvider.TELEGRAM, "42"))
+                .thenReturn(Optional.empty());
+        when(userRepository.save(any(UserJpaEntity.class))).thenAnswer(inv -> {
+            UserJpaEntity saved = inv.getArgument(0);
+            saved.setId(UUID.randomUUID());
+            return saved;
+        });
+        UserServiceImpl service = newService();
+
+        var dto = service.findOrCreateByIdentity(IdentityProvider.TELEGRAM, "42",
+                new UserProfile("someone", "First", "Last", null));
+
+        assertThat(dto.id()).isNotNull();
+        ArgumentCaptor<UserIdentityJpaEntity> captor = ArgumentCaptor.forClass(UserIdentityJpaEntity.class);
+        verify(identityRepository).save(captor.capture());
+        assertThat(captor.getValue().getProvider()).isEqualTo(IdentityProvider.TELEGRAM);
+        assertThat(captor.getValue().getExternalId()).isEqualTo("42");
+    }
+
+    @Test
+    void findOrCreateByTelegram_delegatesToFindOrCreateByIdentity() {
+        when(identityRepository.findByProviderAndExternalId(IdentityProvider.TELEGRAM, "42"))
+                .thenReturn(Optional.empty());
+        when(userRepository.save(any(UserJpaEntity.class))).thenAnswer(inv -> {
+            UserJpaEntity saved = inv.getArgument(0);
+            saved.setId(UUID.randomUUID());
+            return saved;
+        });
+        UserServiceImpl service = newService();
+
+        service.findOrCreateByTelegram(42L, "someone", "First", "Last");
+
+        verify(identityRepository).findByProviderAndExternalId(IdentityProvider.TELEGRAM, "42");
+    }
+
+    private UserServiceImpl newService() {
+        return new UserServiceImpl(userRepository, settingsRepository, identityRepository);
     }
 }

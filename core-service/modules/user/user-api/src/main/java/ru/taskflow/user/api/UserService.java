@@ -8,6 +8,8 @@ import java.util.UUID;
 
 public interface UserService {
 
+    UserDto findOrCreateByIdentity(IdentityProvider provider, String externalId, UserProfile profile);
+
     UserDto findOrCreateByTelegram(long telegramId, String username, String firstName, String lastName);
 
     UserDto findById(UUID userId);
