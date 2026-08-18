@@ -5,10 +5,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import ru.taskflow.shared.exception.IdentityConflictException;
 import ru.taskflow.shared.exception.NotFoundException;
 import ru.taskflow.shared.exception.ValidationException;
 import ru.taskflow.user.api.IdentityProvider;
 import ru.taskflow.user.api.UserProfile;
+import ru.taskflow.user.api.dto.IdentityDto;
 import ru.taskflow.user.api.dto.UpdateSettingsRequest;
 import ru.taskflow.user.api.dto.UserSettingsDto;
 import ru.taskflow.user.infrastructure.persistence.UserIdentityJpaEntity;
@@ -19,6 +21,7 @@ import ru.taskflow.user.infrastructure.persistence.UserSettingsJpaEntity;
 import ru.taskflow.user.infrastructure.persistence.UserSettingsRepository;
 
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -287,6 +290,124 @@ class UserServiceImplTest {
         var externalId = service.findExternalId(userId, IdentityProvider.TELEGRAM);
 
         assertThat(externalId).isEmpty();
+    }
+
+    @Test
+    void listIdentities_mapsAllIdentitiesOfUser() {
+        UUID userId = UUID.randomUUID();
+        var telegram = new UserIdentityJpaEntity();
+        telegram.setProvider(IdentityProvider.TELEGRAM);
+        telegram.setExternalId("42");
+        var email = new UserIdentityJpaEntity();
+        email.setProvider(IdentityProvider.EMAIL);
+        email.setExternalId("a@b.com");
+        when(identityRepository.findByUser_Id(userId)).thenReturn(List.of(telegram, email));
+        UserServiceImpl service = newService();
+
+        var result = service.listIdentities(userId);
+
+        assertThat(result).hasSize(2);
+        assertThat(result).extracting(IdentityDto::provider)
+                .containsExactlyInAnyOrder(IdentityProvider.TELEGRAM, IdentityProvider.EMAIL);
+    }
+
+    @Test
+    void bindIdentity_createsNewIdentity_whenExternalIdFree() {
+        UUID userId = UUID.randomUUID();
+        var user = new UserJpaEntity();
+        user.setId(userId);
+        when(identityRepository.findByProviderAndExternalId(IdentityProvider.EMAIL, "a@b.com"))
+                .thenReturn(Optional.empty());
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(identityRepository.save(any(UserIdentityJpaEntity.class))).thenAnswer(inv -> inv.getArgument(0));
+        UserServiceImpl service = newService();
+
+        var result = service.bindIdentity(userId, IdentityProvider.EMAIL, "a@b.com");
+
+        assertThat(result.provider()).isEqualTo(IdentityProvider.EMAIL);
+        assertThat(result.externalId()).isEqualTo("a@b.com");
+        ArgumentCaptor<UserIdentityJpaEntity> captor = ArgumentCaptor.forClass(UserIdentityJpaEntity.class);
+        verify(identityRepository).save(captor.capture());
+        assertThat(captor.getValue().getUser()).isSameAs(user);
+    }
+
+    @Test
+    void bindIdentity_isIdempotent_whenAlreadyBoundToSameUser() {
+        UUID userId = UUID.randomUUID();
+        var user = new UserJpaEntity();
+        user.setId(userId);
+        var existing = new UserIdentityJpaEntity();
+        existing.setUser(user);
+        existing.setProvider(IdentityProvider.EMAIL);
+        existing.setExternalId("a@b.com");
+        when(identityRepository.findByProviderAndExternalId(IdentityProvider.EMAIL, "a@b.com"))
+                .thenReturn(Optional.of(existing));
+        UserServiceImpl service = newService();
+
+        var result = service.bindIdentity(userId, IdentityProvider.EMAIL, "a@b.com");
+
+        assertThat(result.externalId()).isEqualTo("a@b.com");
+        verify(identityRepository, never()).save(any());
+    }
+
+    @Test
+    void bindIdentity_throwsConflict_whenBoundToDifferentUser() {
+        UUID userId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+        var otherUser = new UserJpaEntity();
+        otherUser.setId(otherUserId);
+        var existing = new UserIdentityJpaEntity();
+        existing.setUser(otherUser);
+        existing.setProvider(IdentityProvider.EMAIL);
+        existing.setExternalId("a@b.com");
+        when(identityRepository.findByProviderAndExternalId(IdentityProvider.EMAIL, "a@b.com"))
+                .thenReturn(Optional.of(existing));
+        UserServiceImpl service = newService();
+
+        assertThatThrownBy(() -> service.bindIdentity(userId, IdentityProvider.EMAIL, "a@b.com"))
+                .isInstanceOf(IdentityConflictException.class)
+                .satisfies(e -> assertThat(((IdentityConflictException) e).getConflictingUserId()).isEqualTo(otherUserId));
+    }
+
+    @Test
+    void unbindIdentity_deletesIdentity_whenMoreThanOneRemains() {
+        UUID userId = UUID.randomUUID();
+        var identity = new UserIdentityJpaEntity();
+        identity.setProvider(IdentityProvider.TELEGRAM);
+        when(identityRepository.findByUser_IdAndProvider(userId, IdentityProvider.TELEGRAM))
+                .thenReturn(Optional.of(identity));
+        when(identityRepository.countByUser_Id(userId)).thenReturn(2L);
+        UserServiceImpl service = newService();
+
+        service.unbindIdentity(userId, IdentityProvider.TELEGRAM);
+
+        verify(identityRepository).delete(identity);
+    }
+
+    @Test
+    void unbindIdentity_throwsValidation_whenLastRemaining() {
+        UUID userId = UUID.randomUUID();
+        var identity = new UserIdentityJpaEntity();
+        identity.setProvider(IdentityProvider.TELEGRAM);
+        when(identityRepository.findByUser_IdAndProvider(userId, IdentityProvider.TELEGRAM))
+                .thenReturn(Optional.of(identity));
+        when(identityRepository.countByUser_Id(userId)).thenReturn(1L);
+        UserServiceImpl service = newService();
+
+        assertThatThrownBy(() -> service.unbindIdentity(userId, IdentityProvider.TELEGRAM))
+                .isInstanceOf(ValidationException.class);
+        verify(identityRepository, never()).delete(any());
+    }
+
+    @Test
+    void unbindIdentity_throwsNotFound_whenNotBound() {
+        UUID userId = UUID.randomUUID();
+        when(identityRepository.findByUser_IdAndProvider(userId, IdentityProvider.TELEGRAM))
+                .thenReturn(Optional.empty());
+        UserServiceImpl service = newService();
+
+        assertThatThrownBy(() -> service.unbindIdentity(userId, IdentityProvider.TELEGRAM))
+                .isInstanceOf(NotFoundException.class);
     }
 
     private UserServiceImpl newService() {

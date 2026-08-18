@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import ru.taskflow.shared.exception.AccessDeniedException;
+import ru.taskflow.shared.exception.IdentityConflictException;
 import ru.taskflow.shared.exception.NotFoundException;
 import ru.taskflow.shared.exception.RateLimitExceededException;
 import ru.taskflow.shared.exception.ValidationException;
@@ -48,6 +49,17 @@ public class GlobalExceptionHandler {
         );
         problemDetail.setType(URI.create("about:blank"));
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).body(problemDetail);
+    }
+
+    @ExceptionHandler(IdentityConflictException.class)
+    public ResponseEntity<ProblemDetail> handleIdentityConflict(IdentityConflictException ex, WebRequest request) {
+        ProblemDetail problemDetail = ProblemDetail.forStatusAndDetail(
+            HttpStatus.CONFLICT,
+            ex.getMessage()
+        );
+        problemDetail.setType(URI.create("about:blank"));
+        problemDetail.setProperty("conflictingUserId", ex.getConflictingUserId());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(problemDetail);
     }
 
     @ExceptionHandler(ValidationException.class)

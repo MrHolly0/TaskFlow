@@ -3,12 +3,14 @@ package ru.taskflow.user.application;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.taskflow.shared.exception.IdentityConflictException;
 import ru.taskflow.shared.exception.NotFoundException;
 import ru.taskflow.shared.exception.ValidationException;
 import ru.taskflow.user.api.IdentityProvider;
 import ru.taskflow.user.api.UserDto;
 import ru.taskflow.user.api.UserProfile;
 import ru.taskflow.user.api.UserService;
+import ru.taskflow.user.api.dto.IdentityDto;
 import ru.taskflow.user.api.dto.UpdateSettingsRequest;
 import ru.taskflow.user.api.dto.UserSettingsDto;
 import ru.taskflow.user.infrastructure.persistence.UserIdentityJpaEntity;
@@ -21,6 +23,7 @@ import ru.taskflow.user.infrastructure.persistence.UserSettingsRepository;
 import java.time.DateTimeException;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -135,6 +138,55 @@ public class UserServiceImpl implements UserService {
             }
             userRepository.save(user);
         }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<IdentityDto> listIdentities(UUID userId) {
+        return identityRepository.findByUser_Id(userId).stream()
+                .map(this::toIdentityDto)
+                .toList();
+    }
+
+    @Override
+    @Transactional
+    public IdentityDto bindIdentity(UUID userId, IdentityProvider provider, String externalId) {
+        var existing = identityRepository.findByProviderAndExternalId(provider, externalId);
+        if (existing.isPresent()) {
+            var identity = existing.get();
+            if (!identity.getUserId().equals(userId)) {
+                throw new IdentityConflictException(
+                        "Этот способ входа уже привязан к другой учётке", identity.getUserId());
+            }
+            return toIdentityDto(identity);
+        }
+
+        var user = userRepository.findById(userId)
+                .orElseThrow(() -> new NotFoundException("User not found: " + userId));
+
+        var identity = new UserIdentityJpaEntity();
+        identity.setUser(user);
+        identity.setProvider(provider);
+        identity.setExternalId(externalId);
+        identity.setVerifiedAt(OffsetDateTime.now());
+        return toIdentityDto(identityRepository.save(identity));
+    }
+
+    @Override
+    @Transactional
+    public void unbindIdentity(UUID userId, IdentityProvider provider) {
+        var identity = identityRepository.findByUser_IdAndProvider(userId, provider)
+                .orElseThrow(() -> new NotFoundException("Способ входа не привязан к этой учётке"));
+
+        if (identityRepository.countByUser_Id(userId) <= 1) {
+            throw new ValidationException("Нельзя отвязать последний способ входа");
+        }
+
+        identityRepository.delete(identity);
+    }
+
+    private IdentityDto toIdentityDto(UserIdentityJpaEntity e) {
+        return new IdentityDto(e.getProvider(), e.getExternalId(), e.getVerifiedAt());
     }
 
     private void validateTimezone(String timezone) {

@@ -1,9 +1,11 @@
 package ru.taskflow.user.api;
 
+import ru.taskflow.user.api.dto.IdentityDto;
 import ru.taskflow.user.api.dto.UpdateSettingsRequest;
 import ru.taskflow.user.api.dto.UserSettingsDto;
 
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -22,4 +24,19 @@ public interface UserService {
     void updateSettings(UUID userId, UpdateSettingsRequest request);
 
     ZoneId getTimezone(UUID userId);
+
+    List<IdentityDto> listIdentities(UUID userId);
+
+    /**
+     * Привязывает идентификатор к учётке userId. Если идентификатор уже
+     * принадлежит другой учётке — бросает IdentityConflictException, а не
+     * перевешивает его молча.
+     */
+    IdentityDto bindIdentity(UUID userId, IdentityProvider provider, String externalId);
+
+    /**
+     * Отвязывает способ входа. Бросает ValidationException, если это
+     * последний способ у учётки.
+     */
+    void unbindIdentity(UUID userId, IdentityProvider provider);
 }
