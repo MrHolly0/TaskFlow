@@ -14,7 +14,7 @@ app:
   groq:
     api-key: ${GROQ_API_KEY:}
     base-url: https://api.groq.com/openai/v1
-    llm-model: llama-3.3-70b-versatile
+    llm-model: openai/gpt-oss-120b
     whisper-model: whisper-large-v3
     connect-timeout-seconds: 5
     read-timeout-seconds: 30
