@@ -34,6 +34,15 @@ subprojects {
 
     tasks.withType<Test> {
         useJUnitPlatform()
+
+        // Docker 29 отклоняет запросы клиента с API ниже 1.40, а docker-java
+        // внутри testcontainers представляется версией 1.32 и получает
+        // «client version 1.32 is too old» — тесты с контейнерами падают
+        // ещё до запуска контейнера. Ошибка приходит как BadRequestException
+        // на пустом месте и выглядит поломкой соединения, хотя сокет отвечает.
+        // Версия 1.40 — нижняя граница нынешнего демона и при этом понятна
+        // старым (с Docker 19.03), поэтому подходит и на машинах, и в CI.
+        systemProperty("api.version", System.getenv("DOCKER_API_VERSION") ?: "1.40")
     }
 }
 
