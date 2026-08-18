@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import ru.taskflow.assistant.api.AssistantActionType;
 import ru.taskflow.assistant.api.dto.ProposedAction;
 import ru.taskflow.nlp.api.LlmMessage;
 import ru.taskflow.nlp.api.LlmToolCall;
@@ -21,8 +22,10 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * Собирает реплику пользователя в проверенный набор предложенных действий:
@@ -37,6 +40,8 @@ public class AgentLoop {
 
     private static final Duration BUDGET = Duration.ofSeconds(35);
     private static final String SEARCH_REF_PREFIX = "T";
+    private static final int MAX_FALLBACK_TITLE_LENGTH = 512;
+    private static final Pattern WORDS = Pattern.compile("\\s+");
 
     private final ContextBuilder contextBuilder;
     private final AssistantPromptBuilder promptBuilder;
@@ -79,14 +84,13 @@ public class AgentLoop {
         }
 
         if (!parsed1.needsSecondPass() || budgetExceeded(start)) {
-            return new AgentOutcome(guarded1.actions(), rejections, null, null,
-                    response1.text(), window, 1, false);
+            return finishWithFallback(userText, guarded1.actions(), rejections, response1.text(), window, 1);
         }
 
-        return runSecondPass(userId, historyPass1, tools, response1, parsed1, guarded1, window, rejections);
+        return runSecondPass(userId, userText, historyPass1, tools, response1, parsed1, guarded1, window, rejections);
     }
 
-    private AgentOutcome runSecondPass(UUID userId, List<LlmMessage> historyPass1, List<Map<String, Object>> tools,
+    private AgentOutcome runSecondPass(UUID userId, String userText, List<LlmMessage> historyPass1, List<Map<String, Object>> tools,
                                         LlmToolResponse response1, ParsedToolCalls parsed1,
                                         DuplicateGuard.GuardResult guarded1, TaskContextWindow window,
                                         List<String> rejections) {
@@ -122,8 +126,75 @@ public class AgentLoop {
         List<String> clarificationOptions = parsed2.isClarification() ? parsed2.clarificationOptions() : null;
         String assistantText = isBlank(response2.text()) ? response1.text() : response2.text();
 
-        return new AgentOutcome(combined, rejections, clarification, clarificationOptions,
-                assistantText, extended.window(), 2, false);
+        if (clarification != null) {
+            return new AgentOutcome(combined, rejections, clarification, clarificationOptions,
+                    assistantText, extended.window(), 2, false);
+        }
+
+        return finishWithFallback(userText, combined, rejections, assistantText, extended.window(), 2);
+    }
+
+    private AgentOutcome finishWithFallback(String userText, List<ProposedAction> actions, List<String> rejections,
+                                            String assistantText, TaskContextWindow window, int passes) {
+        // Пустой actions() бывает по двум причинам: модель ничего не предложила,
+        // либо предложила, но фильтры (DuplicateGuard и другие) отбросили. Запасной
+        // путь имеет смысл только в первом случае — во втором решение фильтров уже
+        // принято, и подменять его сырой репликой нельзя (см. Task 0 части 3б).
+        boolean modelSaidNothing = actions.isEmpty() && rejections.isEmpty();
+        if (!modelSaidNothing || !looksLikeStandaloneTask(userText)) {
+            return new AgentOutcome(actions, rejections, null, null, assistantText, window, passes, false);
+        }
+
+        DuplicateGuard.GuardResult guarded = duplicateGuard.filter(List.of(fallbackCreateAction(userText)), window);
+        List<String> allRejections = new ArrayList<>(rejections);
+        allRejections.addAll(guarded.rejections());
+        return new AgentOutcome(guarded.actions(), allRejections, null, null, assistantText, window, passes, false);
+    }
+
+    private ProposedAction fallbackCreateAction(String userText) {
+        String title = normalizeTitle(userText);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("title", title);
+        return new ProposedAction(1, AssistantActionType.CREATE, null, payload,
+                truncate("Создать — " + title), true);
+    }
+
+    private boolean looksLikeStandaloneTask(String userText) {
+        String title = normalizeTitle(userText);
+        if (title.length() < 8 || title.length() > MAX_FALLBACK_TITLE_LENGTH || title.endsWith("?")) {
+            return false;
+        }
+
+        String[] words = WORDS.split(title);
+        if (words.length < 2) {
+            return false;
+        }
+
+        String lower = title.toLowerCase(Locale.ROOT);
+        return !startsWithAny(lower,
+                "найди", "найти", "покажи", "показать",
+                "закрой", "закрыть", "заверши", "завершить",
+                "отмени", "отменить", "перенеси", "перенести", "сдвинь",
+                "измени", "изменить", "удали", "удалить", "очисти", "очистить",
+                "что ", "как ", "почему ", "где ", "когда ", "сколько ",
+                "привет", "спасибо", "ничего");
+    }
+
+    private boolean startsWithAny(String value, String... prefixes) {
+        for (String prefix : prefixes) {
+            if (value.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String normalizeTitle(String userText) {
+        return WORDS.matcher(userText.trim()).replaceAll(" ");
+    }
+
+    private String truncate(String value) {
+        return value.length() <= 256 ? value : value.substring(0, 255) + "…";
     }
 
     private LlmToolCall findSearchCall(List<LlmToolCall> calls) {
