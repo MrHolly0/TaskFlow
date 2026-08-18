@@ -120,6 +120,26 @@ class LiveModelRegressionTest {
     }
 
     @Test
+    void handleText_doesNotRenameUnrelatedTaskOnAmbiguousPhrase() {
+        UUID userId = newUser();
+        TaskResponse materials = seedTask(userId, "Отправить материалы заказчику", "Работа", TaskPriority.MEDIUM, null);
+
+        // живой кейс: «ложный варнинг» не упоминает существующее название задачи —
+        // переименование той задачи, что подвернулась первой, было бы ошибкой
+        Proposal proposal = handleText(userId, "Поменять название ложному варнингу");
+
+        List<ProposedAction> wronglyRenamed = proposal.actions().stream()
+                .filter(a -> a.type() == AssistantActionType.UPDATE)
+                .filter(a -> materials.id().equals(a.targetTaskId()))
+                .filter(a -> a.payload().get("title") != null)
+                .toList();
+
+        assertThat(wronglyRenamed)
+                .overridingErrorMessage("Модель переименовала неупомянутую задачу: %s", wronglyRenamed)
+                .isEmpty();
+    }
+
+    @Test
     void handleText_doesNotCreateDuplicateOfExistingTask() {
         UUID userId = newUser();
         TaskResponse dentist = seedTask(userId, "Записаться к стоматологу", "Здоровье", TaskPriority.LOW, null);

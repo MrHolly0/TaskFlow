@@ -49,6 +49,7 @@ public class AgentLoop {
     private final NlpGatewayService nlpGatewayService;
     private final ToolCallParser toolCallParser;
     private final DuplicateGuard duplicateGuard;
+    private final TitleChangeGuard titleChangeGuard;
     private final TaskService taskService;
     private final Clock clock;
     private final ObjectMapper objectMapper;
@@ -74,25 +75,27 @@ public class AgentLoop {
 
         ParsedToolCalls parsed1 = toolCallParser.parse(toDomainCalls(response1.toolCalls()), window);
         DuplicateGuard.GuardResult guarded1 = duplicateGuard.filter(parsed1.actions(), window);
+        TitleChangeGuard.GuardResult titled1 = titleChangeGuard.filter(guarded1.actions(), window, userText);
 
         List<String> rejections = new ArrayList<>(parsed1.rejections());
         rejections.addAll(guarded1.rejections());
+        rejections.addAll(titled1.rejections());
 
         if (parsed1.isClarification()) {
-            return new AgentOutcome(guarded1.actions(), rejections, parsed1.clarification(),
+            return new AgentOutcome(titled1.actions(), rejections, parsed1.clarification(),
                     parsed1.clarificationOptions(), response1.text(), window, 1, false);
         }
 
         if (!parsed1.needsSecondPass() || budgetExceeded(start)) {
-            return finishWithFallback(userText, guarded1.actions(), rejections, response1.text(), window, 1);
+            return finishWithFallback(userText, titled1.actions(), rejections, response1.text(), window, 1);
         }
 
-        return runSecondPass(userId, userText, historyPass1, tools, response1, parsed1, guarded1, window, rejections);
+        return runSecondPass(userId, userText, historyPass1, tools, response1, parsed1, titled1.actions(), window, rejections);
     }
 
     private AgentOutcome runSecondPass(UUID userId, String userText, List<LlmMessage> historyPass1, List<Map<String, Object>> tools,
                                         LlmToolResponse response1, ParsedToolCalls parsed1,
-                                        DuplicateGuard.GuardResult guarded1, TaskContextWindow window,
+                                        List<ProposedAction> pass1Actions, TaskContextWindow window,
                                         List<String> rejections) {
         LlmToolCall searchCall = findSearchCall(response1.toolCalls());
         List<TaskResponse> found = taskService.search(userId, parsed1.searchQuery(), false, 20);
@@ -110,17 +113,19 @@ public class AgentLoop {
         // «сказанное не теряется» из спеки); llmFailed=false, потому что первый вызов
         // реально удался, отказал только необязательный довесок
         if (response2.failed()) {
-            return new AgentOutcome(guarded1.actions(), rejections, null, null,
+            return new AgentOutcome(pass1Actions, rejections, null, null,
                     response1.text(), extended.window(), 2, false);
         }
 
         ParsedToolCalls parsed2 = toolCallParser.parse(toDomainCalls(response2.toolCalls()), extended.window());
-        DuplicateGuard.GuardResult guarded2 = duplicateGuard.filter(parsed2.actions(), extended.window(), guarded1.actions());
+        DuplicateGuard.GuardResult guarded2 = duplicateGuard.filter(parsed2.actions(), extended.window(), pass1Actions);
+        TitleChangeGuard.GuardResult titled2 = titleChangeGuard.filter(guarded2.actions(), extended.window(), userText);
 
         rejections.addAll(parsed2.rejections());
         rejections.addAll(guarded2.rejections());
+        rejections.addAll(titled2.rejections());
 
-        List<ProposedAction> combined = combineAndRenumber(guarded1.actions(), guarded2.actions());
+        List<ProposedAction> combined = combineAndRenumber(pass1Actions, titled2.actions());
 
         String clarification = parsed2.isClarification() ? parsed2.clarification() : null;
         List<String> clarificationOptions = parsed2.isClarification() ? parsed2.clarificationOptions() : null;

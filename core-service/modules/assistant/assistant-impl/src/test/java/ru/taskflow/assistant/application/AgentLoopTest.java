@@ -45,6 +45,7 @@ class AgentLoopTest {
     private final ToolCallParser toolCallParser = new ToolCallParser(
             toolRegistry, new ActionValidator(taskService), new SummaryRenderer(), new ObjectMapper());
     private final DuplicateGuard duplicateGuard = new DuplicateGuard();
+    private final TitleChangeGuard titleChangeGuard = new TitleChangeGuard();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private TaskContextWindow window() {
@@ -56,7 +57,7 @@ class AgentLoopTest {
 
     private AgentLoop loop(Clock clock) {
         return new AgentLoop(contextBuilder, promptBuilder, toolRegistry, gateway,
-                toolCallParser, duplicateGuard, taskService, clock, objectMapper);
+                toolCallParser, duplicateGuard, titleChangeGuard, taskService, clock, objectMapper);
     }
 
     private AgentLoop loopWithFixedClock() {
@@ -180,6 +181,18 @@ class AgentLoopTest {
         assertThat(outcome.actions()).isEmpty();
         assertThat(outcome.assistantText()).isEqualTo("Не понял, уточните пожалуйста.");
         assertThat(outcome.llmFailed()).isFalse();
+    }
+
+    @Test
+    void run_createsStandaloneTaskWhenModelReturnsNoToolCalls() {
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(), "Ничего не нашлось."));
+
+        var outcome = loopWithFixedClock().run(userId, "Поменять название ложному варнингу", zone);
+
+        assertThat(outcome.actions()).hasSize(1);
+        assertThat(outcome.actions().getFirst().type()).isEqualTo(AssistantActionType.CREATE);
+        assertThat(outcome.actions().getFirst().payload()).containsEntry("title", "Поменять название ложному варнингу");
     }
 
     @Test
