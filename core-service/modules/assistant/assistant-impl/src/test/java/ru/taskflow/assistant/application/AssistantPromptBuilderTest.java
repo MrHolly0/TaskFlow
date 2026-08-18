@@ -77,6 +77,16 @@ class AssistantPromptBuilderTest {
     }
 
     @Test
+    void build_instructsToFillDescriptionOnlyWithExtraDetails() {
+        var parts = builder.build(emptyWindow(), "любой текст", ZONE);
+
+        assertThat(parts.systemPrompt())
+                .contains("Заполняй description у create_task, только если в реплике есть подробности сверх");
+        assertThat(parts.systemPrompt())
+                .contains("оставляй description пустым");
+    }
+
+    @Test
     void build_wrapsUserTextInDelimiters() {
         String userText = "сходил в магазин, взял молоко и хлеб";
 
