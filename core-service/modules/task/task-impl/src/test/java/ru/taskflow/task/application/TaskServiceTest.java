@@ -350,6 +350,32 @@ class TaskServiceTest {
         assertThat(captor.getValue().getPageSize()).isEqualTo(20);
     }
 
+    @Test
+    void getUpcomingFocusTasks_returnsTasksFromRepository() {
+        var entity = taskEntity();
+        var response = mockResponse(taskId, "задача на следующей неделе");
+
+        when(taskRepository.findUpcomingFocusTasks(eq(userId), eq(TaskStatus.DONE), any(OffsetDateTime.class)))
+                .thenReturn(List.of(entity));
+        when(taskMapper.toResponse(entity)).thenReturn(response);
+
+        var result = taskService.getUpcomingFocusTasks(userId);
+
+        assertThat(result.tasks()).containsExactly(response);
+    }
+
+    @Test
+    void getUpcomingFocusTasks_capsAtThree() {
+        var entities = List.of(taskEntity(), taskEntity(), taskEntity(), taskEntity());
+        when(taskRepository.findUpcomingFocusTasks(eq(userId), eq(TaskStatus.DONE), any(OffsetDateTime.class)))
+                .thenReturn(entities);
+        when(taskMapper.toResponse(any())).thenReturn(mockResponse(taskId, "задача"));
+
+        var result = taskService.getUpcomingFocusTasks(userId);
+
+        assertThat(result.tasks()).hasSize(3);
+    }
+
     private TaskJpaEntity taskEntity() {
         var e = new TaskJpaEntity();
         e.setUserId(userId);

@@ -29,6 +29,8 @@ public interface TaskService {
 
     FocusResponse getFocusTasks(UUID userId);
 
+    FocusResponse getUpcomingFocusTasks(UUID userId);
+
     DigestResponse getDigest(UUID userId, LocalDate date);
 
     TaskResponse createQuick(UUID userId, CreateTaskRequest request);

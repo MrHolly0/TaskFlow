@@ -69,6 +69,28 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
             WHERE t.userId = :userId
               AND t.status != :done
               AND t.isDeleted = false
+              AND t.deadline > :endOfToday
+            ORDER BY CASE t.priority
+              WHEN 'URGENT' THEN 0
+              WHEN 'HIGH' THEN 1
+              WHEN 'NORMAL' THEN 2
+              ELSE 3
+            END,
+            t.deadline
+            """)
+    List<TaskJpaEntity> findUpcomingFocusTasks(
+            @Param("userId") UUID userId,
+            @Param("done") TaskStatus done,
+            @Param("endOfToday") OffsetDateTime endOfToday
+    );
+
+    @Query("""
+            SELECT t FROM TaskJpaEntity t
+            LEFT JOIN FETCH t.group
+            LEFT JOIN FETCH t.tags
+            WHERE t.userId = :userId
+              AND t.status != :done
+              AND t.isDeleted = false
               AND (DATE(t.deadline) = DATE(:date) OR (t.deadline IS NULL))
             ORDER BY CASE t.priority
               WHEN 'URGENT' THEN 0
@@ -82,6 +104,27 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
             @Param("userId") UUID userId,
             @Param("date") OffsetDateTime date,
             @Param("done") TaskStatus done
+    );
+
+    @Query(value = """
+            SELECT created_at, completed_at, deadline, status
+            FROM tasks
+            WHERE user_id = :userId
+              AND (
+                (is_deleted = false AND created_at >= :from)
+                OR (completed_at IS NOT NULL AND completed_at >= :from)
+                OR (
+                  is_deleted = false
+                  AND deadline IS NOT NULL
+                  AND deadline < :now
+                  AND status NOT IN ('DONE', 'CANCELLED')
+                )
+              )
+            """, nativeQuery = true)
+    List<Object[]> findStatsRows(
+            @Param("userId") UUID userId,
+            @Param("from") OffsetDateTime from,
+            @Param("now") OffsetDateTime now
     );
 
     @Query("""

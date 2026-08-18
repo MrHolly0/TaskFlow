@@ -31,6 +31,17 @@ interface DigestResponse {
   overdueTasks: number;
 }
 
+export interface TaskStatsItem {
+  createdAt: string;
+  completedAt?: string | null;
+  deadline?: string | null;
+  status: string;
+}
+
+interface TaskStatsResponse {
+  tasks: TaskStatsItem[];
+}
+
 const getClient = () => {
   const token = localStorage.getItem('auth_token');
   const client = axios.create({
@@ -59,6 +70,18 @@ export const useFocusTasks = () => {
       return response.data.tasks;
     },
     staleTime: 1000 * 60 * 2, // 2 min
+  });
+};
+
+export const useUpcomingFocusTasks = (enabled: boolean) => {
+  return useQuery({
+    queryKey: ['tasks', 'focus', 'upcoming'],
+    queryFn: async () => {
+      const response = await getClient().get<FocusResponse>('/tasks/focus/upcoming');
+      return response.data.tasks;
+    },
+    enabled,
+    staleTime: 1000 * 60 * 2,
   });
 };
 
@@ -162,6 +185,17 @@ export const useTasksList = () => {
         params: { size: 100, sort: 'createdAt,desc' },
       });
       return response.data.content;
+    },
+    staleTime: 1000 * 60 * 2,
+  });
+};
+
+export const useTaskStats = () => {
+  return useQuery({
+    queryKey: ['tasks', 'stats'],
+    queryFn: async () => {
+      const response = await getClient().get<TaskStatsResponse>('/tasks/stats');
+      return response.data.tasks;
     },
     staleTime: 1000 * 60 * 2,
   });

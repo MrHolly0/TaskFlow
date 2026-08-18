@@ -322,14 +322,34 @@ public class TaskServiceImpl implements TaskService {
      */
     @Override
     public FocusResponse getFocusTasks(UUID userId) {
-        var endOfToday = OffsetDateTime.now(ZoneOffset.UTC)
-                .withHour(23).withMinute(59).withSecond(59).withNano(0);
+        var endOfToday = endOfToday();
         var tasks = taskRepository.findFocusTasks(userId, TaskStatus.DONE, endOfToday)
                 .stream()
                 .limit(3)
                 .map(taskMapper::toResponse)
                 .toList();
         return new FocusResponse(tasks);
+    }
+
+    /**
+     * План на сегодня закрыт — не то же самое, что задач больше нет. Отдельный
+     * вызов вместо расширения getFocusTasks: экран сначала честно показывает
+     * «сегодня всё сделано», и только по запросу подтягивает то, что дальше.
+     */
+    @Override
+    public FocusResponse getUpcomingFocusTasks(UUID userId) {
+        var endOfToday = endOfToday();
+        var tasks = taskRepository.findUpcomingFocusTasks(userId, TaskStatus.DONE, endOfToday)
+                .stream()
+                .limit(3)
+                .map(taskMapper::toResponse)
+                .toList();
+        return new FocusResponse(tasks);
+    }
+
+    private OffsetDateTime endOfToday() {
+        return OffsetDateTime.now(ZoneOffset.UTC)
+                .withHour(23).withMinute(59).withSecond(59).withNano(0);
     }
 
     /**

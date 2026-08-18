@@ -6,7 +6,7 @@ import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { addDays } from 'date-fns';
 import { useStore, Priority } from '@/lib/store';
 import { formatDeadline, getPriorityBgColor, cn } from '@/lib/utils';
-import { useFocusTasks, useCompleteTask, useUpdateTask, useTasksList } from '@/lib/hooks/useTasks';
+import { useFocusTasks, useUpcomingFocusTasks, useCompleteTask, useUpdateTask, useTasksList } from '@/lib/hooks/useTasks';
 import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
@@ -162,13 +162,18 @@ function FocusTaskCard({ task, index, timezone, onComplete, onSnooze, onClick }:
 export function FocusPage() {
   const user = useStore((state) => state.user);
   const { data: focusTasks = [], isLoading, error } = useFocusTasks();
+  const todayDone = !isLoading && focusTasks.length === 0;
+  const { data: upcomingTasks = [], isLoading: upcomingLoading } = useUpcomingFocusTasks(todayDone);
   const { data: allTasks = [] } = useTasksList();
   const { mutate: completeTask } = useCompleteTask();
   const { mutate: updateTask } = useUpdateTask();
   const { timezone, isReady: timezoneReady } = useUserTimezone();
 
+  const showingUpcoming = todayDone && upcomingTasks.length > 0;
+  const tasksToShow = showingUpcoming ? upcomingTasks : focusTasks;
+
   const pendingCount = allTasks.filter((t: any) => t.status !== 'DONE' && t.status !== 'CANCELLED').length;
-  const remainingCount = Math.max(0, pendingCount - focusTasks.length);
+  const remainingCount = Math.max(0, pendingCount - tasksToShow.length);
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -219,7 +224,15 @@ export function FocusPage() {
     );
   }
 
-  if (focusTasks.length === 0) {
+  if (todayDone && upcomingLoading) {
+    return (
+      <div className="max-w-2xl mx-auto flex items-center justify-center min-h-[60vh]">
+        <p className="text-muted-foreground">Смотрим, что дальше...</p>
+      </div>
+    );
+  }
+
+  if (todayDone && upcomingTasks.length === 0) {
     return (
       <div className="max-w-lg mx-auto flex flex-col items-center justify-center min-h-[60vh] space-y-6 text-center px-4">
         <motion.div
@@ -231,7 +244,7 @@ export function FocusPage() {
           ✨
         </motion.div>
         <div className="space-y-2">
-          <h2 className="text-2xl font-semibold">Всё сделано!</h2>
+          <h2 className="text-2xl font-semibold">Всё сделано на сегодня!</h2>
           <p className="text-muted-foreground">
             Отдыхай или закинь мысли на потом.
           </p>
@@ -264,11 +277,17 @@ export function FocusPage() {
           </Link>
         </div>
 
+        {showingUpcoming && (
+          <p className="text-sm text-muted-foreground -mt-2">
+            Сегодняшний план выполнен — вот что дальше.
+          </p>
+        )}
+
         {/* Focus label */}
         <div className="flex items-center gap-2">
           <div className="h-px flex-1 bg-border" />
           <span className="text-xs font-medium text-muted-foreground uppercase tracking-widest px-2">
-            Фокус сейчас
+            {showingUpcoming ? 'Дальше по плану' : 'Фокус сейчас'}
           </span>
           <div className="h-px flex-1 bg-border" />
         </div>
@@ -276,7 +295,7 @@ export function FocusPage() {
         {/* Task cards */}
         <div className="space-y-3">
           <AnimatePresence>
-            {focusTasks.map((task, index) => (
+            {tasksToShow.map((task, index) => (
               <FocusTaskCard
                 key={task.id}
                 task={task}

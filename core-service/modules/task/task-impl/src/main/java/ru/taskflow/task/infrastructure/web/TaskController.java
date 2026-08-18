@@ -111,6 +111,14 @@ public class TaskController {
         return taskService.getFocusTasks(user.userId());
     }
 
+    @GetMapping("/focus/upcoming")
+    @Operation(summary = "Режим фокуса — что дальше", description = "Возвращает 1–3 задачи с дедлайном позже сегодняшнего, для просмотра после закрытия плана на сегодня")
+    public FocusResponse getUpcomingFocusTasks(
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) {
+        return taskService.getUpcomingFocusTasks(user.userId());
+    }
+
     @GetMapping("/digest")
     @Operation(summary = "Дайджест на дату", description = "Возвращает все задачи на конкретную дату (по умолчанию сегодня)")
     public DigestResponse getDigest(
