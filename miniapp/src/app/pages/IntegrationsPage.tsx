@@ -88,9 +88,63 @@ function useMergeFlow(onMerged: (result: IdentityBindResponse) => void, onResolv
   return { conflict, merging: mergeAccounts.isPending, catchConflict, confirm, cancel };
 }
 
+function IntegrationsHeader() {
+  return (
+    <div className="space-y-1">
+      <h1 className="text-2xl font-semibold">Интеграции</h1>
+      <p className="text-sm text-muted-foreground">
+        Способы входа в аккаунт. Привяжи хотя бы два, чтобы не потерять доступ, если один перестанет работать.
+      </p>
+    </div>
+  );
+}
+
+function SectionSkeleton() {
+  return (
+    <div className="flex items-center gap-3" aria-hidden="true">
+      <div className="h-10 w-10 shrink-0 rounded-lg bg-muted animate-pulse" />
+      <div className="flex flex-col gap-1.5">
+        <div className="h-3.5 w-20 rounded bg-muted animate-pulse" />
+        <div className="h-3 w-28 rounded bg-muted animate-pulse" />
+      </div>
+    </div>
+  );
+}
+
 export function IntegrationsPage() {
-  const { data: identities = [], isLoading } = useIdentities();
+  const { data: identities, isLoading, isError, refetch } = useIdentities();
   const unbind = useUnbindIdentity();
+
+  // Элементы управления, меняющие состояние учётки, не рисуются, пока
+  // состояние неизвестно: пустой identities по умолчанию неотличим от
+  // «загрузка ещё идёт» или «запрос упал», а разделы это разные вещи —
+  // «ничего не подключено» и «не знаем, что подключено».
+  if (isLoading) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-6">
+        <IntegrationsHeader />
+        <Card className="p-6 flex flex-col gap-6">
+          <SectionSkeleton />
+          <Separator />
+          <SectionSkeleton />
+        </Card>
+      </div>
+    );
+  }
+
+  if (isError || !identities) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-6">
+        <IntegrationsHeader />
+        <Card className="p-6">
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <p className="text-sm text-muted-foreground">Не удалось загрузить способы входа.</p>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>Повторить</Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   const telegram = identities.find((i) => i.provider === 'TELEGRAM');
   const email = identities.find((i) => i.provider === 'EMAIL');
@@ -107,15 +161,10 @@ export function IntegrationsPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold">Интеграции</h1>
-        <p className="text-sm text-muted-foreground">
-          Способы входа в аккаунт. Привяжи хотя бы два, чтобы не потерять доступ, если один перестанет работать.
-        </p>
-      </div>
+      <IntegrationsHeader />
 
       <Card className="p-6 flex flex-col gap-6">
-        {!isLoading && !email && (
+        {!email && (
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
             <p className="text-sm font-medium">Привяжи почту</p>
             <p className="text-xs text-muted-foreground mt-1">

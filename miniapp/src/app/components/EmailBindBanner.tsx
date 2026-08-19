@@ -8,8 +8,11 @@ import { useIdentities } from '@/lib/hooks/useIdentities';
 // 406-ФЗ/199-ФЗ. Показывается на экране, который видно сразу при входе,
 // и не прячется насовсем — только исчезает, когда почта появится в списке.
 export function EmailBindBanner() {
-  const { data: identities, isLoading } = useIdentities();
-  if (isLoading || !identities) return null;
+  const { data: identities, isLoading, isError } = useIdentities();
+  // Загрузка и ошибка — то же самое «не знаем»: банер утверждает «у тебя
+  // только Telegram», а на деле мы просто не получили ответ. Молчать в
+  // обоих случаях безопаснее, чем гадать.
+  if (isLoading || isError || !identities) return null;
   if (identities.some((i) => i.provider === 'EMAIL')) return null;
 
   return (
