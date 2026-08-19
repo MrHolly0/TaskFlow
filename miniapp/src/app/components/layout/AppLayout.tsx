@@ -200,7 +200,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <SheetTrigger asChild>
               <button className="flex-1 flex flex-col items-center gap-1 py-3 text-xs text-muted-foreground cursor-pointer">
                 <IconSettings className="h-5 w-5" />
-                <span>Ещё</span>
+                <span>Еще</span>
               </button>
             </SheetTrigger>
             <SheetContent side="bottom" className="h-auto rounded-t-2xl">

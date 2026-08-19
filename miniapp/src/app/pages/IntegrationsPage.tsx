@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { IconMail, IconCheck } from '@tabler/icons-react';
+import { IconMail } from '@tabler/icons-react';
 import { Card } from '@/app/components/ui/card';
 import { Badge } from '@/app/components/ui/badge';
 import { Button, buttonVariants } from '@/app/components/ui/button';
@@ -23,6 +23,7 @@ import { TelegramLoginButton } from '@/app/components/TelegramLoginButton';
 import { TelegramLogo } from '@/app/components/TelegramLogo';
 import { MergeConflictDialog } from '@/app/components/MergeConflictDialog';
 import { isTelegramWebApp } from '@/lib/auth';
+import { plural } from '@/lib/plural';
 import {
   useIdentities,
   useRequestBindEmailCode,
@@ -43,11 +44,11 @@ const EMPTY_TRANSFER: AccountTransferResult = {
 
 function mergeToastMessage(result: AccountTransferResult): string {
   const parts: string[] = [];
-  if (result.tasks > 0) parts.push(`${result.tasks} задач`);
-  if (result.groups > 0) parts.push(`${result.groups} групп`);
-  if (result.tags > 0) parts.push(`${result.tags} меток`);
-  if (parts.length === 0) return 'Способ входа подключён — данные с ним переносить не пришлось.';
-  return `Перенесли с прежней учётки: ${parts.join(', ')}.`;
+  if (result.tasks > 0) parts.push(`${result.tasks} ${plural(result.tasks, ['задача', 'задачи', 'задач'])}`);
+  if (result.groups > 0) parts.push(`${result.groups} ${plural(result.groups, ['группа', 'группы', 'групп'])}`);
+  if (result.tags > 0) parts.push(`${result.tags} ${plural(result.tags, ['метка', 'метки', 'меток'])}`);
+  if (parts.length === 0) return 'Способ входа подключен — данные с ним переносить не пришлось.';
+  return `Перенесли с прежней учетки: ${parts.join(', ')}.`;
 }
 
 // Доказательство владения идентификатором и согласие на слияние двух
@@ -75,14 +76,14 @@ function useMergeFlow(onMerged: (result: IdentityBindResponse) => void, onResolv
         onResolved();
       },
       onError: () => {
-        toast.error('Не получилось перенести данные, попробуйте ещё раз');
+        toast.error('Не получилось перенести данные, попробуйте еще раз');
       },
     });
   };
 
   const cancel = () => {
     setConflict(null);
-    toast.info('Способ входа не подключён. Можно начать заново.');
+    toast.info('Способ входа не подключен. Можно начать заново.');
     onResolved();
   };
 
@@ -104,8 +105,7 @@ function IntegrationsHeader() {
 // сущности: одна и та же плашка, различающаяся только цветом.
 function StatusBadge({ connected, children }: { connected: boolean; children: React.ReactNode }) {
   return (
-    <Badge variant={connected ? 'success' : 'destructive'} className="gap-1 mt-0.5">
-      {connected && <IconCheck className="h-3 w-3" />}
+    <Badge variant={connected ? 'success' : 'destructive'} className="mt-0.5">
       {children}
     </Badge>
   );
@@ -181,7 +181,7 @@ export function IntegrationsPage() {
             слияние учёток заранее, до того как оно случится. */}
         <p className="text-xs text-muted-foreground">
           Один аккаунт — несколько способов входа. Если на почте или в Telegram уже была отдельная
-          учётка с задачами, при подключении мы предложим перенести их сюда, в одну.
+          учетка с задачами, при подключении мы предложим перенести их сюда, в одну.
         </p>
 
         <TelegramSection
@@ -241,7 +241,7 @@ function TelegramSection({
           <TelegramLogo className="h-10 w-10 shrink-0" />
           <div>
             <p className="text-sm font-medium">Telegram</p>
-            <StatusBadge connected={connected}>{connected ? 'Подключён' : 'Не подключён'}</StatusBadge>
+            <StatusBadge connected={connected}>{connected ? 'Подключен' : 'Не подключен'}</StatusBadge>
           </div>
         </div>
 

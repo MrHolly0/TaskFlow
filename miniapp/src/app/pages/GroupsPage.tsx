@@ -62,7 +62,7 @@ function CreateGroupModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
-              placeholder="Работа, Учёба, Хобби..."
+              placeholder="Работа, Учеба, Хобби..."
               className="h-10"
               autoFocus
             />

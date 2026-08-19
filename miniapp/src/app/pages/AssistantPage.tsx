@@ -42,7 +42,7 @@ function errorMessage(error: unknown): string {
   if (isRateLimited(error)) {
     return 'Слишком много обращений подряд — подождите минуту и попробуйте снова.';
   }
-  return 'Не получилось связаться с ассистентом. Попробуйте ещё раз.';
+  return 'Не получилось связаться с ассистентом. Попробуйте еще раз.';
 }
 
 export function AssistantPage() {

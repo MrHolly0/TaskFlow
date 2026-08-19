@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { TelegramLogo } from '@/app/components/TelegramLogo';
+import { useEffect, useState } from 'react';
+import { TelegramGlyph } from '@/app/components/TelegramLogo';
 
 const BOT_ID = import.meta.env.VITE_TELEGRAM_BOT_ID || '8738130486';
 const HASH_PREFIX = '#tgAuthResult=';
@@ -8,16 +8,28 @@ type Props = {
   onAuth: (fields: Record<string, string>) => void;
 };
 
-function readAuthResult(): Record<string, string> | null {
-  if (!window.location.hash.startsWith(HASH_PREFIX)) return null;
+type AuthResult =
+  | { status: 'absent' }
+  | { status: 'ok'; fields: Record<string, string> }
+  | { status: 'error' };
+
+// Хеш есть, но не разобрался, — не то же самое, что хеша нет: первое надо
+// показать человеку, второе — обычный заход, о котором и говорить нечего.
+// base64url (- и _ вместо + и /, без паддинга) принимаем на случай, если
+// Telegram когда-нибудь его использует, — не только классический base64.
+function readAuthResult(): AuthResult {
+  if (!window.location.hash.startsWith(HASH_PREFIX)) return { status: 'absent' };
   try {
-    const raw = decodeURIComponent(window.location.hash.slice(HASH_PREFIX.length));
-    const data = JSON.parse(atob(raw)) as Record<string, unknown>;
+    const base64 = decodeURIComponent(window.location.hash.slice(HASH_PREFIX.length))
+      .replace(/-/g, '+')
+      .replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    const data = JSON.parse(atob(padded)) as Record<string, unknown>;
     const fields: Record<string, string> = {};
     for (const [key, value] of Object.entries(data)) fields[key] = String(value);
-    return fields;
+    return { status: 'ok', fields };
   } catch {
-    return null;
+    return { status: 'error' };
   }
 }
 
@@ -29,14 +41,21 @@ function readAuthResult(): Record<string, string> | null {
 // он просто не окажется здесь с этим хешем, и страница не зависает в
 // промежуточном состоянии, потому что мы его и не заводили.
 export function TelegramLoginButton({ onAuth }: Props) {
+  const [parseError, setParseError] = useState(false);
+
   useEffect(() => {
-    const fields = readAuthResult();
-    if (!fields) return;
+    const result = readAuthResult();
+    if (result.status === 'absent') return;
     history.replaceState(null, '', window.location.pathname + window.location.search);
-    onAuth(fields);
+    if (result.status === 'error') {
+      setParseError(true);
+      return;
+    }
+    onAuth(result.fields);
   }, [onAuth]);
 
   const handleClick = () => {
+    setParseError(false);
     const params = new URLSearchParams({
       bot_id: BOT_ID,
       origin: window.location.origin,
@@ -47,13 +66,20 @@ export function TelegramLoginButton({ onAuth }: Props) {
   };
 
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      className="flex items-center justify-center gap-3 py-3 px-6 rounded-2xl font-semibold text-white transition-all active:scale-95 cursor-pointer bg-[#2AABEE] hover:bg-[#229ED9]"
-    >
-      <TelegramLogo className="h-5 w-5" />
-      Telegram
-    </button>
+    <div className="flex flex-col items-center gap-2">
+      <button
+        type="button"
+        onClick={handleClick}
+        className="flex items-center justify-center gap-3 py-3 px-6 rounded-2xl font-semibold text-white transition-all active:scale-95 cursor-pointer bg-[#2AABEE] hover:bg-[#229ED9]"
+      >
+        <TelegramGlyph className="h-5 w-5 text-white" />
+        Telegram
+      </button>
+      {parseError && (
+        <p className="text-xs text-destructive text-center">
+          Не получилось разобрать ответ от Telegram. Попробуйте войти еще раз.
+        </p>
+      )}
+    </div>
   );
 }

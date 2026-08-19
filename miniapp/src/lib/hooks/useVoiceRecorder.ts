@@ -74,7 +74,7 @@ export function useVoiceRecorder() {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
       setStatus('error');
-      setError('Нет доступа к микрофону — разреши доступ в настройках браузера и попробуй ещё раз.');
+      setError('Нет доступа к микрофону — разреши доступ в настройках браузера и попробуй еще раз.');
       return;
     }
     streamRef.current = stream;

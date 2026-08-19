@@ -313,7 +313,7 @@ export function SettingsPage() {
                 onClick={() => setTheme('dark')}
                 className="flex-1 h-10"
               >
-                Тёмная
+                Темная
               </Button>
               <Button
                 variant={theme === 'system' ? 'default' : 'outline'}
@@ -334,7 +334,7 @@ export function SettingsPage() {
           <div className="flex flex-col gap-2">
             <Label htmlFor="auto-clean">Авто-удаление выполненных</Label>
             <p className="text-xs text-muted-foreground">
-              Выполненные и отклонённые задачи скрываются через указанный срок. Системное удаление из БД — через 3 месяца.
+              Выполненные и отклоненные задачи скрываются через указанный срок. Системное удаление из БД — через 3 месяца.
             </p>
             <Select
               value={currentAutoClean}
@@ -357,7 +357,7 @@ export function SettingsPage() {
           <div className="flex flex-col gap-2">
             <Label>Очистить прямо сейчас</Label>
             <p className="text-xs text-muted-foreground">
-              Скрывает все выполненные и отклонённые задачи немедленно.
+              Скрывает все выполненные и отклоненные задачи немедленно.
             </p>
             {clearResult !== null && (
               <p className="text-xs text-green-600">

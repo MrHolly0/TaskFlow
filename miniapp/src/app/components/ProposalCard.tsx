@@ -42,7 +42,7 @@ export function ProposalCard({
   if (!proposal.actions.length) {
     return (
       <Card className="max-w-[85%] px-4 py-3 text-sm text-muted-foreground">
-        Не нашёл, что предложить по этому сообщению.
+        Не нашел, что предложить по этому сообщению.
       </Card>
     );
   }

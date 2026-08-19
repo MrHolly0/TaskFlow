@@ -33,7 +33,7 @@ function errorMessage(error: unknown): string {
   if (isRateLimited(error)) {
     return 'Слишком много обращений подряд — подождите минуту и попробуйте снова.';
   }
-  return 'Не получилось связаться с ассистентом. Попробуйте ещё раз.';
+  return 'Не получилось связаться с ассистентом. Попробуйте еще раз.';
 }
 
 export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
@@ -182,7 +182,7 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive/30" />
                       <IconMicrophone className="relative h-5 w-5 text-destructive" />
                     </span>
-                    <p className="text-sm text-muted-foreground">Идёт запись…</p>
+                    <p className="text-sm text-muted-foreground">Идет запись…</p>
                   </div>
                 </div>
                 {error && (

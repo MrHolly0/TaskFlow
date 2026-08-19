@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "dev": "vite"
+    "dev": "vite",
+    "test": "vitest run"
   },
   "dependencies": {
     "@ark-ui/react": "^5.36.2",
@@ -81,7 +82,8 @@
     "react-dom": "18.3.1",
     "tailwindcss": "4.1.12",
     "typescript": "^5.3.3",
-    "vite": "6.3.5"
+    "vite": "6.3.5",
+    "vitest": "^4.1.11"
   },
   "pnpm": {
     "overrides": {

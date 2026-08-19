@@ -276,7 +276,7 @@ export function FocusPage() {
             to="/all"
             className="flex-shrink-0 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            <span>{remainingCount > 0 ? `Ещё ${remainingCount}` : 'Все задачи'}</span>
+            <span>{remainingCount > 0 ? `Еще ${remainingCount}` : 'Все задачи'}</span>
             <IconArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>

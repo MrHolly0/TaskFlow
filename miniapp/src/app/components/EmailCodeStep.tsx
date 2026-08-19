@@ -78,7 +78,7 @@ export function EmailCodeStep({
       setAttemptsLeft(MAX_ATTEMPTS);
       setCooldown(RESEND_COOLDOWN_SECONDS);
     } catch {
-      setError('Не получилось отправить код ещё раз, попробуйте позже.');
+      setError('Не получилось отправить код еще раз, попробуйте позже.');
     } finally {
       setResending(false);
     }
@@ -136,7 +136,7 @@ export function EmailCodeStep({
           disabled={cooldown > 0 || resending}
           className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer disabled:cursor-not-allowed disabled:hover:text-muted-foreground"
         >
-          {cooldown > 0 ? `Отправить ещё раз через ${cooldown} с` : resending ? 'Отправляем...' : 'Отправить код ещё раз'}
+          {cooldown > 0 ? `Отправить еще раз через ${cooldown} с` : resending ? 'Отправляем...' : 'Отправить код еще раз'}
         </button>
       </form>
     </div>

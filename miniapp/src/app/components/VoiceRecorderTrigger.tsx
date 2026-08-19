@@ -65,7 +65,7 @@ export function VoiceRecorderTrigger({ recording, disabled, className }: VoiceRe
         size="icon"
         disabled={disabled || recorder.status === 'requesting'}
         onClick={recording.handleSilenceClick}
-        title={isRecording ? 'Идёт запись — остановится сама после паузы' : 'Голосовое сообщение'}
+        title={isRecording ? 'Идет запись — остановится сама после паузы' : 'Голосовое сообщение'}
         className={cn(isRecording && RECORDING_CLASS, isRecording && 'animate-pulse', className)}
       >
         <IconMicrophone className="h-4 w-4" />

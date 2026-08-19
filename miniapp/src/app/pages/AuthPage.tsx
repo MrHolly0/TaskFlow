@@ -20,7 +20,7 @@ import { TelegramLoginButton } from '@/app/components/TelegramLoginButton';
 
 const features = [
   { icon: IconSparkles, title: 'Фокус-режим', desc: '1–3 задачи. Только самое важное.' },
-  { icon: IconBolt, title: 'Голосовой ввод', desc: 'Надиктуй задачу — разберём сами.' },
+  { icon: IconBolt, title: 'Голосовой ввод', desc: 'Надиктуй задачу — разберем сами.' },
   { icon: IconShield, title: 'Без перегруза', desc: 'Ассистент решает приоритеты за тебя.' },
 ];
 
