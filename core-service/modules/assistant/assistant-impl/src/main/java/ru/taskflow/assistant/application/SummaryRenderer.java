@@ -19,7 +19,8 @@ public class SummaryRenderer {
 
     public String render(AssistantActionType type, String taskTitle, Map<String, Object> payload) {
         String body = switch (type) {
-            case CREATE -> "Создать — " + stringOrDefault(payload.get("title"), "без названия");
+            case CREATE -> "Создать — " + stringOrDefault(payload.get("title"), "без названия")
+                    + createDeadlineSuffix(payload.get("deadline"));
             case COMPLETE -> "Закрыть — " + stringOrDefault(taskTitle, "задача");
             case CANCEL -> "Отменить — " + stringOrDefault(taskTitle, "задача");
             case RESCHEDULE -> "Перенести — " + stringOrDefault(taskTitle, "задача")
@@ -37,6 +38,18 @@ public class SummaryRenderer {
         if (payload.containsKey("priority")) names.add("приоритет");
         if (payload.containsKey("group")) names.add("группа");
         return names.isEmpty() ? "без изменений" : String.join(", ", names);
+    }
+
+    // В отличие от formatDeadline (используется и для RESCHEDULE, где срок
+    // обязателен) — у CREATE срок необязателен, и «без срока» в сводке
+    // создания только зашумит: подтверждение перед применением защищает
+    // ровно настолько, насколько сводка показывает то, что подтверждают,
+    // так что здесь дописываем срок, только если он реально есть.
+    private String createDeadlineSuffix(Object deadline) {
+        if (deadline == null) {
+            return "";
+        }
+        return " · до " + formatDeadline(deadline);
     }
 
     private String formatDeadline(Object raw) {
