@@ -1,19 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from 'next-themes';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/app/components/ui/sonner';
 import { AppLayout } from '@/app/components/layout/AppLayout';
-import { FocusPage } from '@/app/pages/FocusPage';
-import { AssistantPage } from '@/app/pages/AssistantPage';
-import { AllTasksPage } from '@/app/pages/AllTasksPage';
-import { BoardPage } from '@/app/pages/BoardPage';
-import { GroupsPage } from '@/app/pages/GroupsPage';
-import { StatsPage } from '@/app/pages/StatsPage';
-import { SettingsPage } from '@/app/pages/SettingsPage';
-import { IntegrationsPage } from '@/app/pages/IntegrationsPage';
 import { AuthPage } from '@/app/pages/AuthPage';
 import { useStore } from '@/lib/store';
+
+// По маршруту, не всё разом: раньше все восемь страниц уходили в один чанк
+// 1.2 МБ вместе со стартовым экраном — в мобильной сети мини-приложения это
+// заметно. AuthPage — не Route, а условный рендер до входа, нужен сразу же
+// почти всем, кто открывает приложение впервые, поэтому остаётся статическим.
+const FocusPage = lazy(() => import('@/app/pages/FocusPage').then((m) => ({ default: m.FocusPage })));
+const AssistantPage = lazy(() => import('@/app/pages/AssistantPage').then((m) => ({ default: m.AssistantPage })));
+const AllTasksPage = lazy(() => import('@/app/pages/AllTasksPage').then((m) => ({ default: m.AllTasksPage })));
+const BoardPage = lazy(() => import('@/app/pages/BoardPage').then((m) => ({ default: m.BoardPage })));
+const GroupsPage = lazy(() => import('@/app/pages/GroupsPage').then((m) => ({ default: m.GroupsPage })));
+const StatsPage = lazy(() => import('@/app/pages/StatsPage').then((m) => ({ default: m.StatsPage })));
+const SettingsPage = lazy(() => import('@/app/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const IntegrationsPage = lazy(() => import('@/app/pages/IntegrationsPage').then((m) => ({ default: m.IntegrationsPage })));
 import { getStoredToken, authenticateViaInitData, isTelegramWebApp, initializeTelegramWebApp, getUserFromToken } from '@/lib/auth';
 import { setApiToken } from '@/lib/api';
 
@@ -87,16 +92,18 @@ function AppContent() {
 
   return (
     <AppLayout>
-      <Routes>
-        <Route path="/" element={<FocusPage />} />
-        <Route path="/assistant" element={<AssistantPage />} />
-        <Route path="/all" element={<AllTasksPage />} />
-        <Route path="/board" element={<BoardPage />} />
-        <Route path="/groups" element={<GroupsPage />} />
-        <Route path="/stats" element={<StatsPage />} />
-        <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/integrations" element={<IntegrationsPage />} />
-      </Routes>
+      <Suspense fallback={<div className="min-h-[50vh]" />}>
+        <Routes>
+          <Route path="/" element={<FocusPage />} />
+          <Route path="/assistant" element={<AssistantPage />} />
+          <Route path="/all" element={<AllTasksPage />} />
+          <Route path="/board" element={<BoardPage />} />
+          <Route path="/groups" element={<GroupsPage />} />
+          <Route path="/stats" element={<StatsPage />} />
+          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/integrations" element={<IntegrationsPage />} />
+        </Routes>
+      </Suspense>
     </AppLayout>
   );
 }
