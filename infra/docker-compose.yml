@@ -122,6 +122,8 @@ services:
     build:
       context: ../miniapp
       dockerfile: Dockerfile
+      args:
+        VITE_VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
     ports:
       - "${MINIAPP_PORT:-3000}:3000"
     depends_on:

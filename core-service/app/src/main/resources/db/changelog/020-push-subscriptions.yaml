@@ -1,0 +1,64 @@
+databaseChangeLog:
+  - changeSet:
+      id: 020-push-subscriptions
+      author: taskflow
+      changes:
+        - createTable:
+            tableName: push_subscriptions
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+              - column:
+                  name: user_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_push_subscriptions_user
+                    references: users(id)
+                    deleteCascade: true
+              - column:
+                  name: endpoint
+                  type: TEXT
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uq_push_subscriptions_endpoint
+              - column:
+                  name: p256dh
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: auth
+                  type: VARCHAR(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_agent
+                  type: VARCHAR(512)
+              - column:
+                  name: created_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+                  constraints:
+                    nullable: false
+              - column:
+                  name: last_seen_at
+                  type: TIMESTAMPTZ
+                  defaultValueComputed: NOW()
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: push_subscriptions
+            indexName: idx_push_subscriptions_user_id
+            columns:
+              - column:
+                  name: user_id
+
+# Одна подписка на устройство (endpoint), не на пользователя — рабочий
+# компьютер и телефон дают разные endpoint и должны получать оба. Уникальность
+# по endpoint, не по паре (user_id, endpoint): один и тот же браузерный push-
+# endpoint физически не может принадлежать двум подпискам одновременно.
