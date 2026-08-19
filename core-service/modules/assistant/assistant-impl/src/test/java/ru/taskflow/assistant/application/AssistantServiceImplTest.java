@@ -296,6 +296,18 @@ class AssistantServiceImplTest {
         assertThat(result.status()).isEqualTo(ProposalStatus.FAILED);
     }
 
+    @Test
+    void transferOwnership_delegatesToRepository() {
+        UUID from = UUID.randomUUID();
+        UUID to = UUID.randomUUID();
+        when(proposalRepository.reassignOwner(from, to)).thenReturn(3);
+
+        int result = service.transferOwnership(from, to);
+
+        assertThat(result).isEqualTo(3);
+        verify(proposalRepository).reassignOwner(from, to);
+    }
+
     private TaskResponse taskResponse() {
         return new TaskResponse(UUID.randomUUID(), "х", null, null, null, null, null, null, null, null,
                 List.of(), now, now, null);

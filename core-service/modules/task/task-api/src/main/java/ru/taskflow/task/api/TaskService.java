@@ -7,6 +7,7 @@ import ru.taskflow.task.api.dto.DigestResponse;
 import ru.taskflow.task.api.dto.FocusResponse;
 import ru.taskflow.task.api.dto.TaskFilterRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
+import ru.taskflow.task.api.dto.TaskTransferResult;
 import ru.taskflow.task.api.dto.UpdateTaskRequest;
 
 import java.time.LocalDate;
@@ -46,4 +47,12 @@ public interface TaskService {
      * жёсткий предел — 20: результат уходит в промпт модели.
      */
     List<TaskResponse> search(UUID userId, String query, boolean includeCompleted, int limit);
+
+    /**
+     * Переносит задачи, группы и метки с одной учётки на другую. Массовым
+     * UPDATE, без выборки — переносит и мягко удалённые задачи тоже.
+     * Идемпотентно: повторный вызов после того, как у from ничего не осталось,
+     * просто ничего не находит и возвращает нули.
+     */
+    TaskTransferResult transferOwnership(UUID from, UUID to);
 }

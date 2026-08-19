@@ -351,6 +351,21 @@ class TaskServiceTest {
     }
 
     @Test
+    void transferOwnership_movesTasksGroupsAndTags() {
+        UUID from = UUID.randomUUID();
+        UUID to = UUID.randomUUID();
+        when(taskRepository.reassignOwner(from, to)).thenReturn(120);
+        when(groupRepository.reassignOwner(from, to)).thenReturn(5);
+        when(tagRepository.reassignOwner(from, to)).thenReturn(3);
+
+        var result = taskService.transferOwnership(from, to);
+
+        assertThat(result.tasks()).isEqualTo(120);
+        assertThat(result.groups()).isEqualTo(5);
+        assertThat(result.tags()).isEqualTo(3);
+    }
+
+    @Test
     void getUpcomingFocusTasks_returnsTasksFromRepository() {
         var entity = taskEntity();
         var response = mockResponse(taskId, "задача на следующей неделе");

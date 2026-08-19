@@ -82,6 +82,16 @@ public class NotificationServiceImpl implements NotificationService {
         log.debug("Cancelled unsent notifications for task: {}", taskId);
     }
 
+    @Override
+    @Transactional
+    public int transferOwnership(UUID from, UUID to) {
+        var targetTelegram = userService.findExternalId(to, IdentityProvider.TELEGRAM);
+        if (targetTelegram.isPresent()) {
+            return scheduledNotificationRepository.reassignOwner(from, to, Long.parseLong(targetTelegram.get()));
+        }
+        return scheduledNotificationRepository.reassignOwnerKeepChatId(from, to);
+    }
+
     private String buildPayload(String title, OffsetDateTime deadline, ZoneId timezone) {
         try {
             Map<String, Object> payload = new HashMap<>();

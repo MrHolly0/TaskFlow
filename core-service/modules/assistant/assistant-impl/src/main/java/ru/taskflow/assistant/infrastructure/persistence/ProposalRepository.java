@@ -2,6 +2,7 @@ package ru.taskflow.assistant.infrastructure.persistence;
 
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -33,4 +34,8 @@ public interface ProposalRepository extends JpaRepository<ProposalJpaEntity, UUI
             ORDER BY p.createdAt DESC
             """)
     List<ProposalJpaEntity> findLatestPending(@Param("userId") UUID userId, @Param("now") OffsetDateTime now, Pageable pageable);
+
+    @Modifying
+    @Query("UPDATE ProposalJpaEntity p SET p.userId = :to WHERE p.userId = :from")
+    int reassignOwner(@Param("from") UUID from, @Param("to") UUID to);
 }

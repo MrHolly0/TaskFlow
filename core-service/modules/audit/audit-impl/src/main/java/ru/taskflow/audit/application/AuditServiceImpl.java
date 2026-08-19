@@ -2,6 +2,7 @@ package ru.taskflow.audit.application;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import ru.taskflow.audit.api.AuditEventType;
 import ru.taskflow.audit.api.AuditService;
@@ -54,6 +55,12 @@ public class AuditServiceImpl implements AuditService {
                 entity.getOccurredAt()
             ))
             .toList();
+    }
+
+    @Override
+    @Transactional
+    public int transferOwnership(UUID from, UUID to) {
+        return taskEventRepository.reassignOwner(from, to);
     }
 
     private Map<String, Object> deserializeDelta(String deltaJson) {

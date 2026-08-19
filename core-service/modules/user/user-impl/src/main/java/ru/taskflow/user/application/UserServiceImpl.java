@@ -185,6 +185,21 @@ public class UserServiceImpl implements UserService {
         identityRepository.delete(identity);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<UUID> findIdentityOwner(IdentityProvider provider, String externalId) {
+        return identityRepository.findByProviderAndExternalId(provider, externalId)
+                .map(UserIdentityJpaEntity::getUserId);
+    }
+
+    @Override
+    @Transactional
+    public int transferIdentities(UUID from, UUID to) {
+        var fromUser = userRepository.getReferenceById(from);
+        var toUser = userRepository.getReferenceById(to);
+        return identityRepository.reassignOwner(fromUser, toUser);
+    }
+
     private IdentityDto toIdentityDto(UserIdentityJpaEntity e) {
         return new IdentityDto(e.getProvider(), e.getExternalId(), e.getVerifiedAt());
     }

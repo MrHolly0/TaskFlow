@@ -28,4 +28,6 @@ public interface AssistantService {
     ApplyResult apply(UUID userId, UUID proposalId);
 
     void reject(UUID userId, UUID proposalId);
+
+    int transferOwnership(UUID from, UUID to);
 }

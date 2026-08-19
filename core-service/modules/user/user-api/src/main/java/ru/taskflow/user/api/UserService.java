@@ -39,4 +39,18 @@ public interface UserService {
      * последний способ у учётки.
      */
     void unbindIdentity(UUID userId, IdentityProvider provider);
+
+    /**
+     * Чья это идентичность прямо сейчас, без попытки привязать. Для переноса
+     * данных: нужно узнать владельца заново, а не полагаться на конфликт,
+     * полученный в предыдущем запросе — он мог протухнуть.
+     */
+    Optional<UUID> findIdentityOwner(IdentityProvider provider, String externalId);
+
+    /**
+     * Переносит все идентичности учётки from на to — часть переноса данных
+     * при объединении учёток. После этого from остаётся без единого способа
+     * входа: это ожидаемо, реального удаления учётки здесь не происходит.
+     */
+    int transferIdentities(UUID from, UUID to);
 }

@@ -16,6 +16,7 @@ import ru.taskflow.task.api.dto.DigestResponse;
 import ru.taskflow.task.api.dto.FocusResponse;
 import ru.taskflow.task.api.dto.TaskFilterRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
+import ru.taskflow.task.api.dto.TaskTransferResult;
 import ru.taskflow.task.api.dto.UpdateTaskRequest;
 import ru.taskflow.task.api.exception.GroupNotFoundException;
 import ru.taskflow.task.api.exception.TaskNotFoundException;
@@ -381,6 +382,15 @@ public class TaskServiceImpl implements TaskService {
                 .count();
 
         return new DigestResponse(topTasks, totalTasks, completedToday, overdueTasks);
+    }
+
+    @Override
+    @Transactional
+    public TaskTransferResult transferOwnership(UUID from, UUID to) {
+        int tasks = taskRepository.reassignOwner(from, to);
+        int groups = groupRepository.reassignOwner(from, to);
+        int tags = tagRepository.reassignOwner(from, to);
+        return new TaskTransferResult(tasks, groups, tags);
     }
 
     /**

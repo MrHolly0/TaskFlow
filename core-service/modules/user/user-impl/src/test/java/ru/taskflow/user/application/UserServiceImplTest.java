@@ -410,6 +410,51 @@ class UserServiceImplTest {
                 .isInstanceOf(NotFoundException.class);
     }
 
+    @Test
+    void findIdentityOwner_returnsOwnerUserId() {
+        UUID ownerId = UUID.randomUUID();
+        var owner = new UserJpaEntity();
+        owner.setId(ownerId);
+        var identity = new UserIdentityJpaEntity();
+        identity.setUser(owner);
+        when(identityRepository.findByProviderAndExternalId(IdentityProvider.EMAIL, "a@b.com"))
+                .thenReturn(Optional.of(identity));
+        UserServiceImpl service = newService();
+
+        var result = service.findIdentityOwner(IdentityProvider.EMAIL, "a@b.com");
+
+        assertThat(result).contains(ownerId);
+    }
+
+    @Test
+    void findIdentityOwner_returnsEmpty_whenNobodyOwnsIt() {
+        when(identityRepository.findByProviderAndExternalId(IdentityProvider.EMAIL, "a@b.com"))
+                .thenReturn(Optional.empty());
+        UserServiceImpl service = newService();
+
+        var result = service.findIdentityOwner(IdentityProvider.EMAIL, "a@b.com");
+
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void transferIdentities_delegatesToRepositoryWithEntityReferences() {
+        UUID fromId = UUID.randomUUID();
+        UUID toId = UUID.randomUUID();
+        var fromRef = new UserJpaEntity();
+        fromRef.setId(fromId);
+        var toRef = new UserJpaEntity();
+        toRef.setId(toId);
+        when(userRepository.getReferenceById(fromId)).thenReturn(fromRef);
+        when(userRepository.getReferenceById(toId)).thenReturn(toRef);
+        when(identityRepository.reassignOwner(fromRef, toRef)).thenReturn(2);
+        UserServiceImpl service = newService();
+
+        int result = service.transferIdentities(fromId, toId);
+
+        assertThat(result).isEqualTo(2);
+    }
+
     private UserServiceImpl newService() {
         return new UserServiceImpl(userRepository, settingsRepository, identityRepository);
     }

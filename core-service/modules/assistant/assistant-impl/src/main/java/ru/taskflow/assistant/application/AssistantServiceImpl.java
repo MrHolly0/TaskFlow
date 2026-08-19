@@ -173,6 +173,12 @@ public class AssistantServiceImpl implements AssistantService {
         proposalRepository.save(entity);
     }
 
+    @Override
+    @Transactional
+    public int transferOwnership(UUID from, UUID to) {
+        return proposalRepository.reassignOwner(from, to);
+    }
+
     private void requirePending(ProposalJpaEntity entity, UUID proposalId) {
         ProposalStatus status = ProposalStatus.valueOf(entity.getStatus());
         if (status != ProposalStatus.PENDING) {

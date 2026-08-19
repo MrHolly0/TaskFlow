@@ -84,6 +84,12 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
             @Param("endOfToday") OffsetDateTime endOfToday
     );
 
+    // Bulk UPDATE обходит @SQLRestriction("is_deleted = false") — это нужное
+    // поведение здесь, переносим и мягко удалённые задачи тоже, а не только видимые.
+    @Modifying
+    @Query("UPDATE TaskJpaEntity t SET t.userId = :to WHERE t.userId = :from")
+    int reassignOwner(@Param("from") UUID from, @Param("to") UUID to);
+
     @Query("""
             SELECT t FROM TaskJpaEntity t
             LEFT JOIN FETCH t.group

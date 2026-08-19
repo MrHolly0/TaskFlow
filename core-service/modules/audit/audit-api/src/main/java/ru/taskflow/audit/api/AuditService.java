@@ -9,4 +9,5 @@ import java.util.UUID;
 public interface AuditService {
     void record(UUID userId, UUID taskId, AuditEventType eventType, Map<String, Object> delta);
     List<TaskEventResponse> getHistory(UUID taskId, UUID userId);
+    int transferOwnership(UUID from, UUID to);
 }
