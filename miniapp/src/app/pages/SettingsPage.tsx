@@ -30,6 +30,7 @@ import {
 import { useStore } from '@/lib/store';
 import { useSettings, useUpdateSettings, useClearCompleted, VoiceInputMode } from '@/lib/hooks/useSettings';
 import { useIdentities } from '@/lib/hooks/useIdentities';
+import { useInstallPrompt } from '@/lib/hooks/useInstallPrompt';
 import { isTouchDevice } from '@/lib/device';
 
 function useSetting(key: string, defaultValue: string): [string, (v: string) => void] {
@@ -75,6 +76,7 @@ export function SettingsPage() {
 
   const { data: serverSettings } = useSettings();
   const { data: identities } = useIdentities();
+  const { canInstall, promptInstall } = useInstallPrompt();
   const updateSettings = useUpdateSettings();
   const clearCompleted = useClearCompleted();
   const [clearResult, setClearResult] = useState<number | null>(null);
@@ -382,6 +384,24 @@ export function SettingsPage() {
             </div>
           </div>
         </section>
+
+        {canInstall && (
+          <>
+            <Separator />
+
+            <section className="flex flex-col gap-4">
+              <h2 className="text-base font-semibold">Приложение</h2>
+              <div className="flex flex-col gap-2">
+                <p className="text-xs text-muted-foreground">
+                  Установите Мунин как приложение — свой значок, отдельное окно, без адресной строки.
+                </p>
+                <Button variant="outline" onClick={promptInstall} className="h-10 self-start">
+                  Установить приложение
+                </Button>
+              </div>
+            </section>
+          </>
+        )}
 
         <Separator />
 
