@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -70,6 +71,30 @@ class NotificationDispatcherTest {
         verify(emailSender, never()).sendTaskReminder(any(), any(), any(), any());
         verify(poller).incrementRetryCount(notification.id());
         verify(poller, never()).markAsSent(notification.id());
+    }
+
+    @Test
+    void processNotifications_oneChannelsFailureDoesNotBlockTheOther() {
+        // Строка на канал — отказ Telegram (например бот заблокирован) не должен
+        // помешать доставке того же напоминания по почте: это независимые строки
+        // очереди, не один запрос с веером получателей.
+        PendingNotification telegramRow = pending("TELEGRAM", "12345",
+                "{\"taskTitle\":\"купить молоко\",\"deadline\":null,\"timezone\":\"Europe/Moscow\"}");
+        PendingNotification emailRow = pending("EMAIL", "user@example.com",
+                "{\"taskTitle\":\"купить молоко\",\"deadline\":null,\"timezone\":\"Europe/Moscow\"}");
+        when(poller.pollPending()).thenReturn(List.of(telegramRow, emailRow));
+        when(telegramSender.supports("TELEGRAM")).thenReturn(true);
+        when(emailSender.supports("EMAIL")).thenReturn(true);
+        doThrow(new RuntimeException("бот заблокирован пользователем"))
+                .when(telegramSender).sendTaskReminder(any(), any(), any(), any());
+
+        dispatcher.processNotifications();
+
+        verify(poller).incrementRetryCount(telegramRow.id());
+        verify(poller, never()).markAsSent(telegramRow.id());
+        verify(emailSender).sendTaskReminder("user@example.com", "купить молоко", null, "Europe/Moscow");
+        verify(poller).markAsSent(emailRow.id());
+        verify(poller, never()).incrementRetryCount(emailRow.id());
     }
 
     @Test
