@@ -85,10 +85,6 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
     operations-sorter: method
-  info:
-    title: TaskFlow API
-    version: 1.0.0
-    description: Digital task management assistant powered by AI
 
 management:
   endpoints:

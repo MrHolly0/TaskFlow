@@ -68,6 +68,11 @@ public class AuthController {
         return issueTokens(dto.id(), dto.username());
     }
 
+    // Точку сознательно не закрываем для российских адресов — прячем только
+    // кнопку на фронтенде (см. /methods). У части пользователей Telegram
+    // остаётся единственным способом входа, и это ровно те, ради кого делался
+    // перенос данных: закрыть точку значило бы запереть их снаружи. Решение
+    // владельца, не менять без обсуждения.
     @PostMapping("/telegram-login")
     @ResponseStatus(HttpStatus.OK)
     @Operation(summary = "Авторизация через Telegram Login Widget", description = "Проверяет данные Login Widget и выдаёт JWT токены")

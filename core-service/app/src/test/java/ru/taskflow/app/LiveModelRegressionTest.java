@@ -242,14 +242,18 @@ class LiveModelRegressionTest {
     }
 
     @Test
-    void handleText_relativeDeadlineThisEveningIsInFuture() {
+    void handleText_relativeDeadlineTomorrowEveningIsInFuture() {
+        // «сегодня вечером» после 20:00 сам по себе уже в прошлом — тест был бы
+        // красным каждый вечер и на любой ночной сборке, без всякой поломки.
+        // «завтра вечером» проверяет тот же разбор времени суток, но не зависит
+        // от часа прогона.
         UUID userId = newUser();
 
-        Proposal proposal = handleText(userId, "добавь задачу позвонить маме сегодня вечером");
+        Proposal proposal = handleText(userId, "добавь задачу позвонить маме завтра вечером");
 
         OffsetDateTime deadline = createDeadline(proposal);
         assertThat(deadline)
-                .overridingErrorMessage("Срок «сегодня вечером» вычислен в прошлом или отсутствует: %s", proposal.actions())
+                .overridingErrorMessage("Срок «завтра вечером» вычислен в прошлом или отсутствует: %s", proposal.actions())
                 .isNotNull()
                 .isAfter(OffsetDateTime.now());
     }
