@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from '@/app/components/ui/dialog';
 import { cn } from '@/lib/utils';
+import { shortcutLabel } from '@/lib/shortcuts';
 
 type Phase = 'input' | 'processing' | 'confirm' | 'done';
 
@@ -234,7 +235,7 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
                     >
                       <IconSend className="h-4 w-4" />
                       Отправить
-                      <span className="hidden sm:inline text-xs opacity-60 ml-1">⌘↵</span>
+                      <span className="hidden sm:inline text-xs opacity-60 ml-1">{shortcutLabel('Enter')}</span>
                     </Button>
                   )}
                   <VoiceRecorderTrigger
