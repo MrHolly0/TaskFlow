@@ -28,6 +28,7 @@ import ru.taskflow.user.api.UserService;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -211,10 +212,20 @@ class LiveModelRegressionTest {
     /**
      * Двоякость определяет AgentLoop разбором (структура реплики + сходство с
      * задачей, на которую модель уже указала), не только вызовом mark_ambiguous
-     * моделью — тот остаётся дополнительным сигналом. Несколько попыток здесь
-     * смягчают обычный шум живого вызова (сеть, редкая деградация модели), не
-     * то стохастическое поведение самого mark_ambiguous, которое было
-     * единственным сигналом в первой редакции и не проходило по 25 фразам.
+     * моделью — тот остаётся дополнительным сигналом и на gpt-oss-120b ни разу
+     * не сработал за все прогоны; это ожидаемо, не признак ненадёжности модели.
+     * <p>
+     * Несколько попыток здесь компенсируют не сетевой шум, а узкий спусковой
+     * крючок ветки в AgentLoop: она предлагает альтернативу только когда
+     * actions.getFirst().targetTaskId() != null, то есть только если модель в
+     * этой конкретной попытке сослалась на T1 (update_task/complete_task), а
+     * не когда она вернула голый create_task без ссылки. На gpt-oss-120b это
+     * сработало в 2 из 8 живых попыток — то же самое отложенное ограничение,
+     * что описано в quick_createsNewTaskInsteadOfSilentlyActingOnExistingTask
+     * («закрыть кино»), просто проявившееся на второй фразе: обычная мера
+     * Жаккара не отличает «эта реплика про существующую задачу» от «слово
+     * случайно совпало», и без взвешивания по редкости слова ветка полагается
+     * на то, сошлётся ли модель на задачу явно.
      */
     @Test
     void handleText_marksAmbiguousOnGenuinelyAmbiguousChatPhrase() {
@@ -231,7 +242,7 @@ class LiveModelRegressionTest {
         }
 
         assertThat(ambiguousAtLeastOnce)
-                .overridingErrorMessage("mark_ambiguous ни разу не сработал за %d попыток: %s",
+                .overridingErrorMessage("Двоякость не поймана ни разу за %d попыток: %s",
                         observations.size(), observations)
                 .isTrue();
     }
@@ -249,6 +260,15 @@ class LiveModelRegressionTest {
      * не двоякость. Различить их можно только взвешиванием по редкости
      * слова в окне пользователя (TF-IDF-подобная мера) — отдельная работа,
      * не часть этой задачи.
+     * <p>
+     * Тот же пробел проявляется и в handleText_marksAmbiguousOnGenuinelyAmbiguousChatPhrase
+     * («изменить планы на кино», через chat): ветка альтернатив в AgentLoop
+     * срабатывает, только если actions.getFirst().targetTaskId() != null, а
+     * модель не всегда ссылается на T1 — иногда сразу зовёт голый create_task.
+     * На gpt-oss-120b это дало 2 успеха из 8 живых попыток. Это не признак
+     * ненадёжности модели, а тот же узкий спусковой крючок: без взвешивания
+     * по редкости слова ветка не может опознать двоякость сама, ей нужно,
+     * чтобы модель сослалась на существующую задачу явно.
      */
     @Test
     void quick_createsNewTaskInsteadOfSilentlyActingOnExistingTask() {
@@ -310,6 +330,45 @@ class LiveModelRegressionTest {
                 .overridingErrorMessage("Однозначная реплика на пустом списке задач помечена как двоякая: %s",
                         proposal.actions())
                 .isFalse();
+    }
+
+    /**
+     * Правило 4 промпта: description заполняется, только если в реплике есть
+     * подробности сверх названия. Здесь их достаточно — конкретный подарок,
+     * бюджет, место, — чтобы не поместиться в title без потерь.
+     */
+    @Test
+    void handleText_fillsDescriptionWhenReplyHasDetailsBeyondTitle() {
+        Proposal proposal = handleText(newUser(),
+                "добавь задачу купить подарок маме на день рождения — она просила плед, "
+                        + "бюджет до 3000 рублей, забрать нужно в Икее на Ленинском");
+
+        String description = createAction(proposal)
+                .map(a -> (String) a.payload().get("description"))
+                .orElse(null);
+
+        assertThat(description)
+                .overridingErrorMessage("Реплика с подробностями сверх названия осталась без description: %s",
+                        proposal.actions())
+                .isNotBlank();
+    }
+
+    @Test
+    void handleText_leavesDescriptionEmptyWhenReplyHasNoDetailsBeyondTitle() {
+        Proposal proposal = handleText(newUser(), "полить цветы");
+
+        Optional<ProposedAction> create = createAction(proposal);
+        assertThat(create)
+                .overridingErrorMessage("Модель не создала задачу на «полить цветы»: %s", proposal.actions())
+                .isPresent();
+        assertThat(create.get().payload())
+                .overridingErrorMessage("Реплика без подробностей сверх названия получила description: %s",
+                        proposal.actions())
+                .doesNotContainKey("description");
+    }
+
+    private Optional<ProposedAction> createAction(Proposal proposal) {
+        return proposal.actions().stream().filter(a -> a.type() == AssistantActionType.CREATE).findFirst();
     }
 
     private OffsetDateTime createDeadline(Proposal proposal) {
