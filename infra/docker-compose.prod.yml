@@ -92,9 +92,9 @@ services:
     build:
       context: ../miniapp
       dockerfile: Dockerfile
-    environment:
-      VITE_API_URL: https://${APP_DOMAIN}/api/v1
-      VITE_TELEGRAM_BOT_ID: ${VITE_TELEGRAM_BOT_ID:-8738130486}
+      args:
+        VITE_API_URL: https://${APP_DOMAIN}/api/v1
+        VITE_TELEGRAM_BOT_ID: ${VITE_TELEGRAM_BOT_ID:-8738130486}
     restart: unless-stopped
 
   nginx:
