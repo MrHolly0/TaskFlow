@@ -370,19 +370,40 @@ class AgentLoopTest {
     }
 
     /**
-     * ИЗВЕСТНЫЙ ПРОБЕЛ, не молчаливо принятый. Два сигнала из плана —
-     * структура (длина/число слов/вопрос) и сходство с существующей задачей —
-     * не различают «покажи задачи на завтра» и «купить корм коту»: оба —
-     * два-четыре слова, без «?», ни один не похож на T1 в окне. Разница
-     * между ними смысловая (обращение к ассистенту с просьбой показать список
-     * против описания новой задачи), а разбор смысла на Java — то, чего план
-     * прямо просит не делать. Проверил assistantText как третий сигнал —
-     * ломает другой, уже подтверждённый случай (run_createsStandaloneTask...:
-     * модель одинаково говорит «ничего не нашлось» и когда фраза — новая
-     * задача). Оставляю как есть и как несовпадение с планом — не подгоняю.
+     * Зачинено третьим признаком. Живой прогон подтвердил гипотезу: на
+     * «покажи задачи на завтра» модель реально зовёт search_tasks (passes=2),
+     * находит пусто и отвечает текстом, действий не предлагая. Сочетание
+     * «поиск состоялся + действий и отказов нет» — это обращение к данным,
+     * не название задачи, и запасной путь больше не создаёт задачу в этом
+     * случае. «купить корм коту» на пустом списке в поиск не ходит вовсе
+     * (см. run_doesNotOfferChoiceOnUnambiguousPhraseWithEmptyWindow) —
+     * признак их и правда различает, ничего не подгонялось под ответ.
      */
     @Test
-    void run_listingRequestStillBecomesATask_knownGap() {
+    void run_doesNotCreateTaskWhenSearchFoundNothingToPropose() {
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(
+                toolResponse(List.of(searchCall("завтра")), null),
+                toolResponse(List.of(), "На завтра задач нет."));
+        when(taskService.search(userId, "завтра", false, 20)).thenReturn(List.of());
+
+        var outcome = loopWithFixedClock().run(userId, "покажи задачи на завтра", zone);
+
+        assertThat(outcome.actions()).isEmpty();
+        assertThat(outcome.passes()).isEqualTo(2);
+    }
+
+    /**
+     * ОСТАТОЧНЫЙ, УЖЕ НЕ ЖИВОЙ СЛУЧАЙ. Если бы модель на такую реплику не
+     * искала вовсе (single pass, ни действий, ни отказов) — структура и
+     * сходство её от «купить корм коту» не отличили бы. Живой прогон
+     * показал, что для «покажи задачи на завтра» модель реально ходит в
+     * поиск (см. run_doesNotCreateTaskWhenSearchFoundNothingToPropose) —
+     * этот путь для неё уже не актуален, оставлен как документация границы
+     * признака «поиск + пусто», а не как открытый дефект.
+     */
+    @Test
+    void run_singlePassListingPhraseStillBecomesATask_narrowResidualCase() {
         when(contextBuilder.build(userId)).thenReturn(window());
         when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(), null));
 

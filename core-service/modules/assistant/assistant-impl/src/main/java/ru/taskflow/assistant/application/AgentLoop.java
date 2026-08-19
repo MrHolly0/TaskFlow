@@ -157,19 +157,22 @@ public class AgentLoop {
     private AgentOutcome finishWithFallback(String userText, List<ProposedAction> actions, List<String> rejections,
                                             String assistantText, TaskContextWindow window, int passes,
                                             AssistantEntryPoint entryPoint, UUID rejectedTarget) {
-        // Пустой actions() бывает по трём причинам: модель ничего не предложила,
-        // предложила — но фильтры отбросили (Task 0 части 3б, чужое решение не
-        // подменяем), или ярлык разрешился, а дальше ActionValidator отклонил
-        // (нечего менять, не разобрался срок) — rejectedTarget тогда не null,
-        // и это не «фильтр отбросил осмысленное», а тот же случай, что и
-        // молчание: у модели не было валидного действия, но задача понятна.
-        boolean modelSaidNothing = actions.isEmpty() && (rejections.isEmpty() || rejectedTarget != null);
+        // Пустой actions() бывает по четырём причинам: модель ничего не
+        // предложила, предложила — но фильтры отбросили (Task 0 части 3б,
+        // чужое решение не подменяем), ярлык разрешился, а дальше
+        // ActionValidator отклонил остальное (нечего менять, не разобрался
+        // срок — rejectedTarget не null, это не «фильтр отбросил
+        // осмысленное», а то же самое молчание с понятной задачей), или
+        // модель сходила в поиск и не нашла что предложить (passes == 2,
+        // действий нет, отказов нет — это запрос к данным, а не название
+        // новой задачи: «покажи задачи на завтра» точно так же не читалась
+        // бы отдельно от контекста поиска, если бы поиска не было).
+        boolean searchedAndFoundNothingToPropose = passes == 2 && actions.isEmpty() && rejections.isEmpty();
+        boolean modelSaidNothing = actions.isEmpty() && (rejections.isEmpty() || rejectedTarget != null)
+                && !searchedAndFoundNothingToPropose;
         boolean readsLikeATaskName = looksLikeStandaloneTask(userText);
 
         if (modelSaidNothing && readsLikeATaskName) {
-            // Пустой actions() бывает по двум причинам: модель ничего не предложила,
-            // либо предложила, но фильтры (DuplicateGuard и другие) отбросили. Запасной
-            // путь имеет смысл только в первом случае (см. Task 0 части 3б) — здесь он есть.
             DuplicateGuard.GuardResult guarded = duplicateGuard.filter(List.of(fallbackCreateAction(userText)), window);
             List<String> allRejections = new ArrayList<>(rejections);
             allRejections.addAll(guarded.rejections());
