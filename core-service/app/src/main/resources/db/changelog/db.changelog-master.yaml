@@ -31,3 +31,5 @@ databaseChangeLog:
       file: db/changelog/015-drop-telegram-id.yaml
   - include:
       file: db/changelog/016-login-codes.yaml
+  - include:
+      file: db/changelog/017-proposal-ambiguity.yaml

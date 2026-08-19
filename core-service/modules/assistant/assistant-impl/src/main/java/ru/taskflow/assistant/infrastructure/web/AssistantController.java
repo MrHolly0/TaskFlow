@@ -21,6 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import ru.taskflow.assistant.api.AssistantChannel;
+import ru.taskflow.assistant.api.AssistantEntryPoint;
 import ru.taskflow.assistant.api.AssistantService;
 import ru.taskflow.assistant.api.dto.ApplyResult;
 import ru.taskflow.assistant.api.dto.Proposal;
@@ -62,7 +63,7 @@ public class AssistantController {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
                     "слишком много обращений, попробуйте через минуту");
         }
-        return resolveProposal(user.userId(), text, file);
+        return resolveProposal(user.userId(), text, file, AssistantEntryPoint.CHAT);
     }
 
     @PostMapping(value = "/quick", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -80,7 +81,7 @@ public class AssistantController {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
                     "слишком много обращений, попробуйте через минуту");
         }
-        Proposal proposal = resolveProposal(user.userId(), text, file);
+        Proposal proposal = resolveProposal(user.userId(), text, file, AssistantEntryPoint.QUICK_ADD);
         if (!quickAddPolicy.shouldAutoApply(proposal)) {
             return new QuickResult(proposal, null);
         }
@@ -90,14 +91,15 @@ public class AssistantController {
 
     // Файл в приоритете над текстом, если пришли оба — клиент не должен
     // присылать оба поля одновременно, но если пришлёт, голос не теряем молча.
-    private Proposal resolveProposal(UUID userId, String text, MultipartFile file) throws IOException {
+    private Proposal resolveProposal(UUID userId, String text, MultipartFile file, AssistantEntryPoint entryPoint)
+            throws IOException {
         if (file != null && !file.isEmpty()) {
-            return assistantService.handleVoice(userId, file.getBytes(), AssistantChannel.WEB);
+            return assistantService.handleVoice(userId, file.getBytes(), AssistantChannel.WEB, entryPoint);
         }
         if (text == null || text.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "нужен текст или аудио");
         }
-        return assistantService.handleText(userId, text, AssistantChannel.WEB);
+        return assistantService.handleText(userId, text, AssistantChannel.WEB, entryPoint);
     }
 
     @GetMapping("/proposals/{id}")
@@ -115,6 +117,17 @@ public class AssistantController {
             @AuthenticationPrincipal AuthenticatedUser user
     ) {
         return assistantService.setActionAccepted(user.userId(), id, ordinal, request.accepted());
+    }
+
+    @PostMapping("/proposals/{id}/actions/{ordinal}/select")
+    @Operation(summary = "Выбрать один вариант среди взаимоисключающих альтернатив",
+            description = "Принимает указанное действие, отклоняет остальные действия предложения")
+    public Proposal selectAlternative(
+            @PathVariable UUID id,
+            @PathVariable int ordinal,
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) {
+        return assistantService.selectAlternative(user.userId(), id, ordinal);
     }
 
     @PostMapping("/proposals/{id}/apply")

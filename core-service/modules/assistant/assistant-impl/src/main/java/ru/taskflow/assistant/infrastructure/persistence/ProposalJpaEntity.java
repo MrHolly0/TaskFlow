@@ -46,6 +46,12 @@ public class ProposalJpaEntity {
     @Column(columnDefinition = "TEXT")
     private String clarification;
 
+    @Column(nullable = false)
+    private boolean exclusive;
+
+    @Column(name = "ambiguity_reason", columnDefinition = "TEXT")
+    private String ambiguityReason;
+
     @Column(name = "llm_passes")
     private int llmPasses;
 

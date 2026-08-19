@@ -107,4 +107,24 @@ class ProposalFactoryTest {
         assertThat(entity.getClarification()).isEqualTo("Когда дедлайн?");
         assertThat(entity.getActions()).isEmpty();
     }
+
+    @Test
+    void from_storesAmbiguityFlagAndReason() {
+        AgentOutcome ambiguous = new AgentOutcome(List.of(), List.of(), null, List.of(), null,
+                window(Map.of()), 1, false, true, "не понял, про какое кино речь");
+
+        ProposalJpaEntity entity = factory.from(userId, "текст", AssistantChannel.TELEGRAM, "TEXT", ambiguous);
+
+        assertThat(entity.isExclusive()).isTrue();
+        assertThat(entity.getAmbiguityReason()).isEqualTo("не понял, про какое кино речь");
+    }
+
+    @Test
+    void from_defaultsExclusiveToFalse() {
+        ProposalJpaEntity entity = factory.from(userId, "текст", AssistantChannel.TELEGRAM, "TEXT",
+                outcome(List.of(), null, Map.of()));
+
+        assertThat(entity.isExclusive()).isFalse();
+        assertThat(entity.getAmbiguityReason()).isNull();
+    }
 }

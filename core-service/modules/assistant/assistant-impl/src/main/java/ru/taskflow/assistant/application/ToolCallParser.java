@@ -41,6 +41,8 @@ public class ToolCallParser {
         String clarification = null;
         List<String> clarificationOptions = null;
         String searchQuery = null;
+        boolean ambiguous = false;
+        String ambiguityReason = null;
 
         for (ToolCall call : calls) {
             Map<String, Object> args;
@@ -96,10 +98,36 @@ public class ToolCallParser {
                 continue;
             }
 
+            if (toolRegistry.isAmbiguityMarker(call.name())) {
+                if (ambiguous) {
+                    rejections.add("повторная пометка неоднозначности отклонена: " + call.name());
+                    continue;
+                }
+                ambiguous = true;
+                ambiguityReason = stringArg(args, "reason");
+                continue;
+            }
+
             rejections.add("неизвестный инструмент: " + call.name());
         }
 
-        return new ParsedToolCalls(actions, rejections, clarification, clarificationOptions, searchQuery);
+        if (ambiguous) {
+            actions = onlyFirstAccepted(actions);
+        }
+
+        return new ParsedToolCalls(actions, rejections, clarification, clarificationOptions, searchQuery,
+                ambiguous, ambiguityReason);
+    }
+
+    // Ровно один вариант выбран по умолчанию — переключатели в интерфейсе,
+    // а не флажки, где всё принятое применяется сразу.
+    private List<ProposedAction> onlyFirstAccepted(List<ProposedAction> actions) {
+        List<ProposedAction> adjusted = new ArrayList<>(actions.size());
+        for (int i = 0; i < actions.size(); i++) {
+            ProposedAction a = actions.get(i);
+            adjusted.add(new ProposedAction(a.ordinal(), a.type(), a.targetTaskId(), a.payload(), a.summary(), i == 0));
+        }
+        return adjusted;
     }
 
     private String refOf(Map<String, Object> args) {

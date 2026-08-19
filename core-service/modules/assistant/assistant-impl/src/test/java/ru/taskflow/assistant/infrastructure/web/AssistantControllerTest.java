@@ -14,6 +14,7 @@ import org.springframework.security.web.method.annotation.AuthenticationPrincipa
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import ru.taskflow.assistant.api.AssistantChannel;
+import ru.taskflow.assistant.api.AssistantEntryPoint;
 import ru.taskflow.assistant.api.AssistantService;
 import ru.taskflow.assistant.api.ProposalStatus;
 import ru.taskflow.assistant.api.dto.ApplyResult;
@@ -76,7 +77,7 @@ class AssistantControllerTest {
     @Test
     void handleMessage_returnsCreatedProposal() throws Exception {
         when(rateLimiter.allow(userId)).thenReturn(true);
-        when(assistantService.handleText(eq(userId), eq("закрой молоко"), eq(AssistantChannel.WEB)))
+        when(assistantService.handleText(eq(userId), eq("закрой молоко"), eq(AssistantChannel.WEB), eq(AssistantEntryPoint.CHAT)))
                 .thenReturn(proposal());
 
         mockMvc.perform(multipart("/api/v1/assistant/messages").param("text", "закрой молоко"))
@@ -135,6 +136,15 @@ class AssistantControllerTest {
     }
 
     @Test
+    void selectAlternative_returnsProposal() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(assistantService.selectAlternative(userId, id, 2)).thenReturn(proposal());
+
+        mockMvc.perform(post("/api/v1/assistant/proposals/{id}/actions/{ordinal}/select", id, 2))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void apply_returnsApplyResult() throws Exception {
         UUID id = UUID.randomUUID();
         when(assistantService.apply(userId, id))
@@ -159,7 +169,7 @@ class AssistantControllerTest {
         when(rateLimiter.allow(userId)).thenReturn(true);
         Proposal proposal = proposalWithActions(ProposalStatus.PENDING, null,
                 new ProposedAction(1, AssistantActionType.CREATE, null, Map.of(), "создать «купить хлеб»", true));
-        when(assistantService.handleText(eq(userId), eq("купи хлеб"), eq(AssistantChannel.WEB)))
+        when(assistantService.handleText(eq(userId), eq("купи хлеб"), eq(AssistantChannel.WEB), eq(AssistantEntryPoint.QUICK_ADD)))
                 .thenReturn(proposal);
         ApplyResult applyResult = new ApplyResult(ProposalStatus.APPLIED, 1, 1, List.of());
         when(assistantService.apply(userId, proposal.id())).thenReturn(applyResult);
@@ -176,7 +186,7 @@ class AssistantControllerTest {
         when(rateLimiter.allow(userId)).thenReturn(true);
         Proposal proposal = proposalWithActions(ProposalStatus.PENDING, null,
                 new ProposedAction(1, AssistantActionType.COMPLETE, UUID.randomUUID(), Map.of(), "закрыть «молоко»", true));
-        when(assistantService.handleText(eq(userId), eq("закрой молоко"), eq(AssistantChannel.WEB)))
+        when(assistantService.handleText(eq(userId), eq("закрой молоко"), eq(AssistantChannel.WEB), eq(AssistantEntryPoint.QUICK_ADD)))
                 .thenReturn(proposal);
 
         mockMvc.perform(multipart("/api/v1/assistant/quick").param("text", "закрой молоко"))
@@ -192,7 +202,7 @@ class AssistantControllerTest {
         Proposal degraded = new Proposal(null, null, userId, ProposalStatus.FAILED,
                 "закрой молоко", "не удалось разобрать сообщение", List.of(),
                 OffsetDateTime.now(), OffsetDateTime.now().plusHours(24));
-        when(assistantService.handleText(eq(userId), eq("закрой молоко"), eq(AssistantChannel.WEB)))
+        when(assistantService.handleText(eq(userId), eq("закрой молоко"), eq(AssistantChannel.WEB), eq(AssistantEntryPoint.QUICK_ADD)))
                 .thenReturn(degraded);
 
         mockMvc.perform(multipart("/api/v1/assistant/quick").param("text", "закрой молоко"))

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   useSendAssistantMessage,
   useSetActionAccepted,
+  useSelectAlternative,
   useApplyProposal,
   useRejectProposal,
   Proposal,
@@ -50,6 +51,7 @@ export function AssistantPage() {
   const [input, setInput] = useState('');
   const sendMessage = useSendAssistantMessage();
   const setActionAccepted = useSetActionAccepted();
+  const selectAlternative = useSelectAlternative();
   const applyProposal = useApplyProposal();
   const rejectProposal = useRejectProposal();
   const voiceMode = useEffectiveVoiceMode();
@@ -85,6 +87,16 @@ export function AssistantPage() {
     if (!proposal.id) return;
     setActionAccepted.mutate(
       { proposalId: proposal.id, ordinal, accepted },
+      {
+        onSuccess: (updated) => replaceEntry(localId, { kind: 'proposal', proposal: updated, localId }),
+      }
+    );
+  };
+
+  const selectAction = (proposal: Proposal, localId: string, ordinal: number) => {
+    if (!proposal.id) return;
+    selectAlternative.mutate(
+      { proposalId: proposal.id, ordinal },
       {
         onSuccess: (updated) => replaceEntry(localId, { kind: 'proposal', proposal: updated, localId }),
       }
@@ -160,6 +172,7 @@ export function AssistantPage() {
                 <ProposalCard
                   proposal={entry.proposal}
                   onToggle={(ordinal, accepted) => toggleAction(entry.proposal, entry.localId, ordinal, accepted)}
+                  onSelect={(ordinal) => selectAction(entry.proposal, entry.localId, ordinal)}
                   onApply={() => apply(entry.proposal, entry.localId)}
                   onReject={() => reject(entry.proposal, entry.localId)}
                   applying={applyProposal.isPending}

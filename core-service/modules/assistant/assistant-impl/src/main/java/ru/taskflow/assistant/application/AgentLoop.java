@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import ru.taskflow.assistant.api.AssistantActionType;
+import ru.taskflow.assistant.api.AssistantEntryPoint;
 import ru.taskflow.assistant.api.dto.ProposedAction;
 import ru.taskflow.nlp.api.LlmMessage;
 import ru.taskflow.nlp.api.LlmToolCall;
@@ -55,10 +56,14 @@ public class AgentLoop {
     private final ObjectMapper objectMapper;
 
     public AgentOutcome run(UUID userId, String userText, ZoneId zone) {
+        return run(userId, userText, zone, AssistantEntryPoint.CHAT);
+    }
+
+    public AgentOutcome run(UUID userId, String userText, ZoneId zone, AssistantEntryPoint entryPoint) {
         Instant start = clock.instant();
 
         TaskContextWindow window = contextBuilder.build(userId);
-        PromptParts prompt = promptBuilder.build(window, userText, zone);
+        PromptParts prompt = promptBuilder.build(window, userText, zone, entryPoint);
         List<Map<String, Object>> tools = toolRegistry.toolDefinitions();
 
         List<LlmMessage> historyPass1 = List.of(
@@ -81,9 +86,10 @@ public class AgentLoop {
         rejections.addAll(guarded1.rejections());
         rejections.addAll(titled1.rejections());
 
-        if (parsed1.isClarification()) {
+        if (parsed1.isClarification() || parsed1.ambiguous()) {
             return new AgentOutcome(titled1.actions(), rejections, parsed1.clarification(),
-                    parsed1.clarificationOptions(), response1.text(), window, 1, false);
+                    parsed1.clarificationOptions(), response1.text(), window, 1, false,
+                    parsed1.ambiguous(), parsed1.ambiguityReason());
         }
 
         if (!parsed1.needsSecondPass() || budgetExceeded(start)) {
@@ -131,9 +137,9 @@ public class AgentLoop {
         List<String> clarificationOptions = parsed2.isClarification() ? parsed2.clarificationOptions() : null;
         String assistantText = isBlank(response2.text()) ? response1.text() : response2.text();
 
-        if (clarification != null) {
+        if (clarification != null || parsed2.ambiguous()) {
             return new AgentOutcome(combined, rejections, clarification, clarificationOptions,
-                    assistantText, extended.window(), 2, false);
+                    assistantText, extended.window(), 2, false, parsed2.ambiguous(), parsed2.ambiguityReason());
         }
 
         return finishWithFallback(userText, combined, rejections, assistantText, extended.window(), 2);

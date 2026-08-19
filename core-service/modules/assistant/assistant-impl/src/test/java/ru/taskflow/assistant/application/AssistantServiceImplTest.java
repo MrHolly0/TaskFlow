@@ -7,6 +7,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import ru.taskflow.assistant.api.AssistantChannel;
+import ru.taskflow.assistant.api.AssistantEntryPoint;
 import ru.taskflow.assistant.api.ProposalStatus;
 import ru.taskflow.assistant.api.dto.ApplyResult;
 import ru.taskflow.assistant.api.dto.Proposal;
@@ -109,7 +110,7 @@ class AssistantServiceImplTest {
                 List.of(new ru.taskflow.assistant.api.dto.ProposedAction(1, ru.taskflow.assistant.api.AssistantActionType.COMPLETE,
                         UUID.randomUUID(), java.util.Map.of(), "закрыть задачу", true)),
                 null, null, false);
-        when(agentLoop.run(userId, "закрой молоко", zone)).thenReturn(outcome);
+        when(agentLoop.run(userId, "закрой молоко", zone, AssistantEntryPoint.CHAT)).thenReturn(outcome);
 
         ProposalJpaEntity entity = new ProposalJpaEntity();
         when(proposalFactory.from(eq(userId), eq("закрой молоко"), eq(AssistantChannel.TELEGRAM), eq("TEXT"), eq(outcome)))
@@ -129,7 +130,7 @@ class AssistantServiceImplTest {
     void handleText_savesRawTextTaskWhenLlmFailed() {
         when(userService.getTimezone(userId)).thenReturn(zone);
         AgentOutcome outcome = emptyWindowOutcome(List.of(), null, null, true);
-        when(agentLoop.run(userId, "хм", zone)).thenReturn(outcome);
+        when(agentLoop.run(userId, "хм", zone, AssistantEntryPoint.CHAT)).thenReturn(outcome);
         when(taskService.createQuick(eq(userId), any())).thenReturn(taskResponse());
 
         Proposal result = service.handleText(userId, "хм", AssistantChannel.TELEGRAM);
@@ -147,7 +148,7 @@ class AssistantServiceImplTest {
     void handleText_savesRawTextTaskWhenOutcomeEmpty() {
         when(userService.getTimezone(userId)).thenReturn(zone);
         AgentOutcome outcome = emptyWindowOutcome(List.of(), null, null, false);
-        when(agentLoop.run(userId, "непонятно что", zone)).thenReturn(outcome);
+        when(agentLoop.run(userId, "непонятно что", zone, AssistantEntryPoint.CHAT)).thenReturn(outcome);
         when(taskService.createQuick(eq(userId), any())).thenReturn(taskResponse());
 
         Proposal result = service.handleText(userId, "непонятно что", AssistantChannel.TELEGRAM);
@@ -162,7 +163,7 @@ class AssistantServiceImplTest {
         String longText = "а".repeat(600);
         when(userService.getTimezone(userId)).thenReturn(zone);
         AgentOutcome outcome = emptyWindowOutcome(List.of(), null, null, true);
-        when(agentLoop.run(userId, longText, zone)).thenReturn(outcome);
+        when(agentLoop.run(userId, longText, zone, AssistantEntryPoint.CHAT)).thenReturn(outcome);
         when(taskService.createQuick(eq(userId), any())).thenReturn(taskResponse());
 
         service.handleText(userId, longText, AssistantChannel.TELEGRAM);
@@ -204,6 +205,35 @@ class AssistantServiceImplTest {
         Optional<Proposal> result = service.findLatestPending(userId);
 
         assertThat(result).isEmpty();
+    }
+
+    @Test
+    void selectAlternative_acceptsChosenAndRejectsOthers() {
+        UUID proposalId = UUID.randomUUID();
+        ProposalActionJpaEntity first = action(1, true);
+        ProposalActionJpaEntity second = action(2, false);
+        ProposalJpaEntity entity = proposal(ProposalStatus.PENDING, now.plusHours(24), first, second);
+        when(proposalRepository.findWithActions(proposalId, userId)).thenReturn(Optional.of(entity));
+        when(proposalRepository.save(entity)).thenReturn(entity);
+        Proposal expectedDto = new Proposal(UUID.randomUUID(), "CODE1234", userId, ProposalStatus.PENDING,
+                "текст", null, List.of(), now, now.plusHours(24));
+        when(proposalMapper.toDto(entity)).thenReturn(expectedDto);
+
+        Proposal result = service.selectAlternative(userId, proposalId, 2);
+
+        assertThat(result).isEqualTo(expectedDto);
+        assertThat(first.isAccepted()).isFalse();
+        assertThat(second.isAccepted()).isTrue();
+    }
+
+    @Test
+    void selectAlternative_rejectsNonPending() {
+        UUID proposalId = UUID.randomUUID();
+        ProposalJpaEntity entity = proposal(ProposalStatus.APPLIED, now.plusHours(24), action(1, true));
+        when(proposalRepository.findWithActions(proposalId, userId)).thenReturn(Optional.of(entity));
+
+        assertThatThrownBy(() -> service.selectAlternative(userId, proposalId, 1))
+                .isInstanceOf(ProposalNotPendingException.class);
     }
 
     @Test
@@ -264,7 +294,7 @@ class AssistantServiceImplTest {
                 List.of(new ru.taskflow.assistant.api.dto.ProposedAction(1, ru.taskflow.assistant.api.AssistantActionType.COMPLETE,
                         UUID.randomUUID(), java.util.Map.of(), "закрыть задачу", true)),
                 null, null, false);
-        when(agentLoop.run(userId, "закрой молоко", zone)).thenReturn(outcome);
+        when(agentLoop.run(userId, "закрой молоко", zone, AssistantEntryPoint.CHAT)).thenReturn(outcome);
 
         ProposalJpaEntity entity = new ProposalJpaEntity();
         when(proposalFactory.from(eq(userId), eq("закрой молоко"), eq(AssistantChannel.TELEGRAM), eq("VOICE"), eq(outcome)))
@@ -291,7 +321,7 @@ class AssistantServiceImplTest {
         ArgumentCaptor<CreateTaskRequest> captor = ArgumentCaptor.forClass(CreateTaskRequest.class);
         verify(taskService).createQuick(eq(userId), captor.capture());
         assertThat(captor.getValue().source()).isEqualTo(TaskSource.BOT_VOICE);
-        verify(agentLoop, never()).run(any(), any(), any());
+        verify(agentLoop, never()).run(any(), any(), any(), any());
         verify(proposalRepository, never()).save(any());
         assertThat(result.status()).isEqualTo(ProposalStatus.FAILED);
     }

@@ -9,8 +9,16 @@ public record ParsedToolCalls(
         List<String> rejections,
         String clarification,
         List<String> clarificationOptions,
-        String searchQuery
+        String searchQuery,
+        boolean ambiguous,
+        String ambiguityReason
 ) {
+    // Совместимость со старыми вызовами: до mark_ambiguous двоякой трактовки не было.
+    public ParsedToolCalls(List<ProposedAction> actions, List<String> rejections, String clarification,
+                            List<String> clarificationOptions, String searchQuery) {
+        this(actions, rejections, clarification, clarificationOptions, searchQuery, false, null);
+    }
+
     public boolean isClarification() {
         return clarification != null && !clarification.isBlank();
     }

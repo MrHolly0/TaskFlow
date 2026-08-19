@@ -13,10 +13,10 @@ class ToolRegistryTest {
     private final ToolRegistry registry = new ToolRegistry();
 
     @Test
-    void toolDefinitions_containsAllSixTools() {
+    void toolDefinitions_containsAllSevenTools() {
         List<Map<String, Object>> definitions = registry.toolDefinitions();
 
-        assertThat(definitions).hasSize(6);
+        assertThat(definitions).hasSize(7);
         assertThat(definitions).allSatisfy(d -> assertThat(d).containsKey("function"));
     }
 
@@ -33,7 +33,8 @@ class ToolRegistryTest {
                 ToolRegistry.RESCHEDULE_TASK,
                 ToolRegistry.UPDATE_TASK,
                 ToolRegistry.CANCEL_TASK,
-                ToolRegistry.SEARCH_TASKS
+                ToolRegistry.SEARCH_TASKS,
+                ToolRegistry.MARK_AMBIGUOUS
         );
     }
 
@@ -73,6 +74,14 @@ class ToolRegistryTest {
     void isControl_trueOnlyForAskUser() {
         assertThat(registry.isControl(ToolRegistry.ASK_USER)).isTrue();
         assertThat(registry.isControl(ToolRegistry.SEARCH_TASKS)).isFalse();
+        assertThat(registry.isControl(ToolRegistry.MARK_AMBIGUOUS)).isFalse();
+    }
+
+    @Test
+    void isAmbiguityMarker_trueOnlyForMarkAmbiguous() {
+        assertThat(registry.isAmbiguityMarker(ToolRegistry.MARK_AMBIGUOUS)).isTrue();
+        assertThat(registry.isAmbiguityMarker(ToolRegistry.ASK_USER)).isFalse();
+        assertThat(registry.isAmbiguityMarker(ToolRegistry.CREATE_TASK)).isFalse();
     }
 
     @Test

@@ -127,6 +127,30 @@ class AssistantPromptBuilderTest {
         assertThat(parts.systemPrompt()).doesNotContain("ask_user");
     }
 
+    @Test
+    void build_explainsMarkAmbiguous() {
+        var parts = builder.build(emptyWindow(), "любой текст", ZONE);
+
+        assertThat(parts.systemPrompt()).contains("mark_ambiguous");
+    }
+
+    @Test
+    void build_addsCreateFirstHintOnlyForQuickAdd() {
+        var chat = builder.build(emptyWindow(), "любой текст", ZONE, ru.taskflow.assistant.api.AssistantEntryPoint.CHAT);
+        var quickAdd = builder.build(emptyWindow(), "любой текст", ZONE, ru.taskflow.assistant.api.AssistantEntryPoint.QUICK_ADD);
+
+        assertThat(chat.systemPrompt()).doesNotContain("быстрого добавления");
+        assertThat(quickAdd.systemPrompt()).contains("быстрого добавления");
+        assertThat(quickAdd.systemPrompt()).contains("create_task первым");
+    }
+
+    @Test
+    void build_defaultOverloadUsesChat() {
+        var parts = builder.build(emptyWindow(), "любой текст", ZONE);
+
+        assertThat(parts.systemPrompt()).doesNotContain("быстрого добавления");
+    }
+
     private TaskContextWindow emptyWindow() {
         return new TaskContextWindow("", Map.of(), Map.of());
     }

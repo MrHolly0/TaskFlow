@@ -16,6 +16,7 @@ public class ToolRegistry {
     public static final String CANCEL_TASK = "cancel_task";
     public static final String SEARCH_TASKS = "search_tasks";
     public static final String ASK_USER = "ask_user";
+    public static final String MARK_AMBIGUOUS = "mark_ambiguous";
 
     private static final Map<String, AssistantActionType> ACTION_TYPES = Map.of(
             CREATE_TASK, AssistantActionType.CREATE,
@@ -35,6 +36,10 @@ public class ToolRegistry {
 
     public boolean isControl(String toolName) {
         return ASK_USER.equals(toolName);
+    }
+
+    public boolean isAmbiguityMarker(String toolName) {
+        return MARK_AMBIGUOUS.equals(toolName);
     }
 
     public List<Map<String, Object>> toolDefinitions() {
@@ -74,7 +79,15 @@ public class ToolRegistry {
                 tool(SEARCH_TASKS, "Найти задачи пользователя, если нужной нет в показанном списке", Map.of(
                         "query", stringParam("Поисковая фраза"),
                         "include_completed", Map.of("type", "boolean", "description", "Искать среди выполненных тоже")
-                ), List.of("query"))
+                ), List.of("query")),
+
+                tool(MARK_AMBIGUOUS, "Пометить, что все предложенные в этом ответе действия — "
+                        + "взаимоисключающие прочтения одной реплики, а не список. Вызывать вместе с "
+                        + "действиями для каждого прочтения (например create_task для одного и "
+                        + "complete_task для другого), не вместо них.", Map.of(
+                        "reason", stringParam("Одна короткая фраза о том, что именно неоднозначно, "
+                                + "для показа пользователю — например «не понял, про какое кино речь»")
+                ), List.of("reason"))
         );
     }
 

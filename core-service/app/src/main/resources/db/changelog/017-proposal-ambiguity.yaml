@@ -1,0 +1,17 @@
+databaseChangeLog:
+  - changeSet:
+      id: 017-proposal-ambiguity
+      author: taskflow
+      changes:
+        - addColumn:
+            tableName: assistant_proposals
+            columns:
+              - column:
+                  name: exclusive
+                  type: BOOLEAN
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false
+              - column:
+                  name: ambiguity_reason
+                  type: TEXT

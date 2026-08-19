@@ -81,6 +81,10 @@ class AgentLoopTest {
                 "{\"question\":\"какую задачу закрыть?\",\"options\":[\"первую\",\"вторую\"]}");
     }
 
+    private LlmToolCall markAmbiguousCall(String reason) {
+        return new LlmToolCall("call-ambiguous", "mark_ambiguous", "{\"reason\":\"" + reason + "\"}");
+    }
+
     private LlmToolResponse toolResponse(List<LlmToolCall> calls, String text) {
         return new LlmToolResponse(calls, text, 10, 5, false);
     }
@@ -172,6 +176,34 @@ class AgentLoopTest {
     }
 
     @Test
+    void run_stopsOnAmbiguousMarkWithBothAlternatives() {
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(
+                List.of(completeTaskCall(), createTaskCall("кино"), markAmbiguousCall("не понял, про какое кино речь")),
+                null));
+
+        var outcome = loopWithFixedClock().run(userId, "закрой кино", zone);
+
+        verify(gateway, times(1)).callWithTools(any());
+        assertThat(outcome.ambiguous()).isTrue();
+        assertThat(outcome.ambiguityReason()).isEqualTo("не понял, про какое кино речь");
+        assertThat(outcome.actions()).hasSize(2);
+        assertThat(outcome.actions().get(0).accepted()).isTrue();
+        assertThat(outcome.actions().get(1).accepted()).isFalse();
+    }
+
+    @Test
+    void run_doesNotMarkAmbiguousByDefault() {
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(completeTaskCall()), null));
+
+        var outcome = loopWithFixedClock().run(userId, "закрой молоко", zone);
+
+        assertThat(outcome.ambiguous()).isFalse();
+        assertThat(outcome.ambiguityReason()).isNull();
+    }
+
+    @Test
     void run_returnsTextWhenNoToolCalls() {
         when(contextBuilder.build(userId)).thenReturn(window());
         when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(), "Не понял, уточните пожалуйста."));
@@ -193,6 +225,32 @@ class AgentLoopTest {
         assertThat(outcome.actions()).hasSize(1);
         assertThat(outcome.actions().getFirst().type()).isEqualTo(AssistantActionType.CREATE);
         assertThat(outcome.actions().getFirst().payload()).containsEntry("title", "Поменять название ложному варнингу");
+    }
+
+    @Test
+    void run_threadsEntryPointIntoPrompt() {
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(completeTaskCall()), null));
+        var captor = org.mockito.ArgumentCaptor.forClass(ru.taskflow.nlp.api.LlmToolRequest.class);
+
+        loopWithFixedClock().run(userId, "закрой молоко", zone, ru.taskflow.assistant.api.AssistantEntryPoint.QUICK_ADD);
+
+        verify(gateway).callWithTools(captor.capture());
+        String systemPrompt = captor.getValue().messages().getFirst().content();
+        assertThat(systemPrompt).contains("быстрого добавления");
+    }
+
+    @Test
+    void run_defaultOverloadUsesChatEntryPoint() {
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(completeTaskCall()), null));
+        var captor = org.mockito.ArgumentCaptor.forClass(ru.taskflow.nlp.api.LlmToolRequest.class);
+
+        loopWithFixedClock().run(userId, "закрой молоко", zone);
+
+        verify(gateway).callWithTools(captor.capture());
+        String systemPrompt = captor.getValue().messages().getFirst().content();
+        assertThat(systemPrompt).doesNotContain("быстрого добавления");
     }
 
     @Test

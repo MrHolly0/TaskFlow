@@ -42,6 +42,8 @@ public class ProposalFactory {
         entity.setTaskRefs(writeJson(outcome.window().refs()));
         entity.setStatus(ProposalStatus.PENDING.name());
         entity.setClarification(outcome.clarification());
+        entity.setExclusive(outcome.ambiguous());
+        entity.setAmbiguityReason(outcome.ambiguityReason());
         entity.setCreatedAt(now);
         entity.setExpiresAt(now.plusHours(24));
 

@@ -6,6 +6,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.taskflow.assistant.api.AssistantChannel;
+import ru.taskflow.assistant.api.AssistantEntryPoint;
 import ru.taskflow.assistant.api.AssistantService;
 import ru.taskflow.assistant.api.ProposalStatus;
 import ru.taskflow.assistant.api.dto.ApplyResult;
@@ -62,21 +63,21 @@ public class AssistantServiceImpl implements AssistantService {
     private final Clock clock;
 
     @Override
-    public Proposal handleText(UUID userId, String text, AssistantChannel channel) {
+    public Proposal handleText(UUID userId, String text, AssistantChannel channel, AssistantEntryPoint entryPoint) {
         ZoneId zone = userService.getTimezone(userId);
-        AgentOutcome outcome = agentLoop.run(userId, text, zone);
+        AgentOutcome outcome = agentLoop.run(userId, text, zone, entryPoint);
         return toProposal(userId, text, channel, "TEXT", outcome, sourceFor(channel));
     }
 
     @Override
-    public Proposal handleVoice(UUID userId, byte[] audio, AssistantChannel channel) {
+    public Proposal handleVoice(UUID userId, byte[] audio, AssistantChannel channel, AssistantEntryPoint entryPoint) {
         String text = nlpGatewayService.transcribe(audio);
         if (isBlank(text)) {
             return degrade(userId, VOICE_TRANSCRIPTION_FAILED_TEXT, TaskSource.BOT_VOICE);
         }
 
         ZoneId zone = userService.getTimezone(userId);
-        AgentOutcome outcome = agentLoop.run(userId, text, zone);
+        AgentOutcome outcome = agentLoop.run(userId, text, zone, entryPoint);
         return toProposal(userId, text, channel, "VOICE", outcome, TaskSource.BOT_VOICE);
     }
 
@@ -132,6 +133,20 @@ public class AssistantServiceImpl implements AssistantService {
         if (!matched) {
             log.debug("Предложение {}: действие с ordinal={} не найдено, ничего не изменено", proposalId, ordinal);
         }
+
+        ProposalJpaEntity saved = proposalRepository.save(entity);
+        return proposalMapper.toDto(saved);
+    }
+
+    @Override
+    @Transactional
+    public Proposal selectAlternative(UUID userId, UUID proposalId, int ordinal) {
+        ProposalJpaEntity entity = proposalRepository.findWithActions(proposalId, userId)
+                .orElseThrow(() -> new ProposalNotFoundException(proposalId));
+
+        requirePending(entity, proposalId);
+
+        entity.getActions().forEach(action -> action.setAccepted(action.getOrdinal() == ordinal));
 
         ProposalJpaEntity saved = proposalRepository.save(entity);
         return proposalMapper.toDto(saved);

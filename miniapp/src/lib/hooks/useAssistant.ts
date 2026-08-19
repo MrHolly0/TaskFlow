@@ -44,6 +44,8 @@ export interface Proposal {
   actions: ProposedAction[];
   createdAt: string;
   expiresAt: string;
+  exclusive: boolean;
+  ambiguityReason?: string;
 }
 
 export interface ActionOutcome {
@@ -105,6 +107,17 @@ export const useSetActionAccepted = () => {
       const response = await getClient().patch<Proposal>(
         `/assistant/proposals/${proposalId}/actions/${ordinal}`,
         { accepted }
+      );
+      return response.data;
+    },
+  });
+};
+
+export const useSelectAlternative = () => {
+  return useMutation({
+    mutationFn: async ({ proposalId, ordinal }: { proposalId: string; ordinal: number }) => {
+      const response = await getClient().post<Proposal>(
+        `/assistant/proposals/${proposalId}/actions/${ordinal}/select`
       );
       return response.data;
     },

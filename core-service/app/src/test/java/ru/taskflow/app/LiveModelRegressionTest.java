@@ -12,6 +12,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import ru.taskflow.assistant.api.AssistantChannel;
+import ru.taskflow.assistant.api.AssistantEntryPoint;
 import ru.taskflow.assistant.api.AssistantService;
 import ru.taskflow.assistant.api.ProposalStatus;
 import ru.taskflow.assistant.api.AssistantActionType;
@@ -84,7 +85,11 @@ class LiveModelRegressionTest {
     }
 
     private Proposal handleText(UUID userId, String text) {
-        Proposal proposal = assistantService.handleText(userId, text, AssistantChannel.WEB);
+        return handleText(userId, text, AssistantEntryPoint.CHAT);
+    }
+
+    private Proposal handleText(UUID userId, String text, AssistantEntryPoint entryPoint) {
+        Proposal proposal = assistantService.handleText(userId, text, AssistantChannel.WEB, entryPoint);
         assertThat(proposal.status())
                 .overridingErrorMessage(
                         "Модель недоступна (nlp-worker/Groq) — реплика выродилась в деградацию вместо предложения: %s",
@@ -204,31 +209,66 @@ class LiveModelRegressionTest {
     }
 
     /**
-     * Утверждение 4 из плана может честно не пройти — за 25 фраз спайка ask_user
-     * не сработал ни разу, доказательств работоспособности механизма ещё нет.
-     * Несколько попыток на реально неоднозначной фразе смягчают шум одиночного
-     * стохастического вызова, не превращая тест в подгонку под ответ.
+     * ask_user был снят с контракта (за 25 фраз спайка ни разу не сработал) и
+     * заменён на mark_ambiguous: вместо текстового вопроса модель предлагает оба
+     * прочтения как альтернативы. Несколько попыток на реально неоднозначной
+     * фразе смягчают шум одиночного стохастического вызова, не подгоняя тест
+     * под ответ — если ни одна попытка не сработала, это честный провал.
      */
     @Test
-    void handleText_asksForClarificationOnGenuinelyAmbiguousReschedule() {
+    void handleText_marksAmbiguousOnGenuinelyAmbiguousChatPhrase() {
         UUID userId = newUser();
-        seedTask(userId, "Встреча с Марком", "Работа", TaskPriority.MEDIUM, OffsetDateTime.now().plusDays(2));
-        seedTask(userId, "Встреча с юристом", "Работа", TaskPriority.MEDIUM, OffsetDateTime.now().plusDays(3));
+        seedTask(userId, "кино с настей", "Личное", TaskPriority.MEDIUM, null);
 
         List<String> observations = new ArrayList<>();
-        boolean askedAtLeastOnce = false;
-        for (int attempt = 1; attempt <= 3 && !askedAtLeastOnce; attempt++) {
-            Proposal proposal = handleText(userId, "перенеси встречу");
-            observations.add("попытка %d: %s".formatted(attempt,
-                    proposal.isClarification() ? "уточнение — " + proposal.clarification()
-                            : "действий без уточнения: " + proposal.actions().size()));
-            askedAtLeastOnce = proposal.isClarification();
+        boolean ambiguousAtLeastOnce = false;
+        for (int attempt = 1; attempt <= 3 && !ambiguousAtLeastOnce; attempt++) {
+            Proposal proposal = handleText(userId, "изменить планы на кино");
+            observations.add("попытка %d: exclusive=%s, actions=%d, reason=%s".formatted(
+                    attempt, proposal.exclusive(), proposal.actions().size(), proposal.ambiguityReason()));
+            ambiguousAtLeastOnce = proposal.exclusive() && proposal.actions().size() >= 2;
         }
 
-        assertThat(askedAtLeastOnce)
-                .overridingErrorMessage("ask_user ни разу не сработал на неоднозначной фразе за %d попыток: %s",
+        assertThat(ambiguousAtLeastOnce)
+                .overridingErrorMessage("mark_ambiguous ни разу не сработал за %d попыток: %s",
                         observations.size(), observations)
                 .isTrue();
+    }
+
+    @Test
+    void quick_marksAmbiguousOnGenuinelyAmbiguousQuickAddPhrase() {
+        UUID userId = newUser();
+        seedTask(userId, "кино с настей", "Личное", TaskPriority.MEDIUM, null);
+
+        List<String> observations = new ArrayList<>();
+        boolean ambiguousAtLeastOnce = false;
+        for (int attempt = 1; attempt <= 3 && !ambiguousAtLeastOnce; attempt++) {
+            Proposal proposal = handleText(userId, "закрыть кино", AssistantEntryPoint.QUICK_ADD);
+            observations.add("попытка %d: exclusive=%s, actions=%d, reason=%s".formatted(
+                    attempt, proposal.exclusive(), proposal.actions().size(), proposal.ambiguityReason()));
+            ambiguousAtLeastOnce = proposal.exclusive() && proposal.actions().size() >= 2;
+        }
+
+        assertThat(ambiguousAtLeastOnce)
+                .overridingErrorMessage("mark_ambiguous ни разу не сработал за %d попыток: %s",
+                        observations.size(), observations)
+                .isTrue();
+    }
+
+    /**
+     * Ложное срабатывание хуже пропуска: однозначная реплика на пустом списке
+     * задач не должна порождать выбор ни разу.
+     */
+    @Test
+    void handleText_doesNotMarkAmbiguousOnUnambiguousPhrase() {
+        UUID userId = newUser();
+
+        Proposal proposal = handleText(userId, "купить корм коту");
+
+        assertThat(proposal.exclusive())
+                .overridingErrorMessage("Однозначная реплика на пустом списке задач помечена как двоякая: %s",
+                        proposal.actions())
+                .isFalse();
     }
 
     private OffsetDateTime createDeadline(Proposal proposal) {

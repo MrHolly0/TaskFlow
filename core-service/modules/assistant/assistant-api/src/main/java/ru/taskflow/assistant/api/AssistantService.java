@@ -8,9 +8,19 @@ import java.util.UUID;
 
 public interface AssistantService {
 
-    Proposal handleText(UUID userId, String text, AssistantChannel channel);
+    // Telegram не различает диалог и быстрое добавление — там всегда CHAT,
+    // отсюда default-перегрузки без AssistantEntryPoint.
+    default Proposal handleText(UUID userId, String text, AssistantChannel channel) {
+        return handleText(userId, text, channel, AssistantEntryPoint.CHAT);
+    }
 
-    Proposal handleVoice(UUID userId, byte[] audio, AssistantChannel channel);
+    Proposal handleText(UUID userId, String text, AssistantChannel channel, AssistantEntryPoint entryPoint);
+
+    default Proposal handleVoice(UUID userId, byte[] audio, AssistantChannel channel) {
+        return handleVoice(userId, audio, channel, AssistantEntryPoint.CHAT);
+    }
+
+    Proposal handleVoice(UUID userId, byte[] audio, AssistantChannel channel, AssistantEntryPoint entryPoint);
 
     Proposal findById(UUID userId, UUID proposalId);
 
@@ -24,6 +34,13 @@ public interface AssistantService {
     Optional<Proposal> findLatestPending(UUID userId);
 
     Proposal setActionAccepted(UUID userId, UUID proposalId, int ordinal, boolean accepted);
+
+    /**
+     * Выбор одного варианта среди взаимоисключающих альтернатив: принимает
+     * указанный ordinal, отклоняет все остальные действия предложения одним
+     * атомарным вызовом — без гонки между двумя последовательными PATCH.
+     */
+    Proposal selectAlternative(UUID userId, UUID proposalId, int ordinal);
 
     ApplyResult apply(UUID userId, UUID proposalId);
 

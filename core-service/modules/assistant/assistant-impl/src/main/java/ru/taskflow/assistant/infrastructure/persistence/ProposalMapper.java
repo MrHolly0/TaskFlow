@@ -34,7 +34,9 @@ public class ProposalMapper {
                 entity.getClarification(),
                 toActions(entity),
                 entity.getCreatedAt(),
-                entity.getExpiresAt()
+                entity.getExpiresAt(),
+                entity.isExclusive(),
+                entity.getAmbiguityReason()
         );
     }
 

@@ -75,6 +75,26 @@ class ProposalMapperTest {
         assertThat(dto.hasActions()).isFalse();
     }
 
+    @Test
+    void toDto_copiesAmbiguityFields() {
+        var entity = entity();
+        entity.setExclusive(true);
+        entity.setAmbiguityReason("не понял, про какое кино речь");
+
+        var dto = mapper.toDto(entity);
+
+        assertThat(dto.exclusive()).isTrue();
+        assertThat(dto.ambiguityReason()).isEqualTo("не понял, про какое кино речь");
+    }
+
+    @Test
+    void toDto_defaultsExclusiveToFalse() {
+        var dto = mapper.toDto(entity());
+
+        assertThat(dto.exclusive()).isFalse();
+        assertThat(dto.ambiguityReason()).isNull();
+    }
+
     private ProposalJpaEntity entity() {
         var p = new ProposalJpaEntity();
         p.setId(UUID.randomUUID());

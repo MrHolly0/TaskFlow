@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 export function ProposalCard({
   proposal,
   onToggle,
+  onSelect,
   onApply,
   onReject,
   applying,
@@ -15,6 +16,7 @@ export function ProposalCard({
 }: {
   proposal: Proposal;
   onToggle: (ordinal: number, accepted: boolean) => void;
+  onSelect: (ordinal: number) => void;
   onApply: () => void;
   onReject: () => void;
   applying: boolean;
@@ -45,6 +47,46 @@ export function ProposalCard({
     return (
       <Card className={cn('px-4 py-3 text-sm text-muted-foreground', className)}>
         Не нашел, что предложить по этому сообщению.
+      </Card>
+    );
+  }
+
+  if (proposal.exclusive) {
+    return (
+      <Card className={cn('px-4 py-3 space-y-3', className)}>
+        <div className="space-y-1">
+          <p className="text-sm font-medium">Выберите, что имелось в виду</p>
+          {proposal.ambiguityReason && (
+            <p className="text-xs text-muted-foreground">{proposal.ambiguityReason}</p>
+          )}
+        </div>
+        <div className="space-y-1.5">
+          {proposal.actions.map((action) => (
+            <label
+              key={action.ordinal}
+              className="flex items-start gap-2 text-sm cursor-pointer select-none"
+            >
+              <input
+                type="radio"
+                name={`proposal-${proposal.id}-alternatives`}
+                checked={action.accepted}
+                onChange={() => onSelect(action.ordinal)}
+                className="mt-0.5 flex-shrink-0"
+              />
+              <span className="min-w-0 break-words">{action.summary}</span>
+            </label>
+          ))}
+        </div>
+        <div className="flex gap-2 pt-1">
+          <Button size="sm" onClick={onApply} disabled={applying || rejecting} className="flex-1 gap-1.5">
+            <IconCheck className="h-3.5 w-3.5" />
+            Применить
+          </Button>
+          <Button size="sm" variant="outline" onClick={onReject} disabled={applying || rejecting} className="flex-1 gap-1.5">
+            <IconX className="h-3.5 w-3.5" />
+            Отклонить
+          </Button>
+        </div>
       </Card>
     );
   }

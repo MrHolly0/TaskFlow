@@ -152,4 +152,53 @@ class ToolCallParserTest {
         assertThat(result.clarification()).isNull();
         assertThat(result.searchQuery()).isNull();
     }
+
+    @Test
+    void parse_extractsAmbiguousMarkWithReason() {
+        var result = parser.parse(List.of(
+                call("complete_task", "{\"task_ref\":\"T1\"}"),
+                call("create_task", "{\"title\":\"купить молоко\"}"),
+                call("mark_ambiguous", "{\"reason\":\"не понял, про какое молоко речь\"}")), window);
+
+        assertThat(result.ambiguous()).isTrue();
+        assertThat(result.ambiguityReason()).isEqualTo("не понял, про какое молоко речь");
+        assertThat(result.actions()).hasSize(2);
+    }
+
+    @Test
+    void parse_marksOnlyFirstActionAcceptedWhenAmbiguous() {
+        var result = parser.parse(List.of(
+                call("complete_task", "{\"task_ref\":\"T1\"}"),
+                call("create_task", "{\"title\":\"купить молоко\"}"),
+                call("mark_ambiguous", "{\"reason\":\"двоякая реплика\"}")), window);
+
+        assertThat(result.actions()).extracting("accepted").containsExactly(true, false);
+    }
+
+    @Test
+    void parse_doesNotTouchAcceptedWhenNotAmbiguous() {
+        var result = parser.parse(List.of(
+                call("complete_task", "{\"task_ref\":\"T1\"}"),
+                call("create_task", "{\"title\":\"купить молоко\"}")), window);
+
+        assertThat(result.actions()).extracting("accepted").containsExactly(true, true);
+    }
+
+    @Test
+    void parse_keepsOnlyFirstAmbiguousMark() {
+        var result = parser.parse(List.of(
+                call("mark_ambiguous", "{\"reason\":\"первая\"}"),
+                call("mark_ambiguous", "{\"reason\":\"вторая\"}")), window);
+
+        assertThat(result.ambiguityReason()).isEqualTo("первая");
+        assertThat(result.rejections()).hasSize(1);
+    }
+
+    @Test
+    void parse_ambiguousDefaultsFalse() {
+        var result = parser.parse(List.of(call("complete_task", "{\"task_ref\":\"T1\"}")), window);
+
+        assertThat(result.ambiguous()).isFalse();
+        assertThat(result.ambiguityReason()).isNull();
+    }
 }

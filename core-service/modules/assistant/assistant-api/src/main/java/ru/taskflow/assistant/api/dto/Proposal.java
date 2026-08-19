@@ -15,8 +15,18 @@ public record Proposal(
         String clarification,
         List<ProposedAction> actions,
         OffsetDateTime createdAt,
-        OffsetDateTime expiresAt
+        OffsetDateTime expiresAt,
+        boolean exclusive,
+        String ambiguityReason
 ) {
+    // Совместимость со старыми вызовами: до mark_ambiguous предложение не могло
+    // быть взаимоисключающим набором альтернатив.
+    public Proposal(UUID id, String shortCode, UUID userId, ProposalStatus status, String sourceText,
+                     String clarification, List<ProposedAction> actions, OffsetDateTime createdAt,
+                     OffsetDateTime expiresAt) {
+        this(id, shortCode, userId, status, sourceText, clarification, actions, createdAt, expiresAt, false, null);
+    }
+
     public boolean hasActions() {
         return actions != null && !actions.isEmpty();
     }
