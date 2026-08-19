@@ -15,6 +15,33 @@ self.addEventListener('activate', (event) => {
   );
 });
 
+self.addEventListener('push', (event) => {
+  let data = { title: 'Мунин', body: 'Напоминание о задаче' };
+  try {
+    if (event.data) data = { ...data, ...event.data.json() };
+  } catch {
+    // тело не JSON — остаёмся на дефолтном тексте, лишь бы не молчать
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window' }).then((clients) => {
+      if (clients.length > 0) return clients[0].focus();
+      return self.clients.openWindow('/');
+    })
+  );
+});
+
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 

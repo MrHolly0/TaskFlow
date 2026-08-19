@@ -1,0 +1,14 @@
+databaseChangeLog:
+  - changeSet:
+      id: 022-push-toggle
+      author: taskflow
+      changes:
+        - addColumn:
+            tableName: user_settings
+            columns:
+              - column:
+                  name: notify_push
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false

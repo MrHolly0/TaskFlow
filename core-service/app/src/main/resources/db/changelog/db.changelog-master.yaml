@@ -41,3 +41,5 @@ databaseChangeLog:
       file: db/changelog/020-push-subscriptions.yaml
   - include:
       file: db/changelog/021-web-push-channel.yaml
+  - include:
+      file: db/changelog/022-push-toggle.yaml

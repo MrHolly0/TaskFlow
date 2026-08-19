@@ -120,6 +120,7 @@ public class UserServiceImpl implements UserService {
         if (request.notificationsEnabled() != null) settings.setNotificationsEnabled(request.notificationsEnabled());
         if (request.notifyTelegram() != null) settings.setNotifyTelegram(request.notifyTelegram());
         if (request.notifyEmail() != null) settings.setNotifyEmail(request.notifyEmail());
+        if (request.notifyPush() != null) settings.setNotifyPush(request.notifyPush());
         if (request.defaultReminderMinutes() != null) settings.setDefaultReminderMinutes(request.defaultReminderMinutes());
         if (request.urgentExtraReminder() != null) settings.setUrgentExtraReminder(request.urgentExtraReminder());
         if (request.preferredLlm() != null) settings.setPreferredLlm(request.preferredLlm());
@@ -236,6 +237,7 @@ public class UserServiceImpl implements UserService {
                 e.isNotificationsEnabled(),
                 e.isNotifyTelegram(),
                 e.isNotifyEmail(),
+                e.isNotifyPush(),
                 e.getDefaultReminderMinutes(),
                 e.isUrgentExtraReminder(),
                 e.getPreferredLlm(),
@@ -248,7 +250,7 @@ public class UserServiceImpl implements UserService {
     }
 
     private UserSettingsDto defaultSettings(String timezone, String displayName) {
-        return new UserSettingsDto(true, true, true, 60, true, "groq", null, "SILENCE", "SILENCE", timezone, displayName);
+        return new UserSettingsDto(true, true, true, true, 60, true, "groq", null, "SILENCE", "SILENCE", timezone, displayName);
     }
 
     private UserDto toDto(UserJpaEntity e) {

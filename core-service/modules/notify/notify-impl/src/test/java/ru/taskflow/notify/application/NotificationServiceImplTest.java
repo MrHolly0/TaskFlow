@@ -160,7 +160,7 @@ class NotificationServiceImplTest {
 
     @Test
     void scheduleTaskReminder_skipsEverythingWhenMasterSwitchIsOff() {
-        when(userService.getSettings(userId)).thenReturn(settings(false, true, true));
+        when(userService.getSettings(userId)).thenReturn(settings(false, true, true, true));
 
         notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1));
 
@@ -172,7 +172,7 @@ class NotificationServiceImplTest {
     void scheduleTaskReminder_doesNotCheckIdentityForDisabledChannel() {
         // Выключенный переключатель не должен даже смотреть на идентичность —
         // при включённом он бы её нашёл, поэтому это разница именно от тумблера.
-        when(userService.getSettings(userId)).thenReturn(settings(true, false, true));
+        when(userService.getSettings(userId)).thenReturn(settings(true, false, true, true));
         when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.of("user@example.com"));
 
         notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1));
@@ -185,11 +185,23 @@ class NotificationServiceImplTest {
 
     @Test
     void scheduleTaskReminder_skipsChannelWithIdentityButToggleOff() {
-        when(userService.getSettings(userId)).thenReturn(settings(true, false, false));
+        when(userService.getSettings(userId)).thenReturn(settings(true, false, false, false));
 
         notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1));
 
         verify(scheduledNotificationRepository, never()).save(any());
+    }
+
+    @Test
+    void scheduleTaskReminder_pushToggleOff_doesNotEvenLookUpSubscriptions() {
+        // Как и с телеграмом/почтой: выключенный переключатель не должен даже
+        // смотреть на подписки — иначе при включённом он бы их нашёл.
+        when(userService.getSettings(userId)).thenReturn(settings(true, false, false, false));
+
+        notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1));
+
+        verify(scheduledNotificationRepository, never()).save(any());
+        verify(pushSubscriptionRepository, never()).findByUserId(any());
     }
 
     @Test
@@ -232,11 +244,12 @@ class NotificationServiceImplTest {
     }
 
     private UserSettingsDto defaultSettings() {
-        return settings(true, true, true);
+        return settings(true, true, true, true);
     }
 
-    private UserSettingsDto settings(boolean notificationsEnabled, boolean notifyTelegram, boolean notifyEmail) {
-        return new UserSettingsDto(notificationsEnabled, notifyTelegram, notifyEmail,
+    private UserSettingsDto settings(boolean notificationsEnabled, boolean notifyTelegram, boolean notifyEmail,
+                                      boolean notifyPush) {
+        return new UserSettingsDto(notificationsEnabled, notifyTelegram, notifyEmail, notifyPush,
                 60, true, "groq", null, "SILENCE", "SILENCE", "Europe/Moscow", "user");
     }
 }

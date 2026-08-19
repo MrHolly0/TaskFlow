@@ -31,6 +31,7 @@ import { useStore } from '@/lib/store';
 import { useSettings, useUpdateSettings, useClearCompleted, VoiceInputMode } from '@/lib/hooks/useSettings';
 import { useIdentities } from '@/lib/hooks/useIdentities';
 import { useInstallPrompt } from '@/lib/hooks/useInstallPrompt';
+import { usePushSubscription } from '@/lib/hooks/usePushSubscription';
 import { isTouchDevice } from '@/lib/device';
 
 function useSetting(key: string, defaultValue: string): [string, (v: string) => void] {
@@ -77,6 +78,7 @@ export function SettingsPage() {
   const { data: serverSettings } = useSettings();
   const { data: identities } = useIdentities();
   const { canInstall, promptInstall } = useInstallPrompt();
+  const { permission: pushPermission, subscribe: subscribeToPush, unsubscribe: unsubscribeFromPush } = usePushSubscription();
   const updateSettings = useUpdateSettings();
   const clearCompleted = useClearCompleted();
   const [clearResult, setClearResult] = useState<number | null>(null);
@@ -90,8 +92,27 @@ export function SettingsPage() {
   const hasEmail = identities?.some((i) => i.provider === 'EMAIL') ?? false;
   const notifyTelegram = serverSettings?.notifyTelegram ?? true;
   const notifyEmail = serverSettings?.notifyEmail ?? true;
+  const notifyPush = serverSettings?.notifyPush ?? true;
   const handleNotifyTelegramToggle = (v: boolean) => updateSettings.mutate({ notifyTelegram: v });
   const handleNotifyEmailToggle = (v: boolean) => updateSettings.mutate({ notifyEmail: v });
+
+  // «Запрещено в браузере» — состояние, которое мы не можем починить кнопкой:
+  // человек сам отказал в разрешении, вернуть его может только он сам в
+  // настройках браузера. Отдельно от «выключено у нас», иначе непонятно,
+  // почему переключатель не поддаётся.
+  const pushBlockedByBrowser = pushPermission === 'denied';
+  const pushUnsupported = pushPermission === 'unsupported';
+  const handleNotifyPushToggle = async (v: boolean) => {
+    if (v) {
+      // Разрешение браузера спрашиваем только по этому нажатию — не раньше.
+      const granted = await subscribeToPush();
+      if (!granted) return;
+      updateSettings.mutate({ notifyPush: true });
+    } else {
+      await unsubscribeFromPush();
+      updateSettings.mutate({ notifyPush: false });
+    }
+  };
 
   const currentAutoClean = serverSettings?.autoCleanCompletedDays
     ? String(serverSettings.autoCleanCompletedDays)
@@ -276,6 +297,24 @@ export function SettingsPage() {
                 disabled={!hasEmail || !notificationsEnabled || updateSettings.isPending}
               />
             </div>
+            {!pushUnsupported && (
+              <div className="flex items-center justify-between gap-4 pl-3">
+                <div className="flex flex-col gap-1 min-w-0">
+                  <Label htmlFor="notify-push">Уведомления в браузере</Label>
+                  {pushBlockedByBrowser && (
+                    <p className="text-xs text-muted-foreground">
+                      Заблокированы в браузере — включить можно только в его настройках, у нас переключателя для этого нет.
+                    </p>
+                  )}
+                </div>
+                <Switch
+                  id="notify-push"
+                  checked={notifyPush && !pushBlockedByBrowser}
+                  onCheckedChange={handleNotifyPushToggle}
+                  disabled={pushBlockedByBrowser || !notificationsEnabled || updateSettings.isPending}
+                />
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-2">

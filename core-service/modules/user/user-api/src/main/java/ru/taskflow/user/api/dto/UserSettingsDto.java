@@ -4,6 +4,7 @@ public record UserSettingsDto(
         boolean notificationsEnabled,
         boolean notifyTelegram,
         boolean notifyEmail,
+        boolean notifyPush,
         int defaultReminderMinutes,
         boolean urgentExtraReminder,
         String preferredLlm,

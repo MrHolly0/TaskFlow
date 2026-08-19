@@ -4,6 +4,7 @@ public record UpdateSettingsRequest(
         Boolean notificationsEnabled,
         Boolean notifyTelegram,
         Boolean notifyEmail,
+        Boolean notifyPush,
         Integer defaultReminderMinutes,
         Boolean urgentExtraReminder,
         String preferredLlm,

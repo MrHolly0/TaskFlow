@@ -29,6 +29,9 @@ public class UserSettingsJpaEntity {
     @Column(name = "notify_email")
     private boolean notifyEmail = true;
 
+    @Column(name = "notify_push")
+    private boolean notifyPush = true;
+
     @Column(name = "default_reminder_minutes")
     private int defaultReminderMinutes = 60;
 

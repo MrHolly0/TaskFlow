@@ -17,6 +17,7 @@ export interface UserSettings {
   notificationsEnabled: boolean;
   notifyTelegram: boolean;
   notifyEmail: boolean;
+  notifyPush: boolean;
   defaultReminderMinutes: number;
   urgentExtraReminder: boolean;
   preferredLlm: string;
@@ -32,6 +33,7 @@ interface UpdateSettingsRequest {
   notificationsEnabled?: boolean;
   notifyTelegram?: boolean;
   notifyEmail?: boolean;
+  notifyPush?: boolean;
   defaultReminderMinutes?: number;
   urgentExtraReminder?: boolean;
   preferredLlm?: string;
@@ -74,6 +76,7 @@ export const useClearCompleted = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks', 'stats'] });
     },
   });
 };

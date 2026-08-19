@@ -75,11 +75,13 @@ public class NotificationServiceImpl implements NotificationService {
             userService.findExternalId(userId, provider)
                     .ifPresent(id -> destinations.put(NotificationChannel.valueOf(provider.name()), List.of(id)));
         }
-        List<String> pushSubscriptionIds = pushSubscriptionRepository.findByUserId(userId).stream()
-                .map(subscription -> subscription.getId().toString())
-                .toList();
-        if (!pushSubscriptionIds.isEmpty()) {
-            destinations.put(NotificationChannel.WEB_PUSH, pushSubscriptionIds);
+        if (settings.notifyPush()) {
+            List<String> pushSubscriptionIds = pushSubscriptionRepository.findByUserId(userId).stream()
+                    .map(subscription -> subscription.getId().toString())
+                    .toList();
+            if (!pushSubscriptionIds.isEmpty()) {
+                destinations.put(NotificationChannel.WEB_PUSH, pushSubscriptionIds);
+            }
         }
         if (destinations.isEmpty()) {
             log.warn("No eligible notification channel (toggle + identity) for user: {}", userId);
