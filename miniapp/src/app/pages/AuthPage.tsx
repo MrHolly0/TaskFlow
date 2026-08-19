@@ -17,6 +17,7 @@ import { Separator } from '@/app/components/ui/separator';
 import { EmailCodeStep } from '@/app/components/EmailCodeStep';
 import { MuninLogo } from '@/app/components/MuninLogo';
 import { TelegramLoginButton } from '@/app/components/TelegramLoginButton';
+import { useAuthMethods } from '@/lib/hooks/useAuthMethods';
 
 const features = [
   { icon: IconSparkles, title: 'Фокус-режим', desc: '1–3 задачи. Только самое важное.' },
@@ -31,6 +32,11 @@ export function AuthPage() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { data: authMethods } = useAuthMethods();
+  // Пока ответ не пришёл, data === undefined — кнопка остаётся скрытой,
+  // так же как при ошибке запроса: неизвестное состояние не рисуем как
+  // разрешающее.
+  const showTelegram = authMethods?.telegram === true;
 
   const applyAuth = () => {
     const token = getStoredToken();
@@ -176,27 +182,31 @@ export function AuthPage() {
                   </Button>
                 </form>
 
-                <div className="flex items-center gap-3">
-                  <Separator className="flex-1" />
-                  <span className="text-xs text-muted-foreground shrink-0">или войти через</span>
-                  <Separator className="flex-1" />
-                </div>
+                {showTelegram && (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <Separator className="flex-1" />
+                      <span className="text-xs text-muted-foreground shrink-0">или войти через</span>
+                      <Separator className="flex-1" />
+                    </div>
 
-                <div className="flex flex-wrap gap-3 justify-center">
-                  {isTelegramWebApp() ? (
-                    <button
-                      onClick={handleTelegramLogin}
-                      disabled={loading}
-                      className="flex items-center justify-center gap-3 py-3 px-6 rounded-2xl font-semibold text-white transition-all active:scale-95 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
-                      style={{ backgroundColor: '#0088cc' }}
-                    >
-                      <IconBrandTelegram className="w-5 h-5" />
-                      Telegram
-                    </button>
-                  ) : (
-                    <TelegramLoginButton onAuth={handleWidgetAuth} />
-                  )}
-                </div>
+                    <div className="flex flex-wrap gap-3 justify-center">
+                      {isTelegramWebApp() ? (
+                        <button
+                          onClick={handleTelegramLogin}
+                          disabled={loading}
+                          className="flex items-center justify-center gap-3 py-3 px-6 rounded-2xl font-semibold text-white transition-all active:scale-95 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+                          style={{ backgroundColor: '#0088cc' }}
+                        >
+                          <IconBrandTelegram className="w-5 h-5" />
+                          Telegram
+                        </button>
+                      ) : (
+                        <TelegramLoginButton onAuth={handleWidgetAuth} />
+                      )}
+                    </div>
+                  </>
+                )}
 
                 {import.meta.env.DEV && !isTelegramWebApp() && (
                   <button
