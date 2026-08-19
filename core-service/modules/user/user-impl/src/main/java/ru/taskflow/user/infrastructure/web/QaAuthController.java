@@ -2,7 +2,9 @@ package ru.taskflow.user.infrastructure.web;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -23,11 +25,18 @@ import java.security.MessageDigest;
  * telegram_id, поэтому повторные вызовы не плодят новых пользователей, и
  * секрет из окружения, известный только владельцу: без совпадения — 404,
  * тот же принцип, что и у ProposalNotFoundException — не подтверждать
- * посторонним даже факт существования точки входа. Профиля не требует —
- * доступна всегда, но бесполезна без секрета, который в .env не коммитится.
+ * посторонним даже факт существования точки входа.
+ * <p>
+ * Второй слой поверх секрета: {@code @Profile("!prod")} — при активном
+ * профиле prod бин не создаётся, и путь отсутствует физически, даже если
+ * секрет утечёт, попадёт в лог или окажется слабым. На остальных профилях
+ * (в том числе без профиля вовсе, как на стенде) точка доступна, но
+ * бесполезна без секрета, который в .env не коммитится.
  */
 @RestController
 @RequestMapping("/api/v1/auth")
+@Profile("!prod")
+@Slf4j
 @Tag(name = "Auth", description = "Авторизация через Telegram и управление токенами")
 public class QaAuthController {
 
@@ -60,6 +69,7 @@ public class QaAuthController {
         var dto = userService.findOrCreateByTelegram(QA_TELEGRAM_ID, QA_USERNAME, "QA", "Demo");
         String accessToken = jwtService.issueAccessToken(dto.id(), dto.username());
         String refreshToken = refreshTokenService.issue(dto.id());
+        log.info("QA demo login used, user {}", dto.id());
         return ResponseEntity.ok(new AuthResponse(accessToken, refreshToken));
     }
 
