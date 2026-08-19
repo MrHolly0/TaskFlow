@@ -18,6 +18,7 @@ import ru.taskflow.user.application.AuthRateLimiter;
 import ru.taskflow.user.application.EmailSender;
 import ru.taskflow.user.application.LoginCodeService;
 import ru.taskflow.user.application.RefreshTokenService;
+import ru.taskflow.user.infrastructure.geo.CountryResolver;
 import ru.taskflow.user.infrastructure.web.dto.*;
 
 import java.net.URLDecoder;
@@ -42,6 +43,16 @@ public class AuthController {
     private final LoginCodeService loginCodeService;
     private final EmailSender emailSender;
     private final AuthRateLimiter rateLimiter;
+    private final CountryResolver countryResolver;
+
+    @GetMapping("/methods")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(summary = "Доступные способы входа",
+            description = "Почта разрешена всегда; Telegram скрывается для российских адресов и при "
+                    + "невозможности определить страну — цена ошибки несимметрична")
+    public AuthMethodsResponse methods(HttpServletRequest httpRequest) {
+        return new AuthMethodsResponse(true, telegramAllowed(httpRequest));
+    }
 
     @PostMapping("/telegram-miniapp")
     @ResponseStatus(HttpStatus.OK)
@@ -124,6 +135,17 @@ public class AuthController {
             throw new org.springframework.web.server.ResponseStatusException(
                     HttpStatus.TOO_MANY_REQUESTS, "слишком много попыток входа, попробуйте позже");
         }
+    }
+
+    private boolean telegramAllowed(HttpServletRequest httpRequest) {
+        return countryResolver.resolveCountryIso(clientIp(httpRequest))
+                .map(iso -> !"RU".equalsIgnoreCase(iso))
+                .orElse(false);
+    }
+
+    private String clientIp(HttpServletRequest request) {
+        String realIp = request.getHeader("X-Real-IP");
+        return realIp != null && !realIp.isBlank() ? realIp : request.getRemoteAddr();
     }
 
     private AuthResponse issueTokens(UUID userId, String username) {

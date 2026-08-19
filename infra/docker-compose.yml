@@ -107,6 +107,9 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       NLP_WORKER_URL: http://nlp-worker:8081
       SERVER_PORT: 8080
+      GEOIP_DB_PATH: /data/geoip/GeoLite2-Country.mmdb
+    volumes:
+      - ${GEOIP_DB_HOST_PATH:-./geoip/GeoLite2-Country.mmdb}:/data/geoip/GeoLite2-Country.mmdb:ro
     depends_on:
       postgres:
         condition: service_healthy

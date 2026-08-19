@@ -42,6 +42,8 @@ app:
     secret: ${JWT_SECRET:dev_secret_key_must_be_at_least_32_characters_long}
     access-token-ttl-seconds: ${JWT_TTL_SECONDS:900}
   qa-login-secret: ${QA_LOGIN_SECRET:}
+  geoip:
+    database-path: ${GEOIP_DB_PATH:}
   mail:
     from: ${SMTP_FROM:}
   telegram:

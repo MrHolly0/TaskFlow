@@ -22,9 +22,11 @@ import ru.taskflow.user.application.AuthRateLimiter;
 import ru.taskflow.user.application.EmailSender;
 import ru.taskflow.user.application.LoginCodeService;
 import ru.taskflow.user.application.RefreshTokenService;
+import ru.taskflow.user.infrastructure.geo.CountryResolver;
 import ru.taskflow.user.infrastructure.web.dto.RequestCodeRequest;
 import ru.taskflow.user.infrastructure.web.dto.VerifyCodeRequest;
 
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -37,7 +39,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ExtendWith(MockitoExtension.class)
@@ -63,6 +67,8 @@ class AuthControllerTest {
     private EmailSender emailSender;
     @Mock
     private AuthRateLimiter rateLimiter;
+    @Mock
+    private CountryResolver countryResolver;
 
     private AuthController controller;
     private MockMvc mockMvc;
@@ -73,7 +79,7 @@ class AuthControllerTest {
         lenient().when(rateLimiter.allow(any())).thenReturn(true);
         lenient().when(rateLimiter.allowForEmailConfirm(any(), any())).thenReturn(true);
         controller = new AuthController(initDataValidator, loginWidgetValidator, jwtService,
-                userService, refreshTokenService, loginCodeService, emailSender, rateLimiter);
+                userService, refreshTokenService, loginCodeService, emailSender, rateLimiter, countryResolver);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
@@ -179,5 +185,35 @@ class AuthControllerTest {
                 .andExpect(status().isUnauthorized());
 
         verifyNoInteractions(userService);
+    }
+
+    @Test
+    void methods_countryIsNotRussia_telegramAllowed() throws Exception {
+        when(countryResolver.resolveCountryIso(any())).thenReturn(Optional.of("DE"));
+
+        mockMvc.perform(get("/api/v1/auth/methods"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(true))
+                .andExpect(jsonPath("$.telegram").value(true));
+    }
+
+    @Test
+    void methods_countryIsRussia_telegramHidden() throws Exception {
+        when(countryResolver.resolveCountryIso(any())).thenReturn(Optional.of("RU"));
+
+        mockMvc.perform(get("/api/v1/auth/methods"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(true))
+                .andExpect(jsonPath("$.telegram").value(false));
+    }
+
+    @Test
+    void methods_countryUnknown_telegramHiddenByDefault() throws Exception {
+        when(countryResolver.resolveCountryIso(any())).thenReturn(Optional.empty());
+
+        mockMvc.perform(get("/api/v1/auth/methods"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.email").value(true))
+                .andExpect(jsonPath("$.telegram").value(false));
     }
 }
