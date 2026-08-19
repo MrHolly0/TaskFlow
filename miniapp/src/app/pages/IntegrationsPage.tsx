@@ -19,7 +19,7 @@ import {
 } from '@/app/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import { EmailCodeStep } from '@/app/components/EmailCodeStep';
-import { TelegramLoginWidget } from '@/app/components/TelegramLoginWidget';
+import { TelegramLoginButton } from '@/app/components/TelegramLoginButton';
 import { TelegramLogo } from '@/app/components/TelegramLogo';
 import { MergeConflictDialog } from '@/app/components/MergeConflictDialog';
 import { isTelegramWebApp } from '@/lib/auth';
@@ -217,20 +217,12 @@ function TelegramSection({
   unbinding: boolean;
 }) {
   const bindTelegram = useBindTelegram();
-  const [widgetAvailable, setWidgetAvailable] = useState<boolean | null>(null);
   const merge = useMergeFlow(
     (result) => toast.success(mergeToastMessage(result.mergedFrom ?? EMPTY_TRANSFER)),
     () => {},
   );
 
-  // useCallback с пустыми зависимостями — тот же приём, что на AuthPage:
-  // без него виджет пересоздаёт свой script при каждом ре-рендере страницы.
-  // merge.catchConflict тоже стабилен (useCallback([]) внутри useMergeFlow).
-  const handleAuth = useCallback((widgetUser: Record<string, string | number>) => {
-    const fields: Record<string, string> = {};
-    for (const [key, value] of Object.entries(widgetUser)) {
-      fields[key] = String(value);
-    }
+  const handleAuth = (fields: Record<string, string>) => {
     bindTelegram.mutate(fields, {
       onSuccess: (result) => {
         toast.success(mergeToastMessage(result.mergedFrom ?? EMPTY_TRANSFER));
@@ -240,7 +232,7 @@ function TelegramSection({
         toast.error((err as any)?.response?.data?.detail || 'Не получилось привязать Telegram');
       },
     });
-  }, [bindTelegram, merge.catchConflict]);
+  };
 
   return (
     <section className="flex flex-col gap-3">
@@ -279,14 +271,7 @@ function TelegramSection({
         )}
       </div>
 
-      {!connected && !isTelegramWebApp() && widgetAvailable !== false && (
-        <TelegramLoginWidget onAuth={handleAuth} onLoaded={setWidgetAvailable} />
-      )}
-      {!connected && !isTelegramWebApp() && widgetAvailable === false && (
-        <p className="text-xs text-muted-foreground">
-          Кнопка Telegram сейчас недоступна. Попробуйте зайти на сайт через VPN.
-        </p>
-      )}
+      {!connected && !isTelegramWebApp() && <TelegramLoginButton onAuth={handleAuth} />}
 
       <MergeConflictDialog
         conflict={merge.conflict}

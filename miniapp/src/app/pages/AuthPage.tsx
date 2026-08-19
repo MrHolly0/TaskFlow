@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { IconBrandTelegram, IconSparkles, IconBolt, IconShield } from '@tabler/icons-react';
 import { motion } from 'motion/react';
 import { useStore } from '@/lib/store';
@@ -16,7 +16,7 @@ import { Input } from '@/app/components/ui/input';
 import { Separator } from '@/app/components/ui/separator';
 import { EmailCodeStep } from '@/app/components/EmailCodeStep';
 import { MuninLogo } from '@/app/components/MuninLogo';
-import { TelegramLoginWidget } from '@/app/components/TelegramLoginWidget';
+import { TelegramLoginButton } from '@/app/components/TelegramLoginButton';
 
 const features = [
   { icon: IconSparkles, title: 'Фокус-режим', desc: '1–3 задачи. Только самое важное.' },
@@ -31,9 +31,6 @@ export function AuthPage() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // null — виджет ещё грузится (до 4с), true/false — известный исход.
-  // !== false показывает блок оптимистично, пока не пришёл явный отказ.
-  const [telegramAvailable, setTelegramAvailable] = useState<boolean | null>(null);
 
   const applyAuth = () => {
     const token = getStoredToken();
@@ -74,15 +71,11 @@ export function AuthPage() {
     }
   };
 
-  // useCallback с пустыми зависимостями: виджет монтирует скрипт заново
-  // при каждой смене onAuth (эффект в TelegramLoginWidget зависит от него).
-  // Без стабилизации любой ввод в поле почты перерисовывает AuthPage,
-  // handleWidgetAuth пересоздаётся, и кнопка Telegram дёргается на глазах.
-  const handleWidgetAuth = useCallback(async (user: Record<string, string | number>) => {
+  const handleWidgetAuth = async (fields: Record<string, string>) => {
     setLoading(true);
     setError(null);
     try {
-      await authenticateViaLoginWidget(user);
+      await authenticateViaLoginWidget(fields);
       applyAuth();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Ошибка авторизации через Telegram';
@@ -90,7 +83,7 @@ export function AuthPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  };
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -183,33 +176,27 @@ export function AuthPage() {
                   </Button>
                 </form>
 
-                {/* Разделитель рисуется только если под ним что-то есть:
-                    заголовок над пустотой хуже отсутствия заголовка. */}
-                {telegramAvailable !== false && (
-                  <>
-                    <div className="flex items-center gap-3">
-                      <Separator className="flex-1" />
-                      <span className="text-xs text-muted-foreground shrink-0">или войти через</span>
-                      <Separator className="flex-1" />
-                    </div>
+                <div className="flex items-center gap-3">
+                  <Separator className="flex-1" />
+                  <span className="text-xs text-muted-foreground shrink-0">или войти через</span>
+                  <Separator className="flex-1" />
+                </div>
 
-                    <div className="flex flex-wrap gap-3 justify-center">
-                      {isTelegramWebApp() ? (
-                        <button
-                          onClick={handleTelegramLogin}
-                          disabled={loading}
-                          className="flex items-center justify-center gap-3 py-3 px-6 rounded-2xl font-semibold text-white transition-all active:scale-95 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
-                          style={{ backgroundColor: '#0088cc' }}
-                        >
-                          <IconBrandTelegram className="w-5 h-5" />
-                          Telegram
-                        </button>
-                      ) : (
-                        <TelegramLoginWidget onAuth={handleWidgetAuth} onLoaded={setTelegramAvailable} />
-                      )}
-                    </div>
-                  </>
-                )}
+                <div className="flex flex-wrap gap-3 justify-center">
+                  {isTelegramWebApp() ? (
+                    <button
+                      onClick={handleTelegramLogin}
+                      disabled={loading}
+                      className="flex items-center justify-center gap-3 py-3 px-6 rounded-2xl font-semibold text-white transition-all active:scale-95 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+                      style={{ backgroundColor: '#0088cc' }}
+                    >
+                      <IconBrandTelegram className="w-5 h-5" />
+                      Telegram
+                    </button>
+                  ) : (
+                    <TelegramLoginButton onAuth={handleWidgetAuth} />
+                  )}
+                </div>
 
                 {import.meta.env.DEV && !isTelegramWebApp() && (
                   <button
