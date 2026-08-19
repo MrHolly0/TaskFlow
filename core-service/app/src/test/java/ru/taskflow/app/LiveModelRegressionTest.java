@@ -210,6 +210,51 @@ class LiveModelRegressionTest {
     }
 
     /**
+     * Task 0, живой дефект: без времени суток в промпте «через час и 2 минуты»
+     * читалось как 01:02 текущего дня — на 19 часов в прошлом. Ломался весь
+     * класс сроков короче суток, не только эта фраза: «через час», «через
+     * 20 минут», «сегодня вечером» — все три ниже.
+     */
+    @Test
+    void handleText_relativeDeadlineInAnHourIsInFuture() {
+        UUID userId = newUser();
+
+        Proposal proposal = handleText(userId, "через час надо проверить уведомление");
+
+        OffsetDateTime deadline = createDeadline(proposal);
+        assertThat(deadline)
+                .overridingErrorMessage("Срок «через час» вычислен в прошлом или отсутствует: %s", proposal.actions())
+                .isNotNull()
+                .isAfter(OffsetDateTime.now());
+    }
+
+    @Test
+    void handleText_relativeDeadlineIn20MinutesIsInFuture() {
+        UUID userId = newUser();
+
+        Proposal proposal = handleText(userId, "через 20 минут забрать документы");
+
+        OffsetDateTime deadline = createDeadline(proposal);
+        assertThat(deadline)
+                .overridingErrorMessage("Срок «через 20 минут» вычислен в прошлом или отсутствует: %s", proposal.actions())
+                .isNotNull()
+                .isAfter(OffsetDateTime.now());
+    }
+
+    @Test
+    void handleText_relativeDeadlineThisEveningIsInFuture() {
+        UUID userId = newUser();
+
+        Proposal proposal = handleText(userId, "добавь задачу позвонить маме сегодня вечером");
+
+        OffsetDateTime deadline = createDeadline(proposal);
+        assertThat(deadline)
+                .overridingErrorMessage("Срок «сегодня вечером» вычислен в прошлом или отсутствует: %s", proposal.actions())
+                .isNotNull()
+                .isAfter(OffsetDateTime.now());
+    }
+
+    /**
      * Двоякость определяет AgentLoop разбором (структура реплики + сходство с
      * задачей, на которую модель уже указала), не только вызовом mark_ambiguous
      * моделью — тот остаётся дополнительным сигналом и на gpt-oss-120b ни разу

@@ -18,7 +18,7 @@ public class AssistantPromptBuilder {
     static final String USER_TEXT_START = "<<<";
     static final String USER_TEXT_END = ">>>";
 
-    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private static final String SYSTEM_TEMPLATE = """
             Ты — ассистент трекера задач TaskFlow. Пользователь рассказывает о задачах свободным \
@@ -26,8 +26,8 @@ public class AssistantPromptBuilder {
             перенести срок, изменить поля, отменить или найти похожую. Действия только \
             предлагаются: пользователь сам подтверждает их, без этого ничего не меняется.
 
-            Текущая дата: %s (%s), часовой пояс пользователя со смещением %s. Все относительные \
-            сроки — «завтра», «через неделю», «в пятницу» — считай от этой даты, а не от дат \
+            Текущие дата и время: %s (%s), часовой пояс пользователя со смещением %s. Все относительные \
+            сроки — «завтра», «через неделю», «в пятницу» — считай от этого момента, а не от дат \
             в примерах, если они где-то встретятся дальше.
 
             Список задач пользователя (окно контекста). Ссылаться на задачу можно только ярлыком \
@@ -87,13 +87,13 @@ public class AssistantPromptBuilder {
 
     public PromptParts build(TaskContextWindow window, String userText, ZoneId zone, AssistantEntryPoint entryPoint) {
         OffsetDateTime now = OffsetDateTime.now(zone);
-        String date = now.format(DATE_FORMAT);
+        String dateTime = now.format(DATE_FORMAT);
         String weekday = now.getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.of("ru"));
         String offset = now.getOffset().getId();
         String entryPointNote = entryPoint == AssistantEntryPoint.QUICK_ADD ? QUICK_ADD_NOTE : "";
 
         String systemPrompt = SYSTEM_TEMPLATE.formatted(
-                date, weekday, offset, renderWindow(window), entryPointNote, USER_TEXT_START, USER_TEXT_END
+                dateTime, weekday, offset, renderWindow(window), entryPointNote, USER_TEXT_START, USER_TEXT_END
         );
 
         String userMessage = USER_TEXT_START + "\n" + userText + "\n" + USER_TEXT_END;

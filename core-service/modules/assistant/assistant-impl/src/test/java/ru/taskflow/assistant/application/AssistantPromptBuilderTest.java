@@ -22,15 +22,25 @@ class AssistantPromptBuilderTest {
     private final AssistantPromptBuilder builder = new AssistantPromptBuilder();
 
     @Test
-    void build_includesCurrentDate() {
+    void build_includesCurrentDateAndTime() {
+        // Только дата ломала все сроки короче суток — «через час» и «сегодня
+        // вечером» неразрешимы без времени суток (Task 0, живой дефект).
         var parts = builder.build(emptyWindow(), "любой текст", ZONE);
 
         OffsetDateTime now = OffsetDateTime.now(ZONE);
-        String expectedDate = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        String expectedDateTime = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
         String expectedWeekday = now.getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.of("ru"));
 
-        assertThat(parts.systemPrompt()).contains(expectedDate);
+        assertThat(parts.systemPrompt()).contains(expectedDateTime);
         assertThat(parts.systemPrompt()).contains(expectedWeekday);
+    }
+
+    @Test
+    void build_labelsCurrentValueAsDateAndTimeNotJustDate() {
+        var parts = builder.build(emptyWindow(), "любой текст", ZONE);
+
+        assertThat(parts.systemPrompt()).contains("Текущие дата и время");
+        assertThat(parts.systemPrompt()).doesNotContain("Текущая дата:");
     }
 
     @Test
