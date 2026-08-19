@@ -6,7 +6,8 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json"
   },
   "dependencies": {
     "@ark-ui/react": "^5.36.2",
@@ -77,6 +78,9 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.1.12",
+    "@types/node": "^26.2.0",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "4.7.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",

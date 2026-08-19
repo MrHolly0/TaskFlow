@@ -51,19 +51,6 @@ function AppContent() {
     return true;
   };
 
-  const reAuthOrShowLogin = () => {
-    if (isTelegramWebApp()) {
-      authenticateViaInitData()
-        .then(() => {
-          const t = getStoredToken();
-          if (t) applyToken(t); else { setAuthenticated(true); setIsInitializing(false); }
-        })
-        .catch(() => setIsInitializing(false));
-    } else {
-      setIsInitializing(false);
-    }
-  };
-
   useEffect(() => {
     initializeTelegramWebApp();
 
