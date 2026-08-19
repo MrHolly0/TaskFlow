@@ -33,3 +33,5 @@ databaseChangeLog:
       file: db/changelog/016-login-codes.yaml
   - include:
       file: db/changelog/017-proposal-ambiguity.yaml
+  - include:
+      file: db/changelog/018-notification-channel.yaml

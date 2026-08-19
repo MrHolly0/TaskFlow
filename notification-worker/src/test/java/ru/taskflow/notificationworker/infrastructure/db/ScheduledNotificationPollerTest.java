@@ -46,7 +46,8 @@ class ScheduledNotificationPollerTest {
         jdbcTemplate.execute("""
                 CREATE TABLE scheduled_notifications (
                     id UUID PRIMARY KEY,
-                    telegram_chat_id BIGINT NOT NULL,
+                    channel VARCHAR(16) NOT NULL,
+                    destination VARCHAR(320) NOT NULL,
                     fire_at TIMESTAMP WITH TIME ZONE NOT NULL,
                     payload_type VARCHAR(32) NOT NULL,
                     payload JSONB,
@@ -91,10 +92,10 @@ class ScheduledNotificationPollerTest {
     private UUID insertPending() {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update("""
-                INSERT INTO scheduled_notifications (id, telegram_chat_id, fire_at, payload_type, payload, sent, retry_count)
-                VALUES (?, ?, ?, ?, ?::jsonb, false, 0)
+                INSERT INTO scheduled_notifications (id, channel, destination, fire_at, payload_type, payload, sent, retry_count)
+                VALUES (?, ?, ?, ?, ?, ?::jsonb, false, 0)
                 """,
-                id, 12345L, OffsetDateTime.now().minusMinutes(1), "TASK_REMINDER", "{}");
+                id, "TELEGRAM", "12345", OffsetDateTime.now().minusMinutes(1), "TASK_REMINDER", "{}");
         return id;
     }
 }

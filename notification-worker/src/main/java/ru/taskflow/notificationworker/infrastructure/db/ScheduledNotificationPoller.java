@@ -28,7 +28,7 @@ public class ScheduledNotificationPoller {
     @Transactional
     public List<PendingNotification> pollPending() {
         String sql = """
-            SELECT id, telegram_chat_id, payload_type, payload
+            SELECT id, channel, destination, payload_type, payload
             FROM scheduled_notifications
             WHERE fire_at <= NOW() AND sent = false AND retry_count < ?
             ORDER BY fire_at
@@ -39,7 +39,8 @@ public class ScheduledNotificationPoller {
         RowMapper<PendingNotification> rowMapper = (rs, rowNum) ->
             new PendingNotification(
                 UUID.fromString(rs.getString("id")),
-                rs.getLong("telegram_chat_id"),
+                rs.getString("channel"),
+                rs.getString("destination"),
                 rs.getString("payload_type"),
                 rs.getString("payload")
             );

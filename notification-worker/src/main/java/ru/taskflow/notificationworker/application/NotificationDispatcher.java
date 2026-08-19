@@ -46,6 +46,13 @@ public class NotificationDispatcher {
     }
 
     private void dispatchTaskReminder(PendingNotification notification) {
+        if (!"TELEGRAM".equals(notification.channel())) {
+            // Отправитель для остальных каналов подключается отдельным изменением
+            // (NotificationSender + email); до тех пор — не отправляем и не
+            // помечаем отправленным, пусть уйдёт в retry_count, а не в тишину.
+            throw new IllegalStateException("Нет отправителя для канала " + notification.channel());
+        }
+
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> payload = objectMapper.readValue(notification.payload(), Map.class);
@@ -53,7 +60,7 @@ public class NotificationDispatcher {
             String deadline = (String) payload.get("deadline");
             String timezone = (String) payload.get("timezone");
 
-            sender.sendTaskReminder(notification.telegramChatId(), title, deadline, timezone);
+            sender.sendTaskReminder(Long.parseLong(notification.destination()), title, deadline, timezone);
         } catch (Exception e) {
             log.error("Failed to parse task reminder payload: {}", notification.payload(), e);
             throw new RuntimeException("Failed to dispatch task reminder", e);

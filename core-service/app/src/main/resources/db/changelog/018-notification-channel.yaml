@@ -1,0 +1,44 @@
+databaseChangeLog:
+  - changeSet:
+      id: 018-notification-channel-columns
+      author: taskflow
+      changes:
+        - addColumn:
+            tableName: scheduled_notifications
+            columns:
+              - column:
+                  name: channel
+                  type: VARCHAR(16)
+              - column:
+                  name: destination
+                  type: VARCHAR(320)
+        - dropNotNullConstraint:
+            tableName: scheduled_notifications
+            columnName: telegram_chat_id
+            columnDataType: BIGINT
+
+  - changeSet:
+      id: 018-backfill-notification-channel
+      author: taskflow
+      changes:
+        - sql:
+            sql: "UPDATE scheduled_notifications SET channel = 'TELEGRAM', destination = telegram_chat_id::text WHERE channel IS NULL;"
+
+  - changeSet:
+      id: 018-notification-channel-constraints
+      author: taskflow
+      changes:
+        - addNotNullConstraint:
+            tableName: scheduled_notifications
+            columnName: channel
+            columnDataType: VARCHAR(16)
+        - addNotNullConstraint:
+            tableName: scheduled_notifications
+            columnName: destination
+            columnDataType: VARCHAR(320)
+        - sql:
+            sql: "ALTER TABLE scheduled_notifications ADD CONSTRAINT chk_notification_channel CHECK (channel IN ('TELEGRAM','EMAIL'));"
+
+# telegram_chat_id остаётся в схеме, только необязательным — удаление
+# отдельным набором изменений после проверки миграции на копии базы (см.
+# план), не в этом наборе.

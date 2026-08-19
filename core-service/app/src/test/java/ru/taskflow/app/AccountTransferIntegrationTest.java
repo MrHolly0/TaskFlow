@@ -96,12 +96,15 @@ class AccountTransferIntegrationTest {
         assertThat(userService.findById(source.id())).isNotNull();
 
         // напоминания указывают на chat_id учётки-получателя, а не прежней
-        var targetChatId = Long.parseLong(userService.findExternalId(target.id(), IdentityProvider.TELEGRAM).orElseThrow());
+        var targetChatId = userService.findExternalId(target.id(), IdentityProvider.TELEGRAM).orElseThrow();
         var movedNotifications = scheduledNotificationRepository.findAll().stream()
                 .filter(n -> n.getUserId().equals(target.id()))
                 .toList();
         assertThat(movedNotifications).hasSize(expectedNotifications);
-        assertThat(movedNotifications).allSatisfy(n -> assertThat(n.getTelegramChatId()).isEqualTo(targetChatId));
+        assertThat(movedNotifications).allSatisfy(n -> {
+            assertThat(n.getChannel()).isEqualTo(IdentityProvider.TELEGRAM);
+            assertThat(n.getDestination()).isEqualTo(targetChatId);
+        });
 
         // повторный вызов после переноса ничего не находит — не дублирует
         var repeat = transferService.transfer(source.id(), target.id());

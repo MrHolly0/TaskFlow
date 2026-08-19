@@ -4,7 +4,8 @@ import java.util.UUID;
 
 public record PendingNotification(
     UUID id,
-    Long telegramChatId,
+    String channel,
+    String destination,
     String payloadType,
     String payload
 ) {}

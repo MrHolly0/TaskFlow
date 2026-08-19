@@ -38,8 +38,8 @@ public class AccountTransferService {
     @Transactional
     public AccountTransferResult transfer(UUID from, UUID to) {
         // Идентичности переносим первыми: перенос уведомлений пересчитывает
-        // telegram_chat_id по текущей Telegram-идентичности to, и должен
-        // видеть уже перенесённую, а не старую.
+        // адресата каждого канала по текущим идентичностям to, и должен
+        // видеть уже перенесённые, а не старые.
         int identities = userService.transferIdentities(from, to);
         var taskResult = taskService.transferOwnership(from, to);
         int notifications = notificationService.transferOwnership(from, to);

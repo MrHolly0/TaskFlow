@@ -15,18 +15,30 @@ public interface ScheduledNotificationRepository extends JpaRepository<Scheduled
     @Query("DELETE FROM ScheduledNotificationJpaEntity s WHERE s.taskId = :taskId AND s.sent = false")
     void deleteUnsentByTaskId(UUID taskId);
 
-    // telegram_chat_id вместе с user_id в одном UPDATE: если делать это двумя
-    // отдельными запросами, после первого перенесённые строки станут
-    // неотличимы (по user_id) от тех, что у target были изначально, и второй
-    // запрос задел бы чужие уведомления тоже.
+    // userId и destination в одном UPDATE: если делать это двумя отдельными
+    // запросами, после первого перенесённые строки станут неотличимы (по
+    // userId) от тех, что у target были изначально, и второй запрос задел бы
+    // чужие уведомления тоже.
+    //
+    // destination пересчитывается по каналу строки, только если у target есть
+    // своя идентичность этого канала (телеграм / почта переданы параметрами).
+    // Если её нет — destination остаётся прежним: доставится по старому
+    // адресату, пока пользователь не привяжет канал на новой учётке, что
+    // честнее, чем NOT NULL-столбец с выдуманным значением.
     @Modifying
-    @Query("UPDATE ScheduledNotificationJpaEntity s SET s.userId = :to, s.telegramChatId = :chatId WHERE s.userId = :from")
-    int reassignOwner(@Param("from") UUID from, @Param("to") UUID to, @Param("chatId") long chatId);
-
-    // У target нет своего Telegram — некуда переставить chat_id. Оставляем
-    // прежний: доставится в старый чат, пока пользователь не привяжет Telegram
-    // на новой учётке, что честнее, чем NOT NULL-столбец с выдуманным значением.
-    @Modifying
-    @Query("UPDATE ScheduledNotificationJpaEntity s SET s.userId = :to WHERE s.userId = :from")
-    int reassignOwnerKeepChatId(@Param("from") UUID from, @Param("to") UUID to);
+    @Query("""
+            UPDATE ScheduledNotificationJpaEntity s
+            SET s.userId = :to,
+                s.destination = CASE
+                    WHEN s.channel = ru.taskflow.user.api.IdentityProvider.TELEGRAM AND :telegramDestination IS NOT NULL
+                        THEN :telegramDestination
+                    WHEN s.channel = ru.taskflow.user.api.IdentityProvider.EMAIL AND :emailDestination IS NOT NULL
+                        THEN :emailDestination
+                    ELSE s.destination
+                END
+            WHERE s.userId = :from
+            """)
+    int reassignOwner(@Param("from") UUID from, @Param("to") UUID to,
+                       @Param("telegramDestination") String telegramDestination,
+                       @Param("emailDestination") String emailDestination);
 }

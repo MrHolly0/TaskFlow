@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import ru.taskflow.user.api.IdentityProvider;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -27,8 +28,12 @@ public class ScheduledNotificationJpaEntity {
     @Column(name = "task_id", nullable = false)
     private UUID taskId;
 
-    @Column(name = "telegram_chat_id", nullable = false)
-    private Long telegramChatId;
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    private IdentityProvider channel;
+
+    @Column(nullable = false, length = 320)
+    private String destination;
 
     @Column(name = "fire_at", nullable = false)
     private OffsetDateTime fireAt;

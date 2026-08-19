@@ -15,14 +15,16 @@ import ru.taskflow.user.api.dto.UserSettingsDto;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -44,12 +46,46 @@ class NotificationServiceImplTest {
     void setUp() {
         notificationService = new NotificationServiceImpl(
                 scheduledNotificationRepository, userService, objectMapper);
+        lenient().when(userService.getSettings(userId)).thenReturn(defaultSettings());
+        lenient().when(userService.getTimezone(userId)).thenReturn(ZoneId.of("Europe/Moscow"));
+    }
+
+    @Test
+    void scheduleTaskReminder_createsOneRowPerChannelWhenBothIdentitiesExist() {
+        // Строка на канал, не веер в одной: отказ одного не должен помешать другому.
+        when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.of("12345"));
+        when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.of("user@example.com"));
+
+        notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1));
+
+        ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
+        verify(scheduledNotificationRepository, times(2)).save(captor.capture());
+
+        List<ScheduledNotificationJpaEntity> saved = captor.getAllValues();
+        assertThat(saved).extracting(ScheduledNotificationJpaEntity::getChannel)
+                .containsExactlyInAnyOrder(IdentityProvider.TELEGRAM, IdentityProvider.EMAIL);
+        assertThat(saved).filteredOn(n -> n.getChannel() == IdentityProvider.TELEGRAM)
+                .extracting(ScheduledNotificationJpaEntity::getDestination).containsExactly("12345");
+        assertThat(saved).filteredOn(n -> n.getChannel() == IdentityProvider.EMAIL)
+                .extracting(ScheduledNotificationJpaEntity::getDestination).containsExactly("user@example.com");
+    }
+
+    @Test
+    void scheduleTaskReminder_createsOnlyTelegramRowWhenNoEmailIdentity() {
+        when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.of("12345"));
+        when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.empty());
+
+        notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1));
+
+        ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
+        verify(scheduledNotificationRepository).save(captor.capture());
+        assertThat(captor.getValue().getChannel()).isEqualTo(IdentityProvider.TELEGRAM);
     }
 
     @Test
     void scheduleTaskReminder_stampsUserTimezoneIntoPayload() throws Exception {
         when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.of("12345"));
-        when(userService.getSettings(userId)).thenReturn(defaultSettings());
+        when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.empty());
         when(userService.getTimezone(userId)).thenReturn(ZoneId.of("Asia/Yekaterinburg"));
 
         notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1));
@@ -60,13 +96,13 @@ class NotificationServiceImplTest {
         @SuppressWarnings("unchecked")
         Map<String, Object> payload = objectMapper.readValue(captor.getValue().getPayload(), Map.class);
         assertThat(payload).containsEntry("timezone", "Asia/Yekaterinburg");
-        assertThat(captor.getValue().getTelegramChatId()).isEqualTo(12345L);
+        assertThat(captor.getValue().getDestination()).isEqualTo("12345");
     }
 
     @Test
     void scheduleTaskReminder_usesTimezoneFromUserService_notHardcoded() {
         when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.of("12345"));
-        when(userService.getSettings(userId)).thenReturn(defaultSettings());
+        when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.empty());
         when(userService.getTimezone(userId)).thenReturn(ZoneId.of("Europe/Kaliningrad"));
 
         notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1));
@@ -75,12 +111,14 @@ class NotificationServiceImplTest {
     }
 
     @Test
-    void scheduleTaskReminder_skipsWhenNoTelegramIdentity() {
+    void scheduleTaskReminder_skipsWhenNoIdentityAtAll() {
         when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.empty());
+        when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.empty());
 
         notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1));
 
         verify(scheduledNotificationRepository, never()).save(any());
+        verify(userService, never()).getTimezone(any());
     }
 
     @Test
@@ -91,27 +129,27 @@ class NotificationServiceImplTest {
     }
 
     @Test
-    void transferOwnership_setsChatIdFromTargetsTelegram_whenTargetHasOne() {
+    void transferOwnership_passesTargetsIdentitiesForBothChannels() {
         UUID from = UUID.randomUUID();
         UUID to = UUID.randomUUID();
         when(userService.findExternalId(to, IdentityProvider.TELEGRAM)).thenReturn(Optional.of("999"));
+        when(userService.findExternalId(to, IdentityProvider.EMAIL)).thenReturn(Optional.empty());
 
         notificationService.transferOwnership(from, to);
 
-        verify(scheduledNotificationRepository).reassignOwner(from, to, 999L);
-        verify(scheduledNotificationRepository, never()).reassignOwnerKeepChatId(any(), any());
+        verify(scheduledNotificationRepository).reassignOwner(from, to, "999", null);
     }
 
     @Test
-    void transferOwnership_keepsOldChatId_whenTargetHasNoTelegram() {
+    void transferOwnership_passesNullForBothChannels_whenTargetHasNeitherIdentity() {
         UUID from = UUID.randomUUID();
         UUID to = UUID.randomUUID();
         when(userService.findExternalId(to, IdentityProvider.TELEGRAM)).thenReturn(Optional.empty());
+        when(userService.findExternalId(to, IdentityProvider.EMAIL)).thenReturn(Optional.empty());
 
         notificationService.transferOwnership(from, to);
 
-        verify(scheduledNotificationRepository).reassignOwnerKeepChatId(from, to);
-        verify(scheduledNotificationRepository, never()).reassignOwner(any(), any(), anyLong());
+        verify(scheduledNotificationRepository).reassignOwner(from, to, null, null);
     }
 
     private UserSettingsDto defaultSettings() {

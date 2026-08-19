@@ -13,6 +13,7 @@ import ru.taskflow.user.api.UserService;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -39,40 +40,51 @@ public class NotificationServiceImpl implements NotificationService {
             return;
         }
 
-        var telegramExternalId = userService.findExternalId(userId, IdentityProvider.TELEGRAM);
-        if (telegramExternalId.isEmpty()) {
-            log.warn("No telegram identity for user: {}", userId);
-            return;
-        }
-        Long telegramChatId = Long.parseLong(telegramExternalId.get());
-
-        ZoneId timezone = userService.getTimezone(userId);
-        int offsetMinutes = userService.getSettings(userId).defaultReminderMinutes();
-
         OffsetDateTime now = OffsetDateTime.now();
-        OffsetDateTime fireAt = deadline.minusMinutes(offsetMinutes);
-
         if (deadline.isBefore(now)) {
             log.debug("Deadline is in the past, skipping notification for task: {}", taskId);
             return;
         }
 
-        if (fireAt.isBefore(now)) {
-            fireAt = now.plusSeconds(5);
+        // Собираем адресатов по каналам до вычисления таймзоны/срока — если
+        // идентичностей нет вообще, не тратим лишний вызов userService на них.
+        Map<IdentityProvider, String> destinations = new EnumMap<>(IdentityProvider.class);
+        for (IdentityProvider channel : IdentityProvider.values()) {
+            userService.findExternalId(userId, channel).ifPresent(id -> destinations.put(channel, id));
+        }
+        if (destinations.isEmpty()) {
+            log.warn("No notification identity (telegram or email) for user: {}", userId);
+            return;
         }
 
+        ZoneId timezone = userService.getTimezone(userId);
+        int offsetMinutes = userService.getSettings(userId).defaultReminderMinutes();
+        OffsetDateTime computedFireAt = deadline.minusMinutes(offsetMinutes);
+        OffsetDateTime fireAt = computedFireAt.isBefore(now) ? now.plusSeconds(5) : computedFireAt;
+        String payload = buildPayload(title, deadline, timezone);
+
+        // Строка на канал, а не веер внутри одной строки: sent и retry_count
+        // живут в строке, и только так отказ одного канала (например письмо
+        // не ушло) не мешает доставке по другому.
+        destinations.forEach((channel, destination) ->
+                scheduleForChannel(userId, taskId, channel, destination, fireAt, payload));
+    }
+
+    private void scheduleForChannel(UUID userId, UUID taskId, IdentityProvider channel, String destination,
+                                     OffsetDateTime fireAt, String payload) {
         var notification = new ScheduledNotificationJpaEntity();
         notification.setUserId(userId);
         notification.setTaskId(taskId);
-        notification.setTelegramChatId(telegramChatId);
+        notification.setChannel(channel);
+        notification.setDestination(destination);
         notification.setFireAt(fireAt);
         notification.setPayloadType("TASK_REMINDER");
-        notification.setPayload(buildPayload(title, deadline, timezone));
+        notification.setPayload(payload);
         notification.setSent(false);
         notification.setRetryCount(0);
 
         scheduledNotificationRepository.save(notification);
-        log.info("Scheduled notification for task {} at {}", taskId, fireAt);
+        log.info("Scheduled {} notification for task {} at {}", channel, taskId, fireAt);
     }
 
     @Override
@@ -85,11 +97,9 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     @Transactional
     public int transferOwnership(UUID from, UUID to) {
-        var targetTelegram = userService.findExternalId(to, IdentityProvider.TELEGRAM);
-        if (targetTelegram.isPresent()) {
-            return scheduledNotificationRepository.reassignOwner(from, to, Long.parseLong(targetTelegram.get()));
-        }
-        return scheduledNotificationRepository.reassignOwnerKeepChatId(from, to);
+        String telegramDestination = userService.findExternalId(to, IdentityProvider.TELEGRAM).orElse(null);
+        String emailDestination = userService.findExternalId(to, IdentityProvider.EMAIL).orElse(null);
+        return scheduledNotificationRepository.reassignOwner(from, to, telegramDestination, emailDestination);
     }
 
     private String buildPayload(String title, OffsetDateTime deadline, ZoneId timezone) {
