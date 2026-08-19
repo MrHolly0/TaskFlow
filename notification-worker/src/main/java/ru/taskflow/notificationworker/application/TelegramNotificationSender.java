@@ -8,19 +8,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
-import java.time.LocalDate;
-import java.time.OffsetDateTime;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
-import java.util.Locale;
 import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class TelegramNotificationSender {
+public class TelegramNotificationSender implements NotificationSender {
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
@@ -31,11 +25,14 @@ public class TelegramNotificationSender {
     @Value("${app.telegram.api-base-url:https://api.telegram.org}")
     private String apiBaseUrl;
 
-    private static final ZoneId DEFAULT_ZONE = ZoneId.of("Europe/Moscow");
-    private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("H:mm");
-    private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("d MMMM", new Locale("ru"));
+    @Override
+    public boolean supports(String channel) {
+        return "TELEGRAM".equals(channel);
+    }
 
-    public void sendTaskReminder(Long chatId, String title, String deadline, String timezone) {
+    @Override
+    public void sendTaskReminder(String destination, String title, String deadline, String timezone) {
+        Long chatId = Long.parseLong(destination);
         String text = buildMessageText(title, deadline, timezone);
 
         try {
@@ -56,41 +53,8 @@ public class TelegramNotificationSender {
     }
 
     private String deadlineLine(String iso, String timezone) {
-        if (iso == null || iso.isBlank()) {
-            return "";
-        }
-        ZoneId zone = resolveZone(timezone);
-        try {
-            ZonedDateTime local = OffsetDateTime.parse(iso).atZoneSameInstant(zone);
-            return "\nДедлайн: " + humanize(local, zone);
-        } catch (Exception e) {
-            return "\nДедлайн: " + iso;
-        }
-    }
-
-    private ZoneId resolveZone(String timezone) {
-        if (timezone == null || timezone.isBlank()) {
-            return DEFAULT_ZONE;
-        }
-        try {
-            return ZoneId.of(timezone);
-        } catch (Exception e) {
-            return DEFAULT_ZONE;
-        }
-    }
-
-    private String humanize(ZonedDateTime local, ZoneId zone) {
-        LocalDate today = LocalDate.now(zone);
-        LocalDate date = local.toLocalDate();
-        String time = TIME_FMT.format(local);
-
-        if (date.isEqual(today)) {
-            return "сегодня в " + time;
-        }
-        if (date.isEqual(today.plusDays(1))) {
-            return "завтра в " + time;
-        }
-        return DATE_FMT.format(local) + " в " + time;
+        String humanized = DeadlineHumanizer.humanize(iso, timezone);
+        return humanized == null ? "" : "\nДедлайн: " + humanized;
     }
 
     private void sendMessage(Long chatId, String text) {

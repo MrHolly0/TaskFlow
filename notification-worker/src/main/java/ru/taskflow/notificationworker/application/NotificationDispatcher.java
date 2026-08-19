@@ -18,7 +18,7 @@ import java.util.Map;
 public class NotificationDispatcher {
 
     private final ScheduledNotificationPoller poller;
-    private final TelegramNotificationSender sender;
+    private final List<NotificationSender> senders;
     private final ObjectMapper objectMapper;
 
     @Scheduled(fixedDelayString = "${app.notification.poll-interval-ms:30000}")
@@ -46,12 +46,10 @@ public class NotificationDispatcher {
     }
 
     private void dispatchTaskReminder(PendingNotification notification) {
-        if (!"TELEGRAM".equals(notification.channel())) {
-            // Отправитель для остальных каналов подключается отдельным изменением
-            // (NotificationSender + email); до тех пор — не отправляем и не
-            // помечаем отправленным, пусть уйдёт в retry_count, а не в тишину.
-            throw new IllegalStateException("Нет отправителя для канала " + notification.channel());
-        }
+        NotificationSender sender = senders.stream()
+                .filter(s -> s.supports(notification.channel()))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Нет отправителя для канала " + notification.channel()));
 
         try {
             @SuppressWarnings("unchecked")
@@ -60,7 +58,7 @@ public class NotificationDispatcher {
             String deadline = (String) payload.get("deadline");
             String timezone = (String) payload.get("timezone");
 
-            sender.sendTaskReminder(Long.parseLong(notification.destination()), title, deadline, timezone);
+            sender.sendTaskReminder(notification.destination(), title, deadline, timezone);
         } catch (Exception e) {
             log.error("Failed to parse task reminder payload: {}", notification.payload(), e);
             throw new RuntimeException("Failed to dispatch task reminder", e);

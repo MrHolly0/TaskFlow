@@ -67,6 +67,12 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-taskflow}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       NOTIFICATION_PORT: 8082
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      MINIAPP_URL: ${MINIAPP_URL:-}
     depends_on:
       postgres:
         condition: service_healthy

@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -18,37 +17,57 @@ import static org.mockito.Mockito.when;
 class NotificationDispatcherTest {
 
     private final ScheduledNotificationPoller poller = mock(ScheduledNotificationPoller.class);
-    private final TelegramNotificationSender sender = mock(TelegramNotificationSender.class);
+    private final NotificationSender telegramSender = mock(NotificationSender.class);
+    private final NotificationSender emailSender = mock(NotificationSender.class);
     private final NotificationDispatcher dispatcher =
-            new NotificationDispatcher(poller, sender, new ObjectMapper());
+            new NotificationDispatcher(poller, List.of(telegramSender, emailSender), new ObjectMapper());
 
     private PendingNotification pending(String channel, String destination, String payload) {
         return new PendingNotification(UUID.randomUUID(), channel, destination, "TASK_REMINDER", payload);
     }
 
     @Test
-    void processNotifications_dispatchesTelegramNotificationAndMarksSent() {
+    void processNotifications_dispatchesToSenderThatSupportsTheChannelAndMarksSent() {
         PendingNotification notification = pending("TELEGRAM", "12345",
                 "{\"taskTitle\":\"купить молоко\",\"deadline\":\"2030-01-01T10:00:00+03:00\",\"timezone\":\"Europe/Moscow\"}");
         when(poller.pollPending()).thenReturn(List.of(notification));
+        when(telegramSender.supports("TELEGRAM")).thenReturn(true);
+        when(emailSender.supports("TELEGRAM")).thenReturn(false);
 
         dispatcher.processNotifications();
 
-        verify(sender).sendTaskReminder(12345L, "купить молоко", "2030-01-01T10:00:00+03:00", "Europe/Moscow");
+        verify(telegramSender).sendTaskReminder("12345", "купить молоко", "2030-01-01T10:00:00+03:00", "Europe/Moscow");
+        verify(emailSender, never()).sendTaskReminder(any(), any(), any(), any());
         verify(poller).markAsSent(notification.id());
         verify(poller, never()).incrementRetryCount(notification.id());
     }
 
     @Test
-    void processNotifications_retriesInsteadOfSilentlyDroppingUnimplementedChannel() {
-        // Пока нет отправителя писем — не тишина, а retry_count, чтобы строка
-        // не потерялась и её можно было доотправить, когда отправитель появится.
-        PendingNotification notification = pending("EMAIL", "user@example.com", "{}");
+    void processNotifications_dispatchesEmailToTheEmailSender() {
+        PendingNotification notification = pending("EMAIL", "user@example.com",
+                "{\"taskTitle\":\"купить молоко\",\"deadline\":null,\"timezone\":\"Europe/Moscow\"}");
         when(poller.pollPending()).thenReturn(List.of(notification));
+        when(telegramSender.supports("EMAIL")).thenReturn(false);
+        when(emailSender.supports("EMAIL")).thenReturn(true);
 
         dispatcher.processNotifications();
 
-        verify(sender, never()).sendTaskReminder(anyLong(), any(), any(), any());
+        verify(emailSender).sendTaskReminder("user@example.com", "купить молоко", null, "Europe/Moscow");
+        verify(telegramSender, never()).sendTaskReminder(any(), any(), any(), any());
+        verify(poller).markAsSent(notification.id());
+    }
+
+    @Test
+    void processNotifications_retriesWhenNoSenderSupportsTheChannel() {
+        PendingNotification notification = pending("SMS", "+70000000000", "{}");
+        when(poller.pollPending()).thenReturn(List.of(notification));
+        when(telegramSender.supports("SMS")).thenReturn(false);
+        when(emailSender.supports("SMS")).thenReturn(false);
+
+        dispatcher.processNotifications();
+
+        verify(telegramSender, never()).sendTaskReminder(any(), any(), any(), any());
+        verify(emailSender, never()).sendTaskReminder(any(), any(), any(), any());
         verify(poller).incrementRetryCount(notification.id());
         verify(poller, never()).markAsSent(notification.id());
     }
@@ -57,6 +76,7 @@ class NotificationDispatcherTest {
     void processNotifications_retriesOnMalformedPayload() {
         PendingNotification notification = pending("TELEGRAM", "12345", "это не json");
         when(poller.pollPending()).thenReturn(List.of(notification));
+        when(telegramSender.supports("TELEGRAM")).thenReturn(true);
 
         dispatcher.processNotifications();
 

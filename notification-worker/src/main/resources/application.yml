@@ -8,8 +8,23 @@ spring:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:taskflow}
     username: ${DB_USER:taskflow}
     password: ${DB_PASSWORD:taskflow}
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USER:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
 
 app:
+  mail:
+    from: ${SMTP_FROM:}
+  frontend:
+    miniapp-url: ${MINIAPP_URL:}
   telegram:
     bot-token: ${TELEGRAM_BOT_TOKEN:}
     api-base-url: https://api.telegram.org
