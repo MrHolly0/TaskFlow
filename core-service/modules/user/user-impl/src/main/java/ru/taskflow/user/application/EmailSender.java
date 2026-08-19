@@ -22,17 +22,20 @@ public class EmailSender {
     private final Environment environment;
     private final String mailHost;
     private final String mailFrom;
+    private final String brandName;
 
     public EmailSender(
             JavaMailSender mailSender,
             Environment environment,
             @Value("${spring.mail.host:}") String mailHost,
-            @Value("${app.mail.from:}") String mailFrom
+            @Value("${app.mail.from:}") String mailFrom,
+            @Value("${app.branding.name:Мунин}") String brandName
     ) {
         this.mailSender = mailSender;
         this.environment = environment;
         this.mailHost = mailHost;
         this.mailFrom = mailFrom;
+        this.brandName = brandName;
     }
 
     public void sendLoginCode(String email, String code) {
@@ -50,7 +53,7 @@ public class EmailSender {
         var message = new SimpleMailMessage();
         message.setFrom(mailFrom);
         message.setTo(email);
-        message.setSubject("Код входа в TaskFlow");
+        message.setSubject("Код входа в " + brandName);
         message.setText("Код входа: " + code
                 + "\nДействует 10 минут."
                 + "\nЕсли это не вы — просто не вводите код.");

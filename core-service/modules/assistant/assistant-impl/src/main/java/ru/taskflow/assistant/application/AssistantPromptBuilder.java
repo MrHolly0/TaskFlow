@@ -1,5 +1,6 @@
 package ru.taskflow.assistant.application;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import ru.taskflow.assistant.api.AssistantEntryPoint;
 
@@ -21,7 +22,7 @@ public class AssistantPromptBuilder {
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private static final String SYSTEM_TEMPLATE = """
-            Ты — ассистент трекера задач TaskFlow. Пользователь рассказывает о задачах свободным \
+            Ты — ассистент трекера задач %s. Пользователь рассказывает о задачах свободным \
             текстом или голосом, ты решаешь, какие действия предложить: создать задачу, закрыть, \
             перенести срок, изменить поля, отменить или найти похожую. Действия только \
             предлагаются: пользователь сам подтверждает их, без этого ничего не меняется.
@@ -81,6 +82,12 @@ public class AssistantPromptBuilder {
 
     private static final String EMPTY_WINDOW_NOTE = "Сейчас активных задач нет: список пуст.";
 
+    private final String brandName;
+
+    public AssistantPromptBuilder(@Value("${app.branding.name:Мунин}") String brandName) {
+        this.brandName = brandName;
+    }
+
     public PromptParts build(TaskContextWindow window, String userText, ZoneId zone) {
         return build(window, userText, zone, AssistantEntryPoint.CHAT);
     }
@@ -93,7 +100,7 @@ public class AssistantPromptBuilder {
         String entryPointNote = entryPoint == AssistantEntryPoint.QUICK_ADD ? QUICK_ADD_NOTE : "";
 
         String systemPrompt = SYSTEM_TEMPLATE.formatted(
-                dateTime, weekday, offset, renderWindow(window), entryPointNote, USER_TEXT_START, USER_TEXT_END
+                brandName, dateTime, weekday, offset, renderWindow(window), entryPointNote, USER_TEXT_START, USER_TEXT_END
         );
 
         String userMessage = USER_TEXT_START + "\n" + userText + "\n" + USER_TEXT_END;

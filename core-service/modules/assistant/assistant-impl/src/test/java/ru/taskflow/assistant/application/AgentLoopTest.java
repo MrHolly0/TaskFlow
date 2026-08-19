@@ -40,7 +40,7 @@ class AgentLoopTest {
     private final NlpGatewayService gateway = mock(NlpGatewayService.class);
     private final TaskService taskService = mock(TaskService.class);
 
-    private final AssistantPromptBuilder promptBuilder = new AssistantPromptBuilder();
+    private final AssistantPromptBuilder promptBuilder = new AssistantPromptBuilder("Мунин");
     private final ToolRegistry toolRegistry = new ToolRegistry();
     private final ToolCallParser toolCallParser = new ToolCallParser(
             toolRegistry, new ActionValidator(taskService), new SummaryRenderer(), new ObjectMapper());

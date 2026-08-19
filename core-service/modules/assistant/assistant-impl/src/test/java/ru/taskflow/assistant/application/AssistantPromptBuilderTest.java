@@ -19,7 +19,7 @@ class AssistantPromptBuilderTest {
     // совпасть с системным умолчанием и замаскировать игнорирование ZoneId; без DST — детерминированно.
     private static final ZoneId ZONE = ZoneId.of("Asia/Tokyo");
 
-    private final AssistantPromptBuilder builder = new AssistantPromptBuilder();
+    private final AssistantPromptBuilder builder = new AssistantPromptBuilder("Мунин");
 
     @Test
     void build_includesCurrentDateAndTime() {
@@ -152,6 +152,18 @@ class AssistantPromptBuilderTest {
         assertThat(chat.systemPrompt()).doesNotContain("быстрого добавления");
         assertThat(quickAdd.systemPrompt()).contains("быстрого добавления");
         assertThat(quickAdd.systemPrompt()).contains("create_task первым");
+    }
+
+    @Test
+    void build_includesConfiguredBrandName() {
+        // Плейсхолдер бренда — первый в шаблоне, добавлен восьмым позиционным
+        // аргументом formatted(): проверяем, что он не съехал на место даты
+        // или другого поля при правке шаблона.
+        var brandedBuilder = new AssistantPromptBuilder("Кракен");
+
+        var parts = brandedBuilder.build(emptyWindow(), "любой текст", ZONE);
+
+        assertThat(parts.systemPrompt()).contains("ассистент трекера задач Кракен");
     }
 
     @Test

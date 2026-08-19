@@ -31,7 +31,7 @@ class EmailSenderTest {
 
     @Test
     void sendLoginCode_smtpConfigured_sendsEmailContainingCodeAndFrom() {
-        var sender = new EmailSender(mailSender, environment, "smtp.example.com", FROM);
+        var sender = new EmailSender(mailSender, environment, "smtp.example.com", FROM, "Мунин");
 
         sender.sendLoginCode(EMAIL, CODE);
 
@@ -43,8 +43,19 @@ class EmailSenderTest {
     }
 
     @Test
+    void sendLoginCode_usesConfiguredBrandNameInSubject() {
+        var sender = new EmailSender(mailSender, environment, "smtp.example.com", FROM, "Кракен");
+
+        sender.sendLoginCode(EMAIL, CODE);
+
+        ArgumentCaptor<SimpleMailMessage> captor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+        verify(mailSender).send(captor.capture());
+        assertThat(captor.getValue().getSubject()).isEqualTo("Код входа в Кракен");
+    }
+
+    @Test
     void sendLoginCode_smtpConfiguredButFromMissing_throwsWithoutSending() {
-        var sender = new EmailSender(mailSender, environment, "smtp.example.com", "");
+        var sender = new EmailSender(mailSender, environment, "smtp.example.com", "", "Мунин");
 
         assertThatThrownBy(() -> sender.sendLoginCode(EMAIL, CODE))
                 .isInstanceOf(IllegalStateException.class);
@@ -55,7 +66,7 @@ class EmailSenderTest {
     @Test
     void sendLoginCode_smtpNotConfiguredOutsideDev_throwsWithoutSending() {
         when(environment.acceptsProfiles(any(org.springframework.core.env.Profiles.class))).thenReturn(false);
-        var sender = new EmailSender(mailSender, environment, "", FROM);
+        var sender = new EmailSender(mailSender, environment, "", FROM, "Мунин");
 
         assertThatThrownBy(() -> sender.sendLoginCode(EMAIL, CODE))
                 .isInstanceOf(IllegalStateException.class);
@@ -66,7 +77,7 @@ class EmailSenderTest {
     @Test
     void sendLoginCode_smtpNotConfiguredInDev_logsWithoutSendingOrThrowing() {
         when(environment.acceptsProfiles(any(org.springframework.core.env.Profiles.class))).thenReturn(true);
-        var sender = new EmailSender(mailSender, environment, "", FROM);
+        var sender = new EmailSender(mailSender, environment, "", FROM, "Мунин");
 
         sender.sendLoginCode(EMAIL, CODE);
 

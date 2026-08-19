@@ -19,6 +19,9 @@ public class TelegramBotConfig {
     @Value("${app.telegram.miniapp-url:}")
     private String miniappUrl;
 
+    @Value("${app.branding.name:Мунин}")
+    private String brandName;
+
     @Bean
     public TelegramApiClient telegramApiClient() {
         return new TelegramApiClient(botToken);
@@ -28,7 +31,7 @@ public class TelegramBotConfig {
     public void setupMenuButton() {
         if (botToken.isBlank() || miniappUrl.isBlank()) return;
         try {
-            telegramApiClient().setDefaultMenuButton(miniappUrl, "TaskFlow");
+            telegramApiClient().setDefaultMenuButton(miniappUrl, brandName);
             log.info("Telegram menu button set to {}", miniappUrl);
         } catch (Exception e) {
             log.warn("Failed to set Telegram menu button: {}", e.getMessage());

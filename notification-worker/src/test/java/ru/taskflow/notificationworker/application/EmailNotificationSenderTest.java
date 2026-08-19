@@ -32,7 +32,7 @@ class EmailNotificationSenderTest {
 
     @Test
     void supports_onlyEmailChannel() {
-        var sender = new EmailNotificationSender(mailSender, environment, "smtp.example.com", FROM, MINIAPP_URL);
+        var sender = new EmailNotificationSender(mailSender, environment, "smtp.example.com", FROM, MINIAPP_URL, "Мунин");
 
         assertThat(sender.supports("EMAIL")).isTrue();
         assertThat(sender.supports("TELEGRAM")).isFalse();
@@ -40,7 +40,7 @@ class EmailNotificationSenderTest {
 
     @Test
     void plainText_includesTitleDeadlineAndBothLinks() {
-        var sender = new EmailNotificationSender(mailSender, environment, "smtp.example.com", FROM, MINIAPP_URL);
+        var sender = new EmailNotificationSender(mailSender, environment, "smtp.example.com", FROM, MINIAPP_URL, "Мунин");
 
         String text = sender.plainText("купить молоко", "2030-01-01T10:00:00+03:00", "Europe/Moscow");
 
@@ -52,7 +52,7 @@ class EmailNotificationSenderTest {
 
     @Test
     void plainText_omitsDeadlineLine_whenDeadlineIsNull() {
-        var sender = new EmailNotificationSender(mailSender, environment, "smtp.example.com", FROM, MINIAPP_URL);
+        var sender = new EmailNotificationSender(mailSender, environment, "smtp.example.com", FROM, MINIAPP_URL, "Мунин");
 
         String text = sender.plainText("задача без срока", null, "Europe/Moscow");
 
@@ -61,7 +61,7 @@ class EmailNotificationSenderTest {
 
     @Test
     void html_escapesTitleAndIncludesBothLinksAsAnchors() {
-        var sender = new EmailNotificationSender(mailSender, environment, "smtp.example.com", FROM, MINIAPP_URL);
+        var sender = new EmailNotificationSender(mailSender, environment, "smtp.example.com", FROM, MINIAPP_URL, "Мунин");
 
         String html = sender.html("<script>alert(1)</script>", "2030-01-01T10:00:00+03:00", "Europe/Moscow");
 
@@ -72,8 +72,17 @@ class EmailNotificationSenderTest {
     }
 
     @Test
+    void html_usesConfiguredBrandNameInTaskLinkText() {
+        var sender = new EmailNotificationSender(mailSender, environment, "smtp.example.com", FROM, MINIAPP_URL, "Кракен");
+
+        String html = sender.html("купить молоко", "2030-01-01T10:00:00+03:00", "Europe/Moscow");
+
+        assertThat(html).contains("Открыть в Кракен");
+    }
+
+    @Test
     void sendTaskReminder_smtpConfigured_sendsMimeMessageWithSubjectFromAndDestination() throws Exception {
-        var sender = new EmailNotificationSender(mailSender, environment, "smtp.example.com", FROM, MINIAPP_URL);
+        var sender = new EmailNotificationSender(mailSender, environment, "smtp.example.com", FROM, MINIAPP_URL, "Мунин");
         MimeMessage mimeMessage = new MimeMessage((jakarta.mail.Session) null);
         when(mailSender.createMimeMessage()).thenReturn(mimeMessage);
 
@@ -87,7 +96,7 @@ class EmailNotificationSenderTest {
 
     @Test
     void sendTaskReminder_smtpConfiguredButFromMissing_throwsWithoutSending() {
-        var noFromSender = new EmailNotificationSender(mailSender, environment, "smtp.example.com", "", MINIAPP_URL);
+        var noFromSender = new EmailNotificationSender(mailSender, environment, "smtp.example.com", "", MINIAPP_URL, "Мунин");
 
         assertThatThrownBy(() -> noFromSender.sendTaskReminder(DESTINATION, "задача", null, "Europe/Moscow"))
                 .isInstanceOf(IllegalStateException.class);
@@ -98,7 +107,7 @@ class EmailNotificationSenderTest {
     @Test
     void sendTaskReminder_smtpNotConfiguredOutsideDev_throwsWithoutSending() {
         when(environment.acceptsProfiles(any(Profiles.class))).thenReturn(false);
-        var noSmtpSender = new EmailNotificationSender(mailSender, environment, "", FROM, MINIAPP_URL);
+        var noSmtpSender = new EmailNotificationSender(mailSender, environment, "", FROM, MINIAPP_URL, "Мунин");
 
         assertThatThrownBy(() -> noSmtpSender.sendTaskReminder(DESTINATION, "задача", null, "Europe/Moscow"))
                 .isInstanceOf(IllegalStateException.class);
@@ -109,7 +118,7 @@ class EmailNotificationSenderTest {
     @Test
     void sendTaskReminder_smtpNotConfiguredInDev_logsWithoutSendingOrThrowing() {
         when(environment.acceptsProfiles(any(Profiles.class))).thenReturn(true);
-        var devSender = new EmailNotificationSender(mailSender, environment, "", FROM, MINIAPP_URL);
+        var devSender = new EmailNotificationSender(mailSender, environment, "", FROM, MINIAPP_URL, "Мунин");
 
         devSender.sendTaskReminder(DESTINATION, "задача", null, "Europe/Moscow");
 

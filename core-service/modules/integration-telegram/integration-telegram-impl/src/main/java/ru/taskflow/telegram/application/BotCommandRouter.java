@@ -30,6 +30,9 @@ public class BotCommandRouter {
     @Value("${app.telegram.miniapp-url:}")
     private String miniappUrl = "";
 
+    @Value("${app.branding.name:Мунин}")
+    private String brandName = "Мунин";
+
     public void handle(TelegramMessage message, UUID userId) {
         String command = parseCommand(message.text());
         long chatId = message.chat().id();
@@ -46,14 +49,14 @@ public class BotCommandRouter {
         String text = """
                 Привет, %s! 👋
 
-                Я TaskFlow — помогаю управлять задачами. Просто напишите задачу, и я её сохраню.
+                Я %s — помогаю управлять задачами. Просто напишите задачу, и я её сохраню.
 
                 /today — ваши задачи
                 /help — помощь
-                """.formatted(firstName);
+                """.formatted(firstName, brandName);
 
         if (!miniappUrl.isBlank()) {
-            sender.sendMessageWithWebApp(chatId, text, "📱 Открыть TaskFlow", miniappUrl);
+            sender.sendMessageWithWebApp(chatId, text, "📱 Открыть " + brandName, miniappUrl);
         } else {
             sender.sendMessage(chatId, text);
         }

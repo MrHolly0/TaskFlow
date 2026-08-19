@@ -24,19 +24,22 @@ public class EmailNotificationSender implements NotificationSender {
     private final String mailHost;
     private final String mailFrom;
     private final String miniappUrl;
+    private final String brandName;
 
     public EmailNotificationSender(
             JavaMailSender mailSender,
             Environment environment,
             @Value("${spring.mail.host:}") String mailHost,
             @Value("${app.mail.from:}") String mailFrom,
-            @Value("${app.frontend.miniapp-url:}") String miniappUrl
+            @Value("${app.frontend.miniapp-url:}") String miniappUrl,
+            @Value("${app.branding.name:Мунин}") String brandName
     ) {
         this.mailSender = mailSender;
         this.environment = environment;
         this.mailHost = mailHost;
         this.mailFrom = mailFrom;
         this.miniappUrl = miniappUrl;
+        this.brandName = brandName;
     }
 
     @Override
@@ -115,7 +118,7 @@ public class EmailNotificationSender implements NotificationSender {
         }
         String taskLink = taskLink();
         if (!taskLink.isBlank()) {
-            html.append("<p><a href=\"").append(taskLink).append("\">Открыть в TaskFlow</a></p>");
+            html.append("<p><a href=\"").append(taskLink).append("\">Открыть в ").append(escape(brandName)).append("</a></p>");
         }
         String settingsLink = settingsLink();
         if (!settingsLink.isBlank()) {

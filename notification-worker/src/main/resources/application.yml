@@ -21,6 +21,8 @@ spring:
             enable: true
 
 app:
+  branding:
+    name: ${APP_NAME:Мунин}
   mail:
     from: ${SMTP_FROM:}
   frontend:
