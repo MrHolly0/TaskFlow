@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { IconBrandTelegram, IconMail, IconCheck } from '@tabler/icons-react';
+import { IconMail, IconCheck } from '@tabler/icons-react';
 import { Card } from '@/app/components/ui/card';
 import { Badge } from '@/app/components/ui/badge';
 import { Button, buttonVariants } from '@/app/components/ui/button';
@@ -20,6 +20,7 @@ import {
 import { cn } from '@/lib/utils';
 import { EmailCodeStep } from '@/app/components/EmailCodeStep';
 import { TelegramLoginWidget } from '@/app/components/TelegramLoginWidget';
+import { TelegramLogo } from '@/app/components/TelegramLogo';
 import { MergeConflictDialog } from '@/app/components/MergeConflictDialog';
 import { isTelegramWebApp } from '@/lib/auth';
 import {
@@ -96,6 +97,17 @@ function IntegrationsHeader() {
         Способы входа в аккаунт. Привяжи хотя бы два, чтобы не потерять доступ, если один перестанет работать.
       </p>
     </div>
+  );
+}
+
+// Подключено и не подключено — два значения одного признака, а не разные
+// сущности: одна и та же плашка, различающаяся только цветом.
+function StatusBadge({ connected, children }: { connected: boolean; children: React.ReactNode }) {
+  return (
+    <Badge variant={connected ? 'success' : 'destructive'} className="gap-1 mt-0.5">
+      {connected && <IconCheck className="h-3 w-3" />}
+      {children}
+    </Badge>
   );
 }
 
@@ -234,19 +246,10 @@ function TelegramSection({
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0088cc]/10">
-            <IconBrandTelegram className="h-5 w-5" style={{ color: '#0088cc' }} />
-          </div>
+          <TelegramLogo className="h-10 w-10 shrink-0" />
           <div>
             <p className="text-sm font-medium">Telegram</p>
-            {connected ? (
-              <Badge variant="secondary" className="gap-1 mt-0.5">
-                <IconCheck className="h-3 w-3" />
-                Подключён
-              </Badge>
-            ) : (
-              <p className="text-xs text-muted-foreground">Не подключён</p>
-            )}
+            <StatusBadge connected={connected}>{connected ? 'Подключён' : 'Не подключён'}</StatusBadge>
           </div>
         </div>
 
@@ -351,14 +354,7 @@ function EmailSection({
           </div>
           <div>
             <p className="text-sm font-medium">Почта</p>
-            {connected ? (
-              <Badge variant="secondary" className="gap-1 mt-0.5">
-                <IconCheck className="h-3 w-3" />
-                {externalId}
-              </Badge>
-            ) : (
-              <p className="text-xs text-muted-foreground">Не подключена</p>
-            )}
+            <StatusBadge connected={connected}>{connected ? externalId : 'Не подключена'}</StatusBadge>
           </div>
         </div>
 
