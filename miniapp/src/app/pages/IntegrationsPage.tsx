@@ -1,0 +1,300 @@
+import { useState, useCallback } from 'react';
+import { toast } from 'sonner';
+import { IconBrandTelegram, IconMail, IconCheck } from '@tabler/icons-react';
+import { Card } from '@/app/components/ui/card';
+import { Badge } from '@/app/components/ui/badge';
+import { Button, buttonVariants } from '@/app/components/ui/button';
+import { Input } from '@/app/components/ui/input';
+import { Separator } from '@/app/components/ui/separator';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/app/components/ui/alert-dialog';
+import { cn } from '@/lib/utils';
+import { EmailCodeStep } from '@/app/components/EmailCodeStep';
+import { TelegramLoginWidget } from '@/app/components/TelegramLoginWidget';
+import { isTelegramWebApp } from '@/lib/auth';
+import {
+  useIdentities,
+  useRequestBindEmailCode,
+  useConfirmBindEmail,
+  useBindTelegram,
+  useUnbindIdentity,
+  type AccountTransferResult,
+  type IdentityProvider,
+} from '@/lib/hooks/useIdentities';
+
+function mergeToastMessage(result: AccountTransferResult): string {
+  const parts: string[] = [];
+  if (result.tasks > 0) parts.push(`${result.tasks} задач`);
+  if (result.groups > 0) parts.push(`${result.groups} групп`);
+  if (result.tags > 0) parts.push(`${result.tags} меток`);
+  if (parts.length === 0) return 'Способ входа подключён — данные с ним переносить не пришлось.';
+  return `Перенесли с прежней учётки: ${parts.join(', ')}.`;
+}
+
+export function IntegrationsPage() {
+  const { data: identities = [], isLoading } = useIdentities();
+  const unbind = useUnbindIdentity();
+
+  const telegram = identities.find((i) => i.provider === 'TELEGRAM');
+  const email = identities.find((i) => i.provider === 'EMAIL');
+  const canUnbind = identities.length > 1;
+
+  const handleUnbind = (provider: IdentityProvider) => {
+    unbind.mutate(provider, {
+      onError: (err: any) => {
+        const detail = err?.response?.data?.detail;
+        toast.error(detail || 'Не получилось отвязать способ входа');
+      },
+    });
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-semibold">Интеграции</h1>
+        <p className="text-sm text-muted-foreground">
+          Способы входа в аккаунт. Привяжи хотя бы два, чтобы не потерять доступ, если один перестанет работать.
+        </p>
+      </div>
+
+      <Card className="p-6 flex flex-col gap-6">
+        {!isLoading && !email && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+            <p className="text-sm font-medium">Привяжи почту</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Сейчас у тебя только Telegram. Почта — резервный способ входа, если Telegram станет недоступен.
+            </p>
+          </div>
+        )}
+
+        <TelegramSection
+          connected={Boolean(telegram)}
+          canUnbind={canUnbind}
+          onUnbind={() => handleUnbind('TELEGRAM')}
+          unbinding={unbind.isPending && unbind.variables === 'TELEGRAM'}
+        />
+
+        <Separator />
+
+        <EmailSection
+          connected={Boolean(email)}
+          externalId={email?.externalId}
+          canUnbind={canUnbind}
+          onUnbind={() => handleUnbind('EMAIL')}
+          unbinding={unbind.isPending && unbind.variables === 'EMAIL'}
+        />
+      </Card>
+    </div>
+  );
+}
+
+function TelegramSection({
+  connected,
+  canUnbind,
+  onUnbind,
+  unbinding,
+}: {
+  connected: boolean;
+  canUnbind: boolean;
+  onUnbind: () => void;
+  unbinding: boolean;
+}) {
+  const bindTelegram = useBindTelegram();
+  const [widgetAvailable, setWidgetAvailable] = useState<boolean | null>(null);
+
+  // useCallback с пустыми зависимостями — тот же приём, что на AuthPage:
+  // без него виджет пересоздаёт свой script при каждом ре-рендере страницы.
+  const handleAuth = useCallback((widgetUser: Record<string, string | number>) => {
+    const fields: Record<string, string> = {};
+    for (const [key, value] of Object.entries(widgetUser)) {
+      fields[key] = String(value);
+    }
+    bindTelegram.mutate(fields, {
+      onSuccess: (result) => {
+        toast.success(mergeToastMessage(result.mergedFrom ?? { tasks: 0, groups: 0, tags: 0, notifications: 0, auditEvents: 0, proposals: 0, identities: 0 }));
+      },
+      onError: (err: any) => {
+        toast.error(err?.response?.data?.detail || 'Не получилось привязать Telegram');
+      },
+    });
+  }, [bindTelegram]);
+
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0088cc]/10">
+            <IconBrandTelegram className="h-5 w-5" style={{ color: '#0088cc' }} />
+          </div>
+          <div>
+            <p className="text-sm font-medium">Telegram</p>
+            {connected ? (
+              <Badge variant="secondary" className="gap-1 mt-0.5">
+                <IconCheck className="h-3 w-3" />
+                Подключён
+              </Badge>
+            ) : (
+              <p className="text-xs text-muted-foreground">Не подключён</p>
+            )}
+          </div>
+        </div>
+
+        {connected && (
+          <AlertDialog>
+            {/* Без asChild: Button — обычная функция без forwardRef. */}
+            <AlertDialogTrigger
+              className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+              disabled={!canUnbind || unbinding}
+              title={!canUnbind ? 'Это единственный способ входа' : undefined}
+            >
+              {unbinding ? 'Отвязываем...' : 'Отвязать'}
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Отвязать Telegram?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Больше нельзя будет войти через Telegram. Задачи и данные останутся — доступ через оставшийся способ входа не изменится.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Отмена</AlertDialogCancel>
+                <AlertDialogAction onClick={onUnbind}>Отвязать</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+      </div>
+
+      {!connected && !isTelegramWebApp() && widgetAvailable !== false && (
+        <TelegramLoginWidget onAuth={handleAuth} onLoaded={setWidgetAvailable} />
+      )}
+      {!connected && !isTelegramWebApp() && widgetAvailable === false && (
+        <p className="text-xs text-muted-foreground">
+          Кнопка Telegram сейчас недоступна. Попробуйте зайти на сайт через VPN.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function EmailSection({
+  connected,
+  externalId,
+  canUnbind,
+  onUnbind,
+  unbinding,
+}: {
+  connected: boolean;
+  externalId?: string;
+  canUnbind: boolean;
+  onUnbind: () => void;
+  unbinding: boolean;
+}) {
+  const [step, setStep] = useState<'idle' | 'email' | 'code'>('idle');
+  const [email, setEmail] = useState('');
+  const requestCode = useRequestBindEmailCode();
+  const confirmEmail = useConfirmBindEmail();
+
+  const handleSubmitEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (requestCode.isPending || !email) return;
+    try {
+      await requestCode.mutateAsync(email);
+      setStep('code');
+    } catch {
+      toast.error('Не получилось отправить код, попробуйте позже');
+    }
+  };
+
+  const verifyAndBind = async (bindEmail: string, code: string) => {
+    const result = await confirmEmail.mutateAsync({ email: bindEmail, code });
+    toast.success(mergeToastMessage(result.mergedFrom ?? { tasks: 0, groups: 0, tags: 0, notifications: 0, auditEvents: 0, proposals: 0, identities: 0 }));
+    return result;
+  };
+
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+            <IconMail className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <p className="text-sm font-medium">Почта</p>
+            {connected ? (
+              <Badge variant="secondary" className="gap-1 mt-0.5">
+                <IconCheck className="h-3 w-3" />
+                {externalId}
+              </Badge>
+            ) : (
+              <p className="text-xs text-muted-foreground">Не подключена</p>
+            )}
+          </div>
+        </div>
+
+        {connected ? (
+          <AlertDialog>
+            <AlertDialogTrigger
+              className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+              disabled={!canUnbind || unbinding}
+              title={!canUnbind ? 'Это единственный способ входа' : undefined}
+            >
+              {unbinding ? 'Отвязываем...' : 'Отвязать'}
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Отвязать почту?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Больше нельзя будет войти по этому адресу. Задачи и данные останутся — доступ через оставшийся способ входа не изменится.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Отмена</AlertDialogCancel>
+                <AlertDialogAction onClick={onUnbind}>Отвязать</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        ) : step === 'idle' ? (
+          <Button size="sm" onClick={() => setStep('email')}>Подключить</Button>
+        ) : null}
+      </div>
+
+      {step === 'email' && (
+        <form onSubmit={handleSubmitEmail} className="flex gap-2">
+          <Input
+            type="email"
+            required
+            autoFocus
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="почта@пример.ру"
+            disabled={requestCode.isPending}
+            className="h-10"
+          />
+          <Button type="submit" disabled={requestCode.isPending || !email} className="h-10 shrink-0">
+            Продолжить
+          </Button>
+        </form>
+      )}
+
+      {step === 'code' && (
+        <EmailCodeStep
+          email={email}
+          onBack={() => setStep('email')}
+          onVerified={() => setStep('idle')}
+          requestCode={(e) => requestCode.mutateAsync(e)}
+          verifyCode={verifyAndBind}
+        />
+      )}
+    </section>
+  );
+}

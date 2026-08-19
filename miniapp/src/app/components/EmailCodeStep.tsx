@@ -14,9 +14,20 @@ type Props = {
   email: string;
   onBack: () => void;
   onVerified: () => void;
+  // По умолчанию — вход (/auth/email/*). Вкладка «Интеграции» передаёт сюда
+  // привязку (/identities/email/*) — тот же UI, код и попытки, другой смысл
+  // конечного вызова на бэкенде.
+  requestCode?: (email: string) => Promise<void>;
+  verifyCode?: (email: string, code: string) => Promise<unknown>;
 };
 
-export function EmailCodeStep({ email, onBack, onVerified }: Props) {
+export function EmailCodeStep({
+  email,
+  onBack,
+  onVerified,
+  requestCode = requestEmailCode,
+  verifyCode = verifyEmailCode,
+}: Props) {
   const [code, setCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [resending, setResending] = useState(false);
@@ -41,7 +52,7 @@ export function EmailCodeStep({ email, onBack, onVerified }: Props) {
     setSubmitting(true);
     setError(null);
     try {
-      await verifyEmailCode(email, code);
+      await verifyCode(email, code);
       onVerified();
     } catch {
       const left = Math.max(0, attemptsLeft - 1);
@@ -63,7 +74,7 @@ export function EmailCodeStep({ email, onBack, onVerified }: Props) {
     setResending(true);
     setError(null);
     try {
-      await requestEmailCode(email);
+      await requestCode(email);
       setAttemptsLeft(MAX_ATTEMPTS);
       setCooldown(RESEND_COOLDOWN_SECONDS);
     } catch {

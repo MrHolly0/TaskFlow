@@ -8,6 +8,7 @@ import {
   IconTags,
   IconChartBar,
   IconSettings,
+  IconPlug,
   IconPlus,
   IconMoon,
   IconSun,
@@ -31,6 +32,7 @@ import {
   DropdownMenuTrigger,
 } from '@/app/components/ui/dropdown-menu';
 import { QuickInputModal } from '@/app/components/QuickInputModal';
+import { MuninLogo } from '@/app/components/MuninLogo';
 
 interface NavItem {
   href: string;
@@ -45,6 +47,7 @@ const navItems: NavItem[] = [
   { href: '/board', label: 'Доска', icon: IconLayoutKanban },
   { href: '/groups', label: 'Группы', icon: IconTags },
   { href: '/stats', label: 'Статистика', icon: IconChartBar },
+  { href: '/integrations', label: 'Интеграции', icon: IconPlug },
   { href: '/settings', label: 'Настройки', icon: IconSettings },
 ];
 
@@ -59,12 +62,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen bg-background">
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex lg:w-56 lg:flex-col border-r border-border">
-        {/* Logo */}
         <div className="flex h-14 items-center border-b border-border px-5 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <IconSparkles className="h-5 w-5 text-primary" />
-            <h1 className="text-base font-semibold">TaskFlow</h1>
-          </div>
+          <MuninLogo variant="header" className="h-5 w-auto text-foreground" />
         </div>
 
         {/* Quick action */}
@@ -109,10 +108,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         {/* Top Bar */}
         <header className="flex h-14 items-center justify-between border-b border-border px-4 lg:px-5 flex-shrink-0">
           <div className="lg:hidden">
-            <div className="flex items-center gap-2">
-              <IconSparkles className="h-4 w-4 text-primary" />
-              <h1 className="text-base font-semibold">TaskFlow</h1>
-            </div>
+            <MuninLogo variant="header" className="h-5 w-auto text-foreground" />
           </div>
 
           <div className="ml-auto flex items-center gap-1">
@@ -211,6 +207,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <div className="space-y-1 py-2">
                 {[
                   { href: '/stats', icon: IconChartBar, label: 'Статистика' },
+                  { href: '/integrations', icon: IconPlug, label: 'Интеграции' },
                   { href: '/settings', icon: IconSettings, label: 'Настройки' },
                 ].map(({ href, icon: Icon, label }) => (
                   <Link

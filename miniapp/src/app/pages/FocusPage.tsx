@@ -11,6 +11,7 @@ import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
 import { TaskDetailModal } from '@/app/components/TaskDetailModal';
+import { EmailBindBanner } from '@/app/components/EmailBindBanner';
 
 interface Task {
   id: string;
@@ -255,6 +256,9 @@ export function FocusPage() {
             <IconArrowRight className="h-4 w-4" />
           </Button>
         </Link>
+        <div className="w-full max-w-md">
+          <EmailBindBanner />
+        </div>
       </div>
     );
   }
@@ -276,6 +280,8 @@ export function FocusPage() {
             <IconArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
+
+        <EmailBindBanner />
 
         {showingUpcoming && (
           <p className="text-sm text-muted-foreground -mt-2">

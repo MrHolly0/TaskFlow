@@ -11,6 +11,7 @@ import { BoardPage } from '@/app/pages/BoardPage';
 import { GroupsPage } from '@/app/pages/GroupsPage';
 import { StatsPage } from '@/app/pages/StatsPage';
 import { SettingsPage } from '@/app/pages/SettingsPage';
+import { IntegrationsPage } from '@/app/pages/IntegrationsPage';
 import { AuthPage } from '@/app/pages/AuthPage';
 import { useStore } from '@/lib/store';
 import { getStoredToken, authenticateViaInitData, isTelegramWebApp, initializeTelegramWebApp, getUserFromToken } from '@/lib/auth';
@@ -107,6 +108,7 @@ function AppContent() {
         <Route path="/groups" element={<GroupsPage />} />
         <Route path="/stats" element={<StatsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/integrations" element={<IntegrationsPage />} />
       </Routes>
     </AppLayout>
   );

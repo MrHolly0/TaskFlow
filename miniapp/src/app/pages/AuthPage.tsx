@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { IconBrandTelegram, IconSparkles, IconBolt, IconShield } from '@tabler/icons-react';
 import { motion } from 'motion/react';
 import { useStore } from '@/lib/store';
@@ -15,74 +15,14 @@ import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Separator } from '@/app/components/ui/separator';
 import { EmailCodeStep } from '@/app/components/EmailCodeStep';
-
-const BOT_USERNAME = import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'MHTaskFlowAI_Bot';
+import { MuninLogo } from '@/app/components/MuninLogo';
+import { TelegramLoginWidget } from '@/app/components/TelegramLoginWidget';
 
 const features = [
   { icon: IconSparkles, title: 'Фокус-режим', desc: '1–3 задачи. Только самое важное.' },
   { icon: IconBolt, title: 'Голосовой ввод', desc: 'Надиктуй задачу — разберём сами.' },
   { icon: IconShield, title: 'Без перегруза', desc: 'Ассистент решает приоритеты за тебя.' },
 ];
-
-function TelegramLoginWidget({
-  onAuth,
-  onLoaded,
-}: {
-  onAuth: (user: Record<string, string | number>) => void;
-  onLoaded: (loaded: boolean) => void;
-}) {
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const container = containerRef.current;
-    (window as any).onTelegramWidgetAuth = onAuth;
-    const script = document.createElement('script');
-    script.src = 'https://telegram.org/js/telegram-widget.js?22';
-    script.setAttribute('data-telegram-login', BOT_USERNAME);
-    script.setAttribute('data-size', 'large');
-    script.setAttribute('data-onauth', 'onTelegramWidgetAuth(user)');
-    script.setAttribute('data-request-access', 'write');
-    script.async = true;
-
-    // В России telegram.org недоступен, и скрипт не загружается вовсе.
-    // Без этой проверки на его месте оставался заголовок «или войти через»
-    // над пустотой. Ждём появления iframe: onload скрипта срабатывает и
-    // тогда, когда виджет по какой-то причине себя не отрисовал.
-    script.onerror = () => onLoaded(false);
-    const timer = window.setTimeout(
-      () => onLoaded(Boolean(container.querySelector('iframe'))),
-      4000,
-    );
-
-    container.innerHTML = '';
-    container.appendChild(script);
-    return () => {
-      window.clearTimeout(timer);
-      delete (window as any).onTelegramWidgetAuth;
-    };
-  }, [onAuth, onLoaded]);
-
-  // Виджет — чужой iframe, его внутреннее содержимое отсюда не стилизуется.
-  //
-  // Тёмные уголки вокруг кнопки проявляются только в Safari: он рисует холст
-  // вложенного документа своей подложкой по цветовой схеме, тогда как Chrome
-  // и встроенный браузер Telegram оставляют его прозрачным.
-  //
-  // Поэтому здесь три меры сразу, а не одна: прозрачный фон и явно светлая
-  // схема (виджет нарисован под светлый фон и другого не знает) — плюс
-  // обрезка по скруглению. Обрезающий контейнер обязан обжимать iframe
-  // по размеру: раньше скругление стояло на блоке во всю ширину, до углов
-  // iframe не доставало и потому не работало.
-  return (
-    <div className="flex justify-center">
-      <div
-        ref={containerRef}
-        className="w-fit overflow-hidden rounded-[20px] [&_iframe]:!border-0 [&_iframe]:!bg-transparent [&_iframe]:[color-scheme:light]"
-      />
-    </div>
-  );
-}
 
 export function AuthPage() {
   const setAuthenticated = useStore((s) => s.setAuthenticated);
@@ -177,17 +117,11 @@ export function AuthPage() {
           transition={{ duration: 0.5 }}
           className="space-y-10"
         >
-          {/* Logo */}
-          <div className="text-center space-y-3">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 text-primary">
-              <IconSparkles className="w-8 h-8" />
-            </div>
-            <div>
-              <h1 className="text-4xl font-bold tracking-tight">TaskFlow</h1>
-              <p className="text-muted-foreground mt-2 text-base">
-                Планировщик для мозга, который не любит скучать
-              </p>
-            </div>
+          <div className="text-center space-y-4">
+            <MuninLogo variant="auth" className="mx-auto h-auto w-44 text-foreground" />
+            <p className="text-muted-foreground text-base">
+              Планировщик для мозга, который не любит скучать
+            </p>
           </div>
 
           {/* Преимущества — только на первом шаге: на вводе кода человек
