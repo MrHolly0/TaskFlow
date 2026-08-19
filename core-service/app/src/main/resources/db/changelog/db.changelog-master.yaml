@@ -35,3 +35,5 @@ databaseChangeLog:
       file: db/changelog/017-proposal-ambiguity.yaml
   - include:
       file: db/changelog/018-notification-channel.yaml
+  - include:
+      file: db/changelog/019-notification-toggles.yaml

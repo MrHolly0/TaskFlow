@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useTheme } from 'next-themes';
 import { Card } from '@/app/components/ui/card';
 import { Label } from '@/app/components/ui/label';
@@ -28,6 +29,7 @@ import {
 } from '@/app/components/ui/alert-dialog';
 import { useStore } from '@/lib/store';
 import { useSettings, useUpdateSettings, useClearCompleted, VoiceInputMode } from '@/lib/hooks/useSettings';
+import { useIdentities } from '@/lib/hooks/useIdentities';
 import { isTouchDevice } from '@/lib/device';
 
 function useSetting(key: string, defaultValue: string): [string, (v: string) => void] {
@@ -68,14 +70,26 @@ export function SettingsPage() {
   const login = useStore((s) => s.login);
   const logout = useStore((s) => s.logout);
 
-  const [notifications, setNotifications] = useBoolSetting('settings.notifications', true);
   const [reminderTime, setReminderTime] = useSetting('settings.reminderTime', '1h');
   const [urgentExtra, setUrgentExtra] = useBoolSetting('settings.urgentExtra', true);
 
   const { data: serverSettings } = useSettings();
+  const { data: identities } = useIdentities();
   const updateSettings = useUpdateSettings();
   const clearCompleted = useClearCompleted();
   const [clearResult, setClearResult] = useState<number | null>(null);
+
+  // Общий выключатель — настоящее серверное поле, не localStorage: от него
+  // зависит, шлёт ли notification-worker хоть что-то (см. NotificationServiceImpl).
+  const notificationsEnabled = serverSettings?.notificationsEnabled ?? true;
+  const handleNotificationsToggle = (v: boolean) => updateSettings.mutate({ notificationsEnabled: v });
+
+  const hasTelegram = identities?.some((i) => i.provider === 'TELEGRAM') ?? false;
+  const hasEmail = identities?.some((i) => i.provider === 'EMAIL') ?? false;
+  const notifyTelegram = serverSettings?.notifyTelegram ?? true;
+  const notifyEmail = serverSettings?.notifyEmail ?? true;
+  const handleNotifyTelegramToggle = (v: boolean) => updateSettings.mutate({ notifyTelegram: v });
+  const handleNotifyEmailToggle = (v: boolean) => updateSettings.mutate({ notifyEmail: v });
 
   const currentAutoClean = serverSettings?.autoCleanCompletedDays
     ? String(serverSettings.autoCleanCompletedDays)
@@ -215,13 +229,56 @@ export function SettingsPage() {
             </div>
             <Switch
               id="notifications"
-              checked={notifications}
-              onCheckedChange={setNotifications}
+              checked={notificationsEnabled}
+              onCheckedChange={handleNotificationsToggle}
+              disabled={updateSettings.isPending}
             />
           </div>
+
+          <div className="flex flex-col gap-3 pl-1 border-l-2 border-muted ml-1">
+            <div className="flex items-center justify-between gap-4 pl-3">
+              <div className="flex flex-col gap-1 min-w-0">
+                <Label htmlFor="notify-telegram">Telegram</Label>
+                {!hasTelegram && (
+                  <p className="text-xs text-muted-foreground">
+                    Telegram не подключён —{' '}
+                    <Link to="/integrations" className="underline">
+                      подключить в интеграциях
+                    </Link>
+                  </p>
+                )}
+              </div>
+              <Switch
+                id="notify-telegram"
+                checked={hasTelegram && notifyTelegram}
+                onCheckedChange={handleNotifyTelegramToggle}
+                disabled={!hasTelegram || !notificationsEnabled || updateSettings.isPending}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4 pl-3">
+              <div className="flex flex-col gap-1 min-w-0">
+                <Label htmlFor="notify-email">Почта</Label>
+                {!hasEmail && (
+                  <p className="text-xs text-muted-foreground">
+                    Почта не подключена —{' '}
+                    <Link to="/integrations" className="underline">
+                      подключить в интеграциях
+                    </Link>
+                  </p>
+                )}
+              </div>
+              <Switch
+                id="notify-email"
+                checked={hasEmail && notifyEmail}
+                onCheckedChange={handleNotifyEmailToggle}
+                disabled={!hasEmail || !notificationsEnabled || updateSettings.isPending}
+              />
+            </div>
+          </div>
+
           <div className="flex flex-col gap-2">
             <Label htmlFor="reminder-time">Время напоминания</Label>
-            <Select value={reminderTime} onValueChange={setReminderTime} disabled={!notifications}>
+            <Select value={reminderTime} onValueChange={setReminderTime} disabled={!notificationsEnabled}>
               <SelectTrigger id="reminder-time" className="h-10">
                 <SelectValue />
               </SelectTrigger>
@@ -245,7 +302,7 @@ export function SettingsPage() {
               id="urgent-reminder"
               checked={urgentExtra}
               onCheckedChange={setUrgentExtra}
-              disabled={!notifications}
+              disabled={!notificationsEnabled}
             />
           </div>
         </section>

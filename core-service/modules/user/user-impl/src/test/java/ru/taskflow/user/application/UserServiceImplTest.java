@@ -82,7 +82,7 @@ class UserServiceImplTest {
     void updateSettings_updatesVoiceModes() {
         UUID userId = UUID.randomUUID();
         var entity = new UserSettingsJpaEntity();
-        var request = new UpdateSettingsRequest(null, null, null, null, null, "TOGGLE", "HOLD", null, null);
+        var request = new UpdateSettingsRequest(null, null, null, null, null, null, null, "TOGGLE", "HOLD", null, null);
         when(settingsRepository.findByUserId(userId)).thenReturn(Optional.of(entity));
         UserServiceImpl service = newService();
 
@@ -113,7 +113,7 @@ class UserServiceImplTest {
         UUID userId = UUID.randomUUID();
         var settingsEntity = new UserSettingsJpaEntity();
         var user = new UserJpaEntity();
-        var request = new UpdateSettingsRequest(null, null, null, null, null, null, null, "Asia/Yekaterinburg", null);
+        var request = new UpdateSettingsRequest(null, null, null, null, null, null, null, null, null, "Asia/Yekaterinburg", null);
         when(settingsRepository.findByUserId(userId)).thenReturn(Optional.of(settingsEntity));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         UserServiceImpl service = newService();
@@ -128,7 +128,7 @@ class UserServiceImplTest {
     @Test
     void updateSettings_rejectsUnknownTimezone() {
         UUID userId = UUID.randomUUID();
-        var request = new UpdateSettingsRequest(null, null, null, null, null, null, null, "Mars/Colony", null);
+        var request = new UpdateSettingsRequest(null, null, null, null, null, null, null, null, null, "Mars/Colony", null);
         UserServiceImpl service = newService();
 
         assertThatThrownBy(() -> service.updateSettings(userId, request))
@@ -157,7 +157,7 @@ class UserServiceImplTest {
         UUID userId = UUID.randomUUID();
         var settingsEntity = new UserSettingsJpaEntity();
         var user = new UserJpaEntity();
-        var request = new UpdateSettingsRequest(null, null, null, null, null, null, null, null, "Марина");
+        var request = new UpdateSettingsRequest(null, null, null, null, null, null, null, null, null, null, "Марина");
         when(settingsRepository.findByUserId(userId)).thenReturn(Optional.of(settingsEntity));
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         UserServiceImpl service = newService();
@@ -172,7 +172,7 @@ class UserServiceImplTest {
     @Test
     void updateSettings_rejectsBlankDisplayName() {
         UUID userId = UUID.randomUUID();
-        var request = new UpdateSettingsRequest(null, null, null, null, null, null, null, null, "   ");
+        var request = new UpdateSettingsRequest(null, null, null, null, null, null, null, null, null, null, "   ");
         UserServiceImpl service = newService();
 
         assertThatThrownBy(() -> service.updateSettings(userId, request))
@@ -185,7 +185,7 @@ class UserServiceImplTest {
     @Test
     void updateSettings_rejectsTooLongDisplayName() {
         UUID userId = UUID.randomUUID();
-        var request = new UpdateSettingsRequest(null, null, null, null, null, null, null, null, "a".repeat(65));
+        var request = new UpdateSettingsRequest(null, null, null, null, null, null, null, null, null, null, "a".repeat(65));
         UserServiceImpl service = newService();
 
         assertThatThrownBy(() -> service.updateSettings(userId, request))
@@ -199,7 +199,7 @@ class UserServiceImplTest {
     void updateSettings_leavesDisplayNameUntouchedWhenNotProvided() {
         UUID userId = UUID.randomUUID();
         var settingsEntity = new UserSettingsJpaEntity();
-        var request = new UpdateSettingsRequest(null, null, null, null, null, "TOGGLE", null, null, null);
+        var request = new UpdateSettingsRequest(null, null, null, null, null, null, null, "TOGGLE", null, null, null);
         when(settingsRepository.findByUserId(userId)).thenReturn(Optional.of(settingsEntity));
         UserServiceImpl service = newService();
 

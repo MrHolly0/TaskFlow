@@ -23,6 +23,12 @@ public class UserSettingsJpaEntity {
     @Column(name = "notifications_enabled")
     private boolean notificationsEnabled = true;
 
+    @Column(name = "notify_telegram")
+    private boolean notifyTelegram = true;
+
+    @Column(name = "notify_email")
+    private boolean notifyEmail = true;
+
     @Column(name = "default_reminder_minutes")
     private int defaultReminderMinutes = 60;
 

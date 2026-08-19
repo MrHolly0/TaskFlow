@@ -15,6 +15,8 @@ export type VoiceInputMode = 'SILENCE' | 'TOGGLE' | 'HOLD';
 
 export interface UserSettings {
   notificationsEnabled: boolean;
+  notifyTelegram: boolean;
+  notifyEmail: boolean;
   defaultReminderMinutes: number;
   urgentExtraReminder: boolean;
   preferredLlm: string;
@@ -28,6 +30,8 @@ export interface UserSettings {
 interface UpdateSettingsRequest {
   autoCleanCompletedDays?: number | null;
   notificationsEnabled?: boolean;
+  notifyTelegram?: boolean;
+  notifyEmail?: boolean;
   defaultReminderMinutes?: number;
   urgentExtraReminder?: boolean;
   preferredLlm?: string;

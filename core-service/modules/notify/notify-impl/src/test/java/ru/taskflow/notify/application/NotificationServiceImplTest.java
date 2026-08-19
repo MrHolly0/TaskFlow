@@ -152,7 +152,46 @@ class NotificationServiceImplTest {
         verify(scheduledNotificationRepository).reassignOwner(from, to, null, null);
     }
 
+    @Test
+    void scheduleTaskReminder_skipsEverythingWhenMasterSwitchIsOff() {
+        when(userService.getSettings(userId)).thenReturn(settings(false, true, true));
+
+        notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1));
+
+        verify(scheduledNotificationRepository, never()).save(any());
+        verify(userService, never()).findExternalId(any(), any());
+    }
+
+    @Test
+    void scheduleTaskReminder_doesNotCheckIdentityForDisabledChannel() {
+        // Выключенный переключатель не должен даже смотреть на идентичность —
+        // при включённом он бы её нашёл, поэтому это разница именно от тумблера.
+        when(userService.getSettings(userId)).thenReturn(settings(true, false, true));
+        when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.of("user@example.com"));
+
+        notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1));
+
+        verify(userService, never()).findExternalId(userId, IdentityProvider.TELEGRAM);
+        ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
+        verify(scheduledNotificationRepository).save(captor.capture());
+        assertThat(captor.getValue().getChannel()).isEqualTo(IdentityProvider.EMAIL);
+    }
+
+    @Test
+    void scheduleTaskReminder_skipsChannelWithIdentityButToggleOff() {
+        when(userService.getSettings(userId)).thenReturn(settings(true, false, false));
+
+        notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1));
+
+        verify(scheduledNotificationRepository, never()).save(any());
+    }
+
     private UserSettingsDto defaultSettings() {
-        return new UserSettingsDto(true, 60, true, "groq", null, "SILENCE", "SILENCE", "Europe/Moscow", "user");
+        return settings(true, true, true);
+    }
+
+    private UserSettingsDto settings(boolean notificationsEnabled, boolean notifyTelegram, boolean notifyEmail) {
+        return new UserSettingsDto(notificationsEnabled, notifyTelegram, notifyEmail,
+                60, true, "groq", null, "SILENCE", "SILENCE", "Europe/Moscow", "user");
     }
 }

@@ -10,6 +10,7 @@ import ru.taskflow.notify.infrastructure.persistence.ScheduledNotificationJpaEnt
 import ru.taskflow.notify.infrastructure.persistence.ScheduledNotificationRepository;
 import ru.taskflow.user.api.IdentityProvider;
 import ru.taskflow.user.api.UserService;
+import ru.taskflow.user.api.dto.UserSettingsDto;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -46,20 +47,31 @@ public class NotificationServiceImpl implements NotificationService {
             return;
         }
 
-        // Собираем адресатов по каналам до вычисления таймзоны/срока — если
-        // идентичностей нет вообще, не тратим лишний вызов userService на них.
+        UserSettingsDto settings = userService.getSettings(userId);
+        if (!settings.notificationsEnabled()) {
+            log.debug("Notifications disabled by user, skipping notification for task: {}", taskId);
+            return;
+        }
+
+        // Канал участвует, только если включён переключателем И у пользователя
+        // есть привязанная идентичность этого канала — выключенный переключатель
+        // не должен даже смотреть на идентичность, а привязка без переключателя
+        // не должна слать. Собираем адресатов до вычисления таймзоны/срока —
+        // если участвующих каналов нет вообще, не тратим лишний вызов на них.
         Map<IdentityProvider, String> destinations = new EnumMap<>(IdentityProvider.class);
         for (IdentityProvider channel : IdentityProvider.values()) {
+            if (!channelEnabled(settings, channel)) {
+                continue;
+            }
             userService.findExternalId(userId, channel).ifPresent(id -> destinations.put(channel, id));
         }
         if (destinations.isEmpty()) {
-            log.warn("No notification identity (telegram or email) for user: {}", userId);
+            log.warn("No eligible notification channel (toggle + identity) for user: {}", userId);
             return;
         }
 
         ZoneId timezone = userService.getTimezone(userId);
-        int offsetMinutes = userService.getSettings(userId).defaultReminderMinutes();
-        OffsetDateTime computedFireAt = deadline.minusMinutes(offsetMinutes);
+        OffsetDateTime computedFireAt = deadline.minusMinutes(settings.defaultReminderMinutes());
         OffsetDateTime fireAt = computedFireAt.isBefore(now) ? now.plusSeconds(5) : computedFireAt;
         String payload = buildPayload(title, deadline, timezone);
 
@@ -68,6 +80,13 @@ public class NotificationServiceImpl implements NotificationService {
         // не ушло) не мешает доставке по другому.
         destinations.forEach((channel, destination) ->
                 scheduleForChannel(userId, taskId, channel, destination, fireAt, payload));
+    }
+
+    private boolean channelEnabled(UserSettingsDto settings, IdentityProvider channel) {
+        return switch (channel) {
+            case TELEGRAM -> settings.notifyTelegram();
+            case EMAIL -> settings.notifyEmail();
+        };
     }
 
     private void scheduleForChannel(UUID userId, UUID taskId, IdentityProvider channel, String destination,

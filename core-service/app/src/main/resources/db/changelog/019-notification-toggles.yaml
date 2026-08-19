@@ -1,0 +1,20 @@
+databaseChangeLog:
+  - changeSet:
+      id: 019-notification-toggles
+      author: taskflow
+      changes:
+        - addColumn:
+            tableName: user_settings
+            columns:
+              - column:
+                  name: notify_telegram
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+              - column:
+                  name: notify_email
+                  type: BOOLEAN
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
