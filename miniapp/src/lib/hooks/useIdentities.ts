@@ -34,6 +34,20 @@ export interface IdentityBindResponse {
   mergedFrom: AccountTransferResult | null;
 }
 
+export interface MergeConflictResponse {
+  tasks: number;
+  groups: number;
+  tags: number;
+  mergeToken: string;
+}
+
+// Владение идентификатором подтверждено кодом/подписью Telegram — это ещё
+// не согласие на слияние учёток. Бэкенд поэтому не переносит данные сразу,
+// а отвечает 409 с составом чужой учётки и токеном на 10 минут для /merge.
+export const isMergeConflict = (err: unknown): err is { response: { status: 409; data: MergeConflictResponse } } => {
+  return axios.isAxiosError(err) && err.response?.status === 409;
+};
+
 export const useIdentities = () => {
   return useQuery({
     queryKey: ['identities'],
@@ -73,6 +87,21 @@ export const useBindTelegram = () => {
   return useMutation({
     mutationFn: async (fields: Record<string, string>) => {
       const response = await getClient().post<IdentityBindResponse>('/identities/telegram', { fields });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['identities'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['groups'] });
+    },
+  });
+};
+
+export const useMergeAccounts = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (mergeToken: string) => {
+      const response = await getClient().post<IdentityBindResponse>('/identities/merge', { token: mergeToken });
       return response.data;
     },
     onSuccess: () => {

@@ -20,16 +20,25 @@ import {
 import { cn } from '@/lib/utils';
 import { EmailCodeStep } from '@/app/components/EmailCodeStep';
 import { TelegramLoginWidget } from '@/app/components/TelegramLoginWidget';
+import { MergeConflictDialog } from '@/app/components/MergeConflictDialog';
 import { isTelegramWebApp } from '@/lib/auth';
 import {
   useIdentities,
   useRequestBindEmailCode,
   useConfirmBindEmail,
   useBindTelegram,
+  useMergeAccounts,
   useUnbindIdentity,
+  isMergeConflict,
   type AccountTransferResult,
+  type IdentityBindResponse,
   type IdentityProvider,
+  type MergeConflictResponse,
 } from '@/lib/hooks/useIdentities';
+
+const EMPTY_TRANSFER: AccountTransferResult = {
+  tasks: 0, groups: 0, tags: 0, notifications: 0, auditEvents: 0, proposals: 0, identities: 0,
+};
 
 function mergeToastMessage(result: AccountTransferResult): string {
   const parts: string[] = [];
@@ -38,6 +47,45 @@ function mergeToastMessage(result: AccountTransferResult): string {
   if (result.tags > 0) parts.push(`${result.tags} меток`);
   if (parts.length === 0) return 'Способ входа подключён — данные с ним переносить не пришлось.';
   return `Перенесли с прежней учётки: ${parts.join(', ')}.`;
+}
+
+// Доказательство владения идентификатором и согласие на слияние двух
+// учёток — разные вещи. При 409 от confirm/telegram показываем диалог
+// с числами и ждём явного «Перенести»; «Отмена» не должна молча оставить
+// способ входа непривязанным — сообщаем об этом прямо и даём начать заново.
+function useMergeFlow(onMerged: (result: IdentityBindResponse) => void, onResolved: () => void) {
+  const [conflict, setConflict] = useState<MergeConflictResponse | null>(null);
+  const mergeAccounts = useMergeAccounts();
+
+  const catchConflict = useCallback((err: unknown): boolean => {
+    if (isMergeConflict(err)) {
+      setConflict(err.response.data);
+      return true;
+    }
+    return false;
+  }, []);
+
+  const confirm = () => {
+    if (!conflict) return;
+    mergeAccounts.mutate(conflict.mergeToken, {
+      onSuccess: (result) => {
+        setConflict(null);
+        onMerged(result);
+        onResolved();
+      },
+      onError: () => {
+        toast.error('Не получилось перенести данные, попробуйте ещё раз');
+      },
+    });
+  };
+
+  const cancel = () => {
+    setConflict(null);
+    toast.info('Способ входа не подключён. Можно начать заново.');
+    onResolved();
+  };
+
+  return { conflict, merging: mergeAccounts.isPending, catchConflict, confirm, cancel };
 }
 
 export function IntegrationsPage() {
@@ -110,9 +158,14 @@ function TelegramSection({
 }) {
   const bindTelegram = useBindTelegram();
   const [widgetAvailable, setWidgetAvailable] = useState<boolean | null>(null);
+  const merge = useMergeFlow(
+    (result) => toast.success(mergeToastMessage(result.mergedFrom ?? EMPTY_TRANSFER)),
+    () => {},
+  );
 
   // useCallback с пустыми зависимостями — тот же приём, что на AuthPage:
   // без него виджет пересоздаёт свой script при каждом ре-рендере страницы.
+  // merge.catchConflict тоже стабилен (useCallback([]) внутри useMergeFlow).
   const handleAuth = useCallback((widgetUser: Record<string, string | number>) => {
     const fields: Record<string, string> = {};
     for (const [key, value] of Object.entries(widgetUser)) {
@@ -120,13 +173,14 @@ function TelegramSection({
     }
     bindTelegram.mutate(fields, {
       onSuccess: (result) => {
-        toast.success(mergeToastMessage(result.mergedFrom ?? { tasks: 0, groups: 0, tags: 0, notifications: 0, auditEvents: 0, proposals: 0, identities: 0 }));
+        toast.success(mergeToastMessage(result.mergedFrom ?? EMPTY_TRANSFER));
       },
-      onError: (err: any) => {
-        toast.error(err?.response?.data?.detail || 'Не получилось привязать Telegram');
+      onError: (err) => {
+        if (merge.catchConflict(err)) return;
+        toast.error((err as any)?.response?.data?.detail || 'Не получилось привязать Telegram');
       },
     });
-  }, [bindTelegram]);
+  }, [bindTelegram, merge.catchConflict]);
 
   return (
     <section className="flex flex-col gap-3">
@@ -182,6 +236,13 @@ function TelegramSection({
           Кнопка Telegram сейчас недоступна. Попробуйте зайти на сайт через VPN.
         </p>
       )}
+
+      <MergeConflictDialog
+        conflict={merge.conflict}
+        merging={merge.merging}
+        onConfirm={merge.confirm}
+        onCancel={merge.cancel}
+      />
     </section>
   );
 }
@@ -203,6 +264,10 @@ function EmailSection({
   const [email, setEmail] = useState('');
   const requestCode = useRequestBindEmailCode();
   const confirmEmail = useConfirmBindEmail();
+  const merge = useMergeFlow(
+    (result) => toast.success(mergeToastMessage(result.mergedFrom ?? EMPTY_TRANSFER)),
+    () => setStep('idle'),
+  );
 
   const handleSubmitEmail = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -215,10 +280,18 @@ function EmailSection({
     }
   };
 
+  // Возвращается без ошибки и при конфликте тоже: код верный, EmailCodeStep
+  // не должен считать это неверным кодом и списывать попытку. Решение —
+  // перенести или нет — принимается отдельно, в диалоге MergeConflictDialog.
   const verifyAndBind = async (bindEmail: string, code: string) => {
-    const result = await confirmEmail.mutateAsync({ email: bindEmail, code });
-    toast.success(mergeToastMessage(result.mergedFrom ?? { tasks: 0, groups: 0, tags: 0, notifications: 0, auditEvents: 0, proposals: 0, identities: 0 }));
-    return result;
+    try {
+      const result = await confirmEmail.mutateAsync({ email: bindEmail, code });
+      toast.success(mergeToastMessage(result.mergedFrom ?? EMPTY_TRANSFER));
+      return result;
+    } catch (err) {
+      if (merge.catchConflict(err)) return undefined;
+      throw err;
+    }
   };
 
   return (
@@ -295,6 +368,13 @@ function EmailSection({
           verifyCode={verifyAndBind}
         />
       )}
+
+      <MergeConflictDialog
+        conflict={merge.conflict}
+        merging={merge.merging}
+        onConfirm={merge.confirm}
+        onCancel={merge.cancel}
+      />
     </section>
   );
 }

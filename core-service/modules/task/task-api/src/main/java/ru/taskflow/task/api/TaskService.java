@@ -55,4 +55,11 @@ public interface TaskService {
      * просто ничего не находит и возвращает нули.
      */
     TaskTransferResult transferOwnership(UUID from, UUID to);
+
+    /**
+     * Сколько задач, групп и меток сейчас у учётки — предпросмотр для
+     * диалога согласия на слияние, без единой записи. Мягко удалённые задачи
+     * не считаются: это число показывается человеку, а не техническое.
+     */
+    TaskTransferResult countOwnership(UUID userId);
 }

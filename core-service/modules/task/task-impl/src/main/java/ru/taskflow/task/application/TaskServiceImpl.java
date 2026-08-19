@@ -393,6 +393,15 @@ public class TaskServiceImpl implements TaskService {
         return new TaskTransferResult(tasks, groups, tags);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public TaskTransferResult countOwnership(UUID userId) {
+        long tasks = taskRepository.countByUserId(userId);
+        long groups = groupRepository.countByUserId(userId);
+        long tags = tagRepository.countByUserId(userId);
+        return new TaskTransferResult((int) tasks, (int) groups, (int) tags);
+    }
+
     /**
      * Создаёт задачу в статусе активной (не draft) с быстрым способом.
      *

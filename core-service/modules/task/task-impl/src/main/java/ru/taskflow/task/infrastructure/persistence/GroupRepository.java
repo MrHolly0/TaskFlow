@@ -20,4 +20,6 @@ public interface GroupRepository extends JpaRepository<GroupJpaEntity, UUID> {
     @Modifying
     @Query("UPDATE GroupJpaEntity g SET g.userId = :to WHERE g.userId = :from")
     int reassignOwner(@Param("from") UUID from, @Param("to") UUID to);
+
+    long countByUserId(UUID userId);
 }

@@ -90,6 +90,11 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
     @Query("UPDATE TaskJpaEntity t SET t.userId = :to WHERE t.userId = :from")
     int reassignOwner(@Param("from") UUID from, @Param("to") UUID to);
 
+    // Обычный derived-запрос, не bulk — @SQLRestriction применяется, мягко
+    // удалённые не считаются. Это предпросмотр для диалога согласия на
+    // слияние, ему нужно видимое пользователю число, а не техническое.
+    long countByUserId(UUID userId);
+
     @Query("""
             SELECT t FROM TaskJpaEntity t
             LEFT JOIN FETCH t.group

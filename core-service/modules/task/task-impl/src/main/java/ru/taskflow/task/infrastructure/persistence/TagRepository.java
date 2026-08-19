@@ -18,4 +18,6 @@ public interface TagRepository extends JpaRepository<TagJpaEntity, UUID> {
     @Modifying
     @Query("UPDATE TagJpaEntity t SET t.userId = :to WHERE t.userId = :from")
     int reassignOwner(@Param("from") UUID from, @Param("to") UUID to);
+
+    long countByUserId(UUID userId);
 }
