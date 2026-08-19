@@ -164,14 +164,13 @@ export function IntegrationsPage() {
       <IntegrationsHeader />
 
       <Card className="p-6 flex flex-col gap-6">
-        {!email && (
-          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
-            <p className="text-sm font-medium">Привяжи почту</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Сейчас у тебя только Telegram. Почта — резервный способ входа, если Telegram станет недоступен.
-            </p>
-          </div>
-        )}
+        {/* Не предупреждение (для этого есть диалог согласия в момент
+            привязки) — единственное место, где человек может узнать про
+            слияние учёток заранее, до того как оно случится. */}
+        <p className="text-xs text-muted-foreground">
+          Один аккаунт — несколько способов входа. Если на почте или в Telegram уже была отдельная
+          учётка с задачами, при подключении мы предложим перенести их сюда, в одну.
+        </p>
 
         <TelegramSection
           connected={Boolean(telegram)}
