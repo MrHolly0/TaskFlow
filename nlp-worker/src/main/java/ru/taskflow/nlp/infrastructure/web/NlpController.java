@@ -11,9 +11,9 @@ import org.springframework.web.multipart.MultipartFile;
 import ru.taskflow.nlp.application.NlpService;
 import ru.taskflow.nlp.application.TranscriptionService;
 import ru.taskflow.nlp.domain.ParsedTasks;
+import ru.taskflow.nlp.domain.ToolCallProvider;
 import ru.taskflow.nlp.domain.ToolCallRequest;
 import ru.taskflow.nlp.domain.ToolCallResult;
-import ru.taskflow.nlp.infrastructure.groq.GroqToolCallProvider;
 import ru.taskflow.nlp.infrastructure.web.dto.ParseTextRequest;
 import ru.taskflow.nlp.infrastructure.web.dto.ParseTextResponse;
 import ru.taskflow.nlp.infrastructure.web.dto.TranscribeResponse;
@@ -27,7 +27,7 @@ import java.util.List;
 public class NlpController {
 
     private final NlpService nlpService;
-    private final GroqToolCallProvider toolCallProvider;
+    private final ToolCallProvider toolCallProvider;
     private final TranscriptionService transcriptionService;
 
     @PostMapping("/parse-text")

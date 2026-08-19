@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import ru.taskflow.nlp.domain.RawToolCall;
 import ru.taskflow.nlp.domain.ToolCallMessage;
+import ru.taskflow.nlp.domain.ToolCallProvider;
 import ru.taskflow.nlp.domain.ToolCallRequest;
 import ru.taskflow.nlp.domain.ToolCallResult;
 
@@ -19,32 +20,35 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Вызов модели с инструментами (function calling). В отличие от
- * {@link GroqLlmProvider} ничего не интерпретирует — отдаёт вызовы
- * инструментов как есть, разбор и валидация остаются на стороне ядра.
+ * Вызов модели с инструментами (function calling) по OpenAI-совместимому
+ * диалекту API. Ничего не интерпретирует — отдаёт вызовы инструментов как
+ * есть, разбор и валидация остаются на стороне ядра. От конкретного
+ * поставщика (Groq, ProxyAPI, ...) зависит только адрес и имя модели —
+ * оба приходят из конфигурации.
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
-public class GroqToolCallProvider {
+public class OpenAiCompatibleToolCallProvider implements ToolCallProvider {
 
     private final GroqConfig config;
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
 
+    @Override
     public ToolCallResult call(ToolCallRequest req) {
         try {
-            return callGroqApi(req);
+            return callApi(req);
         } catch (Exception e) {
-            log.error("Failed to call Groq tool API", e);
+            log.error("Failed to call tool-calling API", e);
             return ToolCallResult.empty();
         }
     }
 
-    private ToolCallResult callGroqApi(ToolCallRequest req) throws JsonProcessingException {
+    private ToolCallResult callApi(ToolCallRequest req) throws JsonProcessingException {
         var request = new HashMap<String, Object>();
         request.put("model", config.getLlmModel());
-        request.put("messages", req.messages().stream().map(this::toGroqMessage).toList());
+        request.put("messages", req.messages().stream().map(this::toApiMessage).toList());
         request.put("tools", req.tools());
         request.put("tool_choice", "auto");
         request.put("temperature", 0.1);
@@ -97,29 +101,29 @@ public class GroqToolCallProvider {
         return new ToolCallResult(toolCalls, text, inputTokens, outputTokens);
     }
 
-    private Map<String, Object> toGroqMessage(ToolCallMessage message) {
-        Map<String, Object> groqMessage = new LinkedHashMap<>();
-        groqMessage.put("role", message.role());
+    private Map<String, Object> toApiMessage(ToolCallMessage message) {
+        Map<String, Object> apiMessage = new LinkedHashMap<>();
+        apiMessage.put("role", message.role());
 
         if (message.isAssistantToolCalls()) {
-            groqMessage.put("content", null);
-            groqMessage.put("tool_calls", message.decodeToolCalls().stream()
-                    .map(this::toGroqToolCall)
+            apiMessage.put("content", null);
+            apiMessage.put("tool_calls", message.decodeToolCalls().stream()
+                    .map(this::toApiToolCall)
                     .toList());
-            return groqMessage;
+            return apiMessage;
         }
 
-        groqMessage.put("content", message.content());
+        apiMessage.put("content", message.content());
         if (message.toolCallId() != null) {
-            groqMessage.put("tool_call_id", message.toolCallId());
+            apiMessage.put("tool_call_id", message.toolCallId());
         }
         if (message.name() != null) {
-            groqMessage.put("name", message.name());
+            apiMessage.put("name", message.name());
         }
-        return groqMessage;
+        return apiMessage;
     }
 
-    private Map<String, Object> toGroqToolCall(RawToolCall call) {
+    private Map<String, Object> toApiToolCall(RawToolCall call) {
         Map<String, Object> function = new LinkedHashMap<>();
         function.put("name", call.name());
         function.put("arguments", call.argumentsJson());
