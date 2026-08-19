@@ -9,6 +9,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import ru.taskflow.app.application.AccountTransferService;
+import ru.taskflow.notify.api.NotificationChannel;
 import ru.taskflow.notify.api.NotificationService;
 import ru.taskflow.notify.infrastructure.persistence.ScheduledNotificationRepository;
 import ru.taskflow.task.api.TaskPriority;
@@ -102,7 +103,7 @@ class AccountTransferIntegrationTest {
                 .toList();
         assertThat(movedNotifications).hasSize(expectedNotifications);
         assertThat(movedNotifications).allSatisfy(n -> {
-            assertThat(n.getChannel()).isEqualTo(IdentityProvider.TELEGRAM);
+            assertThat(n.getChannel()).isEqualTo(NotificationChannel.TELEGRAM);
             assertThat(n.getDestination()).isEqualTo(targetChatId);
         });
 

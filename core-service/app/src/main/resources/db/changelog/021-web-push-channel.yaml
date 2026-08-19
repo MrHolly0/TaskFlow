@@ -1,0 +1,9 @@
+databaseChangeLog:
+  - changeSet:
+      id: 021-web-push-channel-constraint
+      author: taskflow
+      changes:
+        - sql:
+            sql: "ALTER TABLE scheduled_notifications DROP CONSTRAINT chk_notification_channel;"
+        - sql:
+            sql: "ALTER TABLE scheduled_notifications ADD CONSTRAINT chk_notification_channel CHECK (channel IN ('TELEGRAM','EMAIL','WEB_PUSH'));"

@@ -39,3 +39,5 @@ databaseChangeLog:
       file: db/changelog/019-notification-toggles.yaml
   - include:
       file: db/changelog/020-push-subscriptions.yaml
+  - include:
+      file: db/changelog/021-web-push-channel.yaml

@@ -30,6 +30,10 @@ app:
   telegram:
     bot-token: ${TELEGRAM_BOT_TOKEN:}
     api-base-url: https://api.telegram.org
+  push:
+    vapid-public-key: ${VAPID_PUBLIC_KEY:}
+    vapid-private-key: ${VAPID_PRIVATE_KEY:}
+    vapid-subject: ${VAPID_SUBJECT:}
   notification:
     # Интервал опроса задаёт точность напоминаний: при часовом опросе
     # напоминание «за час до срока» приходило когда угодно между «за час»

@@ -5,7 +5,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.taskflow.notify.api.NotificationChannel;
 import ru.taskflow.notify.api.NotificationService;
+import ru.taskflow.notify.infrastructure.persistence.PushSubscriptionRepository;
 import ru.taskflow.notify.infrastructure.persistence.ScheduledNotificationJpaEntity;
 import ru.taskflow.notify.infrastructure.persistence.ScheduledNotificationRepository;
 import ru.taskflow.user.api.IdentityProvider;
@@ -16,6 +18,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -31,6 +34,7 @@ import java.util.UUID;
 public class NotificationServiceImpl implements NotificationService {
 
     private final ScheduledNotificationRepository scheduledNotificationRepository;
+    private final PushSubscriptionRepository pushSubscriptionRepository;
     private final UserService userService;
     private final ObjectMapper objectMapper;
 
@@ -58,12 +62,24 @@ public class NotificationServiceImpl implements NotificationService {
         // не должен даже смотреть на идентичность, а привязка без переключателя
         // не должна слать. Собираем адресатов до вычисления таймзоны/срока —
         // если участвующих каналов нет вообще, не тратим лишний вызов на них.
-        Map<IdentityProvider, String> destinations = new EnumMap<>(IdentityProvider.class);
-        for (IdentityProvider channel : IdentityProvider.values()) {
-            if (!channelEnabled(settings, channel)) {
+        //
+        // WEB_PUSH — не идентичность, а произвольное число подписок на
+        // устройства: один пользователь может получить напоминание сразу на
+        // рабочий компьютер и телефон, поэтому у канала может быть несколько
+        // адресатов, а не один.
+        Map<NotificationChannel, List<String>> destinations = new EnumMap<>(NotificationChannel.class);
+        for (IdentityProvider provider : IdentityProvider.values()) {
+            if (!channelEnabled(settings, provider)) {
                 continue;
             }
-            userService.findExternalId(userId, channel).ifPresent(id -> destinations.put(channel, id));
+            userService.findExternalId(userId, provider)
+                    .ifPresent(id -> destinations.put(NotificationChannel.valueOf(provider.name()), List.of(id)));
+        }
+        List<String> pushSubscriptionIds = pushSubscriptionRepository.findByUserId(userId).stream()
+                .map(subscription -> subscription.getId().toString())
+                .toList();
+        if (!pushSubscriptionIds.isEmpty()) {
+            destinations.put(NotificationChannel.WEB_PUSH, pushSubscriptionIds);
         }
         if (destinations.isEmpty()) {
             log.warn("No eligible notification channel (toggle + identity) for user: {}", userId);
@@ -75,11 +91,12 @@ public class NotificationServiceImpl implements NotificationService {
         OffsetDateTime fireAt = computedFireAt.isBefore(now) ? now.plusSeconds(5) : computedFireAt;
         String payload = buildPayload(title, deadline, timezone);
 
-        // Строка на канал, а не веер внутри одной строки: sent и retry_count
-        // живут в строке, и только так отказ одного канала (например письмо
-        // не ушло) не мешает доставке по другому.
-        destinations.forEach((channel, destination) ->
-                scheduleForChannel(userId, taskId, channel, destination, fireAt, payload));
+        // Строка на адресата, а не веер внутри одной строки: sent и retry_count
+        // живут в строке, и только так отказ одного канала или одной подписки
+        // (например письмо не ушло, или одно устройство отписалось) не мешает
+        // доставке по остальным.
+        destinations.forEach((channel, ids) ->
+                ids.forEach(destination -> scheduleForChannel(userId, taskId, channel, destination, fireAt, payload)));
     }
 
     private boolean channelEnabled(UserSettingsDto settings, IdentityProvider channel) {
@@ -89,7 +106,7 @@ public class NotificationServiceImpl implements NotificationService {
         };
     }
 
-    private void scheduleForChannel(UUID userId, UUID taskId, IdentityProvider channel, String destination,
+    private void scheduleForChannel(UUID userId, UUID taskId, NotificationChannel channel, String destination,
                                      OffsetDateTime fireAt, String payload) {
         var notification = new ScheduledNotificationJpaEntity();
         notification.setUserId(userId);

@@ -25,14 +25,18 @@ public interface ScheduledNotificationRepository extends JpaRepository<Scheduled
     // Если её нет — destination остаётся прежним: доставится по старому
     // адресату, пока пользователь не привяжет канал на новой учётке, что
     // честнее, чем NOT NULL-столбец с выдуманным значением.
+    //
+    // WEB_PUSH сюда не попадает намеренно: подписка привязана к браузеру, а не
+    // к идентичности, и слияние учёток её не переносит — destination (id
+    // подписки) остаётся прежним по тому же ELSE.
     @Modifying
     @Query("""
             UPDATE ScheduledNotificationJpaEntity s
             SET s.userId = :to,
                 s.destination = CASE
-                    WHEN s.channel = ru.taskflow.user.api.IdentityProvider.TELEGRAM AND :telegramDestination IS NOT NULL
+                    WHEN s.channel = ru.taskflow.notify.api.NotificationChannel.TELEGRAM AND :telegramDestination IS NOT NULL
                         THEN :telegramDestination
-                    WHEN s.channel = ru.taskflow.user.api.IdentityProvider.EMAIL AND :emailDestination IS NOT NULL
+                    WHEN s.channel = ru.taskflow.notify.api.NotificationChannel.EMAIL AND :emailDestination IS NOT NULL
                         THEN :emailDestination
                     ELSE s.destination
                 END

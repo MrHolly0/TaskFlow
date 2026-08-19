@@ -7,6 +7,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import ru.taskflow.notify.api.NotificationChannel;
+import ru.taskflow.notify.infrastructure.persistence.PushSubscriptionJpaEntity;
+import ru.taskflow.notify.infrastructure.persistence.PushSubscriptionRepository;
 import ru.taskflow.notify.infrastructure.persistence.ScheduledNotificationJpaEntity;
 import ru.taskflow.notify.infrastructure.persistence.ScheduledNotificationRepository;
 import ru.taskflow.user.api.IdentityProvider;
@@ -34,6 +37,8 @@ class NotificationServiceImplTest {
     @Mock
     private ScheduledNotificationRepository scheduledNotificationRepository;
     @Mock
+    private PushSubscriptionRepository pushSubscriptionRepository;
+    @Mock
     private UserService userService;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -45,9 +50,10 @@ class NotificationServiceImplTest {
     @BeforeEach
     void setUp() {
         notificationService = new NotificationServiceImpl(
-                scheduledNotificationRepository, userService, objectMapper);
+                scheduledNotificationRepository, pushSubscriptionRepository, userService, objectMapper);
         lenient().when(userService.getSettings(userId)).thenReturn(defaultSettings());
         lenient().when(userService.getTimezone(userId)).thenReturn(ZoneId.of("Europe/Moscow"));
+        lenient().when(pushSubscriptionRepository.findByUserId(any())).thenReturn(List.of());
     }
 
     @Test
@@ -63,10 +69,10 @@ class NotificationServiceImplTest {
 
         List<ScheduledNotificationJpaEntity> saved = captor.getAllValues();
         assertThat(saved).extracting(ScheduledNotificationJpaEntity::getChannel)
-                .containsExactlyInAnyOrder(IdentityProvider.TELEGRAM, IdentityProvider.EMAIL);
-        assertThat(saved).filteredOn(n -> n.getChannel() == IdentityProvider.TELEGRAM)
+                .containsExactlyInAnyOrder(NotificationChannel.TELEGRAM, NotificationChannel.EMAIL);
+        assertThat(saved).filteredOn(n -> n.getChannel() == NotificationChannel.TELEGRAM)
                 .extracting(ScheduledNotificationJpaEntity::getDestination).containsExactly("12345");
-        assertThat(saved).filteredOn(n -> n.getChannel() == IdentityProvider.EMAIL)
+        assertThat(saved).filteredOn(n -> n.getChannel() == NotificationChannel.EMAIL)
                 .extracting(ScheduledNotificationJpaEntity::getDestination).containsExactly("user@example.com");
     }
 
@@ -79,7 +85,7 @@ class NotificationServiceImplTest {
 
         ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
         verify(scheduledNotificationRepository).save(captor.capture());
-        assertThat(captor.getValue().getChannel()).isEqualTo(IdentityProvider.TELEGRAM);
+        assertThat(captor.getValue().getChannel()).isEqualTo(NotificationChannel.TELEGRAM);
     }
 
     @Test
@@ -174,7 +180,7 @@ class NotificationServiceImplTest {
         verify(userService, never()).findExternalId(userId, IdentityProvider.TELEGRAM);
         ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
         verify(scheduledNotificationRepository).save(captor.capture());
-        assertThat(captor.getValue().getChannel()).isEqualTo(IdentityProvider.EMAIL);
+        assertThat(captor.getValue().getChannel()).isEqualTo(NotificationChannel.EMAIL);
     }
 
     @Test
@@ -184,6 +190,45 @@ class NotificationServiceImplTest {
         notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1));
 
         verify(scheduledNotificationRepository, never()).save(any());
+    }
+
+    @Test
+    void scheduleTaskReminder_createsOneRowPerPushSubscription() {
+        // Один пользователь — рабочий компьютер и телефон: обе подписки должны
+        // получить своё напоминание, отказ одной не мешает другой.
+        UUID subscriptionA = UUID.randomUUID();
+        UUID subscriptionB = UUID.randomUUID();
+        when(userService.findExternalId(any(), any())).thenReturn(Optional.empty());
+        when(pushSubscriptionRepository.findByUserId(userId)).thenReturn(List.of(
+                subscription(subscriptionA), subscription(subscriptionB)));
+
+        notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1));
+
+        ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
+        verify(scheduledNotificationRepository, times(2)).save(captor.capture());
+        assertThat(captor.getAllValues()).extracting(ScheduledNotificationJpaEntity::getChannel)
+                .containsExactly(NotificationChannel.WEB_PUSH, NotificationChannel.WEB_PUSH);
+        assertThat(captor.getAllValues()).extracting(ScheduledNotificationJpaEntity::getDestination)
+                .containsExactlyInAnyOrder(subscriptionA.toString(), subscriptionB.toString());
+    }
+
+    @Test
+    void scheduleTaskReminder_noPushSubscriptions_noWebPushRow() {
+        when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.of("12345"));
+        when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.empty());
+        when(pushSubscriptionRepository.findByUserId(userId)).thenReturn(List.of());
+
+        notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1));
+
+        ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
+        verify(scheduledNotificationRepository).save(captor.capture());
+        assertThat(captor.getValue().getChannel()).isEqualTo(NotificationChannel.TELEGRAM);
+    }
+
+    private PushSubscriptionJpaEntity subscription(UUID id) {
+        var entity = new PushSubscriptionJpaEntity();
+        entity.setId(id);
+        return entity;
     }
 
     private UserSettingsDto defaultSettings() {
