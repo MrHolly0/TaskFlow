@@ -11,13 +11,16 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import ru.taskflow.shared.security.JwtService;
 import ru.taskflow.user.api.UserDto;
 import ru.taskflow.user.api.UserService;
+import ru.taskflow.user.application.AuthRateLimiter;
 import ru.taskflow.user.application.RefreshTokenService;
 
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -43,13 +46,26 @@ class QaAuthControllerTest {
     private UserService userService;
     @Mock
     private RefreshTokenService refreshTokenService;
+    @Mock
+    private AuthRateLimiter rateLimiter;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        var controller = new QaAuthController(jwtService, userService, refreshTokenService, SECRET);
+        lenient().when(rateLimiter.allow(any())).thenReturn(true);
+        var controller = new QaAuthController(jwtService, userService, refreshTokenService, rateLimiter, SECRET);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+    }
+
+    @Test
+    void qaLogin_ipOverLimit_returns429WithoutCheckingSecret() throws Exception {
+        when(rateLimiter.allow(any())).thenReturn(false);
+
+        mockMvc.perform(post("/api/v1/auth/qa-login").header("X-Qa-Secret", SECRET))
+                .andExpect(status().isTooManyRequests());
+
+        verify(userService, never()).findOrCreateByTelegram(anyLong(), anyString(), anyString(), anyString());
     }
 
     @Test
@@ -70,7 +86,7 @@ class QaAuthControllerTest {
 
     @Test
     void qaLogin_returnsNotFoundWhenSecretNotConfigured() throws Exception {
-        var controllerWithoutSecret = new QaAuthController(jwtService, userService, refreshTokenService, "");
+        var controllerWithoutSecret = new QaAuthController(jwtService, userService, refreshTokenService, rateLimiter, "");
         var mvc = MockMvcBuilders.standaloneSetup(controllerWithoutSecret).build();
 
         mvc.perform(post("/api/v1/auth/qa-login").header("X-Qa-Secret", ""))

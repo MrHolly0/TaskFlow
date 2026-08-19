@@ -1,11 +1,13 @@
 package ru.taskflow.user.infrastructure.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import ru.taskflow.shared.exception.RateLimitExceededException;
@@ -16,6 +18,7 @@ import ru.taskflow.user.api.IdentityProvider;
 import ru.taskflow.user.api.UserDto;
 import ru.taskflow.user.api.UserProfile;
 import ru.taskflow.user.api.UserService;
+import ru.taskflow.user.application.AuthRateLimiter;
 import ru.taskflow.user.application.EmailSender;
 import ru.taskflow.user.application.LoginCodeService;
 import ru.taskflow.user.application.RefreshTokenService;
@@ -29,6 +32,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -57,6 +61,8 @@ class AuthControllerTest {
     private LoginCodeService loginCodeService;
     @Mock
     private EmailSender emailSender;
+    @Mock
+    private AuthRateLimiter rateLimiter;
 
     private AuthController controller;
     private MockMvc mockMvc;
@@ -64,9 +70,35 @@ class AuthControllerTest {
 
     @BeforeEach
     void setUp() {
+        lenient().when(rateLimiter.allow(any())).thenReturn(true);
+        lenient().when(rateLimiter.allowForEmailConfirm(any(), any())).thenReturn(true);
         controller = new AuthController(initDataValidator, loginWidgetValidator, jwtService,
-                userService, refreshTokenService, loginCodeService, emailSender);
+                userService, refreshTokenService, loginCodeService, emailSender, rateLimiter);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+    }
+
+    @Test
+    void requestCode_ipOverGeneralLimit_returns429WithoutCallingService() throws Exception {
+        when(rateLimiter.allow(any())).thenReturn(false);
+
+        mockMvc.perform(post("/api/v1/auth/email/request-code")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new RequestCodeRequest(EMAIL))))
+                .andExpect(status().isTooManyRequests());
+
+        verifyNoInteractions(loginCodeService, emailSender);
+    }
+
+    @Test
+    void verifyCode_ipEmailPairOverLimit_returns429WithoutCallingService() throws Exception {
+        when(rateLimiter.allowForEmailConfirm(any(), eq(EMAIL))).thenReturn(false);
+
+        mockMvc.perform(post("/api/v1/auth/email/verify")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new VerifyCodeRequest(EMAIL, CODE))))
+                .andExpect(status().isTooManyRequests());
+
+        verifyNoInteractions(loginCodeService, userService);
     }
 
     @Test
@@ -110,8 +142,9 @@ class AuthControllerTest {
     @Test
     void requestCode_rateLimited_propagatesExceptionRatherThanSucceeding() {
         when(loginCodeService.issueCode(EMAIL)).thenThrow(new RateLimitExceededException("too fast"));
+        HttpServletRequest httpRequest = new MockHttpServletRequest();
 
-        assertThatThrownBy(() -> controller.requestCode(new RequestCodeRequest(EMAIL)))
+        assertThatThrownBy(() -> controller.requestCode(new RequestCodeRequest(EMAIL), httpRequest))
                 .isInstanceOf(RateLimitExceededException.class);
 
         verifyNoInteractions(emailSender);

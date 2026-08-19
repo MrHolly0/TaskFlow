@@ -2,6 +2,7 @@ package ru.taskflow.user.infrastructure.web;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
@@ -10,8 +11,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 import ru.taskflow.shared.security.JwtService;
 import ru.taskflow.user.api.UserService;
+import ru.taskflow.user.application.AuthRateLimiter;
 import ru.taskflow.user.application.RefreshTokenService;
 import ru.taskflow.user.infrastructure.web.dto.AuthResponse;
 
@@ -31,11 +34,15 @@ public class DevAuthController {
     private final JwtService jwtService;
     private final UserService userService;
     private final RefreshTokenService refreshTokenService;
+    private final AuthRateLimiter rateLimiter;
 
     @PostMapping("/dev-token")
     @ResponseStatus(HttpStatus.OK)
     @Operation(summary = "Выдать тестовый токен", description = "Только для локальной разработки")
-    public AuthResponse devToken(@RequestBody Map<String, String> body) {
+    public AuthResponse devToken(@RequestBody Map<String, String> body, HttpServletRequest httpRequest) {
+        if (!rateLimiter.allow(httpRequest)) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "слишком много попыток входа, попробуйте позже");
+        }
         String username = body.getOrDefault("username", "dev_user");
         long fakeTelegramId = -1_000_000_000L - Math.abs((long) username.hashCode() % 1_000_000_000L);
         var dto = userService.findOrCreateByTelegram(fakeTelegramId, username, "Dev", "User");

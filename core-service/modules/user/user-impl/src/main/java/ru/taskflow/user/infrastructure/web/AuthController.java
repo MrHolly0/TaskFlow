@@ -2,6 +2,7 @@ package ru.taskflow.user.infrastructure.web;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -13,6 +14,7 @@ import ru.taskflow.shared.security.TelegramLoginWidgetValidator;
 import ru.taskflow.user.api.IdentityProvider;
 import ru.taskflow.user.api.UserProfile;
 import ru.taskflow.user.api.UserService;
+import ru.taskflow.user.application.AuthRateLimiter;
 import ru.taskflow.user.application.EmailSender;
 import ru.taskflow.user.application.LoginCodeService;
 import ru.taskflow.user.application.RefreshTokenService;
@@ -39,11 +41,13 @@ public class AuthController {
     private final RefreshTokenService refreshTokenService;
     private final LoginCodeService loginCodeService;
     private final EmailSender emailSender;
+    private final AuthRateLimiter rateLimiter;
 
     @PostMapping("/telegram-miniapp")
     @ResponseStatus(HttpStatus.OK)
     @Operation(summary = "Авторизация Mini App", description = "Проверяет подпись initData и выдаёт JWT токены")
-    public AuthResponse miniAppAuth(@Valid @RequestBody TelegramMiniAppAuthRequest request) {
+    public AuthResponse miniAppAuth(@Valid @RequestBody TelegramMiniAppAuthRequest request, HttpServletRequest httpRequest) {
+        requireWithinRateLimit(httpRequest);
         if (!initDataValidator.validate(request.initData())) {
             throw new org.springframework.web.server.ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid initData");
         }
@@ -56,7 +60,8 @@ public class AuthController {
     @PostMapping("/telegram-login")
     @ResponseStatus(HttpStatus.OK)
     @Operation(summary = "Авторизация через Telegram Login Widget", description = "Проверяет данные Login Widget и выдаёт JWT токены")
-    public AuthResponse loginWidgetAuth(@Valid @RequestBody TelegramLoginWidgetAuthRequest request) {
+    public AuthResponse loginWidgetAuth(@Valid @RequestBody TelegramLoginWidgetAuthRequest request, HttpServletRequest httpRequest) {
+        requireWithinRateLimit(httpRequest);
         if (!loginWidgetValidator.validate(request.fields())) {
             throw new org.springframework.web.server.ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid login widget data");
         }
@@ -70,7 +75,8 @@ public class AuthController {
     @PostMapping("/refresh")
     @ResponseStatus(HttpStatus.OK)
     @Operation(summary = "Обновить токен", description = "Выдаёт новые access и refresh токены")
-    public AuthResponse refresh(@Valid @RequestBody RefreshRequest request) {
+    public AuthResponse refresh(@Valid @RequestBody RefreshRequest request, HttpServletRequest httpRequest) {
+        requireWithinRateLimit(httpRequest);
         UUID userId = refreshTokenService.resolve(request.refreshToken())
                 .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
                         HttpStatus.UNAUTHORIZED, "Invalid or expired refresh token"));
@@ -83,7 +89,8 @@ public class AuthController {
     @ResponseStatus(HttpStatus.OK)
     @Operation(summary = "Запросить код входа на почту",
             description = "Отвечает одинаково независимо от того, известен адрес или дошло ли письмо")
-    public void requestCode(@Valid @RequestBody RequestCodeRequest request) {
+    public void requestCode(@Valid @RequestBody RequestCodeRequest request, HttpServletRequest httpRequest) {
+        requireWithinRateLimit(httpRequest);
         String code = loginCodeService.issueCode(request.email());
         try {
             emailSender.sendLoginCode(request.email(), code);
@@ -96,7 +103,12 @@ public class AuthController {
     @PostMapping("/email/verify")
     @ResponseStatus(HttpStatus.OK)
     @Operation(summary = "Подтвердить код и войти", description = "Создаёт учётку по идентичности EMAIL, если её ещё нет")
-    public AuthResponse verifyCode(@Valid @RequestBody VerifyCodeRequest request) {
+    public AuthResponse verifyCode(@Valid @RequestBody VerifyCodeRequest request, HttpServletRequest httpRequest) {
+        requireWithinRateLimit(httpRequest);
+        if (!rateLimiter.allowForEmailConfirm(httpRequest, request.email())) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.TOO_MANY_REQUESTS, "слишком много попыток, попробуйте позже");
+        }
         if (!loginCodeService.verifyCode(request.email(), request.code())) {
             throw new org.springframework.web.server.ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid code");
         }
@@ -105,6 +117,13 @@ public class AuthController {
         var dto = userService.findOrCreateByIdentity(
                 IdentityProvider.EMAIL, normalizedEmail, new UserProfile(localPart, null, null, null));
         return issueTokens(dto.id(), dto.username());
+    }
+
+    private void requireWithinRateLimit(HttpServletRequest httpRequest) {
+        if (!rateLimiter.allow(httpRequest)) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.TOO_MANY_REQUESTS, "слишком много попыток входа, попробуйте позже");
+        }
     }
 
     private AuthResponse issueTokens(UUID userId, String username) {

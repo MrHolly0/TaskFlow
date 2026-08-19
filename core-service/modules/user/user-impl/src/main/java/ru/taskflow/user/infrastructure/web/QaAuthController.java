@@ -2,16 +2,20 @@ package ru.taskflow.user.infrastructure.web;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 import ru.taskflow.shared.security.JwtService;
 import ru.taskflow.user.api.UserService;
+import ru.taskflow.user.application.AuthRateLimiter;
 import ru.taskflow.user.application.RefreshTokenService;
 import ru.taskflow.user.infrastructure.web.dto.AuthResponse;
 
@@ -46,23 +50,30 @@ public class QaAuthController {
     private final JwtService jwtService;
     private final UserService userService;
     private final RefreshTokenService refreshTokenService;
+    private final AuthRateLimiter rateLimiter;
     private final String qaLoginSecret;
 
     public QaAuthController(
             JwtService jwtService,
             UserService userService,
             RefreshTokenService refreshTokenService,
+            AuthRateLimiter rateLimiter,
             @Value("${app.qa-login-secret:}") String qaLoginSecret
     ) {
         this.jwtService = jwtService;
         this.userService = userService;
         this.refreshTokenService = refreshTokenService;
+        this.rateLimiter = rateLimiter;
         this.qaLoginSecret = qaLoginSecret;
     }
 
     @PostMapping("/qa-login")
     @Operation(summary = "Войти под единственной демо-учёткой", description = "Только по секрету из окружения")
-    public ResponseEntity<AuthResponse> qaLogin(@RequestHeader(value = "X-Qa-Secret", required = false) String secret) {
+    public ResponseEntity<AuthResponse> qaLogin(@RequestHeader(value = "X-Qa-Secret", required = false) String secret,
+                                                 HttpServletRequest httpRequest) {
+        if (!rateLimiter.allow(httpRequest)) {
+            throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS, "слишком много попыток входа, попробуйте позже");
+        }
         if (qaLoginSecret.isBlank() || !matches(qaLoginSecret, secret)) {
             return ResponseEntity.notFound().build();
         }
