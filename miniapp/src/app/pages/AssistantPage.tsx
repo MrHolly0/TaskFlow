@@ -164,6 +164,7 @@ export function AssistantPage() {
                   onReject={() => reject(entry.proposal, entry.localId)}
                   applying={applyProposal.isPending}
                   rejecting={rejectProposal.isPending}
+                  className="max-w-[85%]"
                 />
               )}
             </motion.div>

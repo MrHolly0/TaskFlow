@@ -11,6 +11,7 @@ export function ProposalCard({
   onReject,
   applying,
   rejecting,
+  className,
 }: {
   proposal: Proposal;
   onToggle: (ordinal: number, accepted: boolean) => void;
@@ -18,13 +19,14 @@ export function ProposalCard({
   onReject: () => void;
   applying: boolean;
   rejecting: boolean;
+  className?: string;
 }) {
   const isDegraded = proposal.status === 'FAILED' && !proposal.id;
   const isClarification = !proposal.actions.length && !!proposal.clarification && !isDegraded;
 
   if (isDegraded) {
     return (
-      <Card className="max-w-[85%] px-4 py-3 text-sm flex items-start gap-2 border-amber-400/40 bg-amber-50 dark:bg-amber-950/30">
+      <Card className={cn('px-4 py-3 text-sm flex items-start gap-2 border-amber-400/40 bg-amber-50 dark:bg-amber-950/30', className)}>
         <IconAlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0 text-amber-600" />
         <span className="min-w-0 break-words">{proposal.clarification ?? 'Не удалось разобрать сообщение — сохранил его как отдельную задачу целиком.'}</span>
       </Card>
@@ -33,7 +35,7 @@ export function ProposalCard({
 
   if (isClarification) {
     return (
-      <Card className="max-w-[85%] px-4 py-3 text-sm break-words">
+      <Card className={cn('px-4 py-3 text-sm break-words', className)}>
         {proposal.clarification}
       </Card>
     );
@@ -41,14 +43,14 @@ export function ProposalCard({
 
   if (!proposal.actions.length) {
     return (
-      <Card className="max-w-[85%] px-4 py-3 text-sm text-muted-foreground">
+      <Card className={cn('px-4 py-3 text-sm text-muted-foreground', className)}>
         Не нашел, что предложить по этому сообщению.
       </Card>
     );
   }
 
   return (
-    <Card className="max-w-[90%] px-4 py-3 space-y-3">
+    <Card className={cn('px-4 py-3 space-y-3', className)}>
       <p className="text-sm font-medium">Предлагаю:</p>
       <div className="space-y-1.5">
         {proposal.actions.map((action) => (
@@ -69,11 +71,11 @@ export function ProposalCard({
         ))}
       </div>
       <div className="flex gap-2 pt-1">
-        <Button size="sm" onClick={onApply} disabled={applying || rejecting} className="gap-1.5">
+        <Button size="sm" onClick={onApply} disabled={applying || rejecting} className="flex-1 gap-1.5">
           <IconCheck className="h-3.5 w-3.5" />
           Применить
         </Button>
-        <Button size="sm" variant="outline" onClick={onReject} disabled={applying || rejecting} className="gap-1.5">
+        <Button size="sm" variant="outline" onClick={onReject} disabled={applying || rejecting} className="flex-1 gap-1.5">
           <IconX className="h-3.5 w-3.5" />
           Отклонить
         </Button>

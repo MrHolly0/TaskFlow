@@ -270,6 +270,7 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
                   onReject={rejectCurrent}
                   applying={applyProposal.isPending}
                   rejecting={rejectProposal.isPending}
+                  className="w-full"
                 />
 
                 <Button variant="outline" onClick={handleBack} className="gap-2 h-11 w-full">
