@@ -1,26 +1,31 @@
 package ru.taskflow.assistant.application;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import ru.taskflow.assistant.api.AssistantActionType;
 import ru.taskflow.assistant.api.dto.ProposedAction;
 
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
-import java.util.regex.Pattern;
 
 @Component
+@RequiredArgsConstructor
 public class DuplicateGuard {
 
     private static final double JACCARD_THRESHOLD = 0.8;
-    private static final Pattern NON_WORD = Pattern.compile("[^\\p{L}\\p{N}\\s]");
-    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+
+    private final TitleSimilarity titleSimilarity;
 
     public record GuardResult(List<ProposedAction> actions, List<String> rejections) {}
+
+    /**
+     * Порог дубля — решение DuplicateGuard, не общая величина: AgentLoop
+     * спрашивает через этот метод, а не сравнивает с порогом сам.
+     */
+    public boolean isDuplicateOf(String proposedText, String existingTitle) {
+        return existingTitle != null && titleSimilarity.similarity(proposedText, existingTitle) >= JACCARD_THRESHOLD;
+    }
 
     public GuardResult filter(List<ProposedAction> actions, TaskContextWindow window) {
         return filter(actions, window, List.of());
@@ -75,11 +80,8 @@ public class DuplicateGuard {
     }
 
     private String findMatch(String proposedTitle, TaskContextWindow window) {
-        String normalizedProposed = normalize(proposedTitle);
-        Set<String> proposedWords = wordsOf(normalizedProposed);
-
         for (Map.Entry<String, String> entry : window.titles().entrySet()) {
-            if (matches(normalizedProposed, proposedWords, entry.getValue())) {
+            if (isDuplicateOf(proposedTitle, entry.getValue())) {
                 return entry.getKey();
             }
         }
@@ -87,46 +89,12 @@ public class DuplicateGuard {
     }
 
     private String findMatchAmongTitles(String proposedTitle, List<String> titles) {
-        String normalizedProposed = normalize(proposedTitle);
-        Set<String> proposedWords = wordsOf(normalizedProposed);
-
         for (String existing : titles) {
-            if (matches(normalizedProposed, proposedWords, existing)) {
+            if (isDuplicateOf(proposedTitle, existing)) {
                 return existing;
             }
         }
         return null;
-    }
-
-    private boolean matches(String normalizedProposed, Set<String> proposedWords, String otherTitle) {
-        String normalizedOther = normalize(otherTitle);
-        if (normalizedProposed.equals(normalizedOther)) {
-            return true;
-        }
-        return jaccard(proposedWords, wordsOf(normalizedOther)) >= JACCARD_THRESHOLD;
-    }
-
-    private String normalize(String title) {
-        String lower = title.toLowerCase(Locale.ROOT);
-        String stripped = NON_WORD.matcher(lower).replaceAll(" ");
-        return WHITESPACE.matcher(stripped).replaceAll(" ").trim();
-    }
-
-    private Set<String> wordsOf(String normalized) {
-        if (normalized.isBlank()) {
-            return Set.of();
-        }
-        // Set.of(array) падает на повторяющемся слове (естественно для устной речи) — здесь дубли не ошибка.
-        return new HashSet<>(Arrays.asList(WHITESPACE.split(normalized)));
-    }
-
-    private double jaccard(Set<String> a, Set<String> b) {
-        if (a.isEmpty() && b.isEmpty()) {
-            return 1.0;
-        }
-        long intersection = a.stream().filter(b::contains).count();
-        long union = a.size() + b.size() - intersection;
-        return union == 0 ? 0.0 : (double) intersection / union;
     }
 
     private List<ProposedAction> renumber(List<ProposedAction> actions) {

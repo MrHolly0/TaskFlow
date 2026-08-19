@@ -7,8 +7,6 @@ import ru.taskflow.assistant.api.dto.ProposedAction;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
@@ -39,7 +37,7 @@ public class TitleChangeGuard {
                 continue;
             }
 
-            String currentTitle = titleFor(action.targetTaskId(), window);
+            String currentTitle = window.titleFor(action.targetTaskId());
             if (currentTitle == null || mentioned(normalizedText, currentTitle)) {
                 kept.add(action);
                 continue;
@@ -58,15 +56,6 @@ public class TitleChangeGuard {
         }
         Object title = action.payload().get("title");
         return title != null && !title.toString().isBlank();
-    }
-
-    private String titleFor(UUID taskId, TaskContextWindow window) {
-        for (Map.Entry<String, UUID> entry : window.refs().entrySet()) {
-            if (entry.getValue().equals(taskId)) {
-                return window.title(entry.getKey());
-            }
-        }
-        return null;
     }
 
     private boolean mentioned(String normalizedText, String title) {

@@ -32,6 +32,17 @@ public class ActionValidator {
         static ValidationResult fail(String error) {
             return new ValidationResult(false, error, null);
         }
+
+        /**
+         * Отказ после того, как ярлык уже разрешился в задачу: не «неизвестная
+         * ссылка», а «ссылка есть, но остальное не собралось» (нечего менять,
+         * не разобрался срок). targetTaskId остаётся — вызывающая сторона
+         * (двоякость в AgentLoop) должна знать, о какой задаче шла речь, даже
+         * когда самого действия не будет.
+         */
+        static ValidationResult failForTask(String error, UUID targetTaskId) {
+            return new ValidationResult(false, error, targetTaskId);
+        }
     }
 
     public ValidationResult validate(AssistantActionType type,
@@ -97,10 +108,10 @@ public class ActionValidator {
     private ValidationResult validateReschedule(Map<String, Object> args, UUID taskId) {
         Object deadline = args.get("new_deadline");
         if (deadline == null || deadline.toString().isBlank()) {
-            return ValidationResult.fail("не указан new_deadline");
+            return ValidationResult.failForTask("не указан new_deadline", taskId);
         }
         if (!isParseableDeadline(deadline)) {
-            return ValidationResult.fail("не удалось разобрать срок: " + deadline);
+            return ValidationResult.failForTask("не удалось разобрать срок: " + deadline, taskId);
         }
         return ValidationResult.ok(taskId);
     }
@@ -109,10 +120,10 @@ public class ActionValidator {
         boolean hasChange = UPDATABLE_FIELDS.stream()
                 .anyMatch(f -> args.get(f) != null && !args.get(f).toString().isBlank());
         if (!hasChange) {
-            return ValidationResult.fail("нечего менять: не указано ни одного поля");
+            return ValidationResult.failForTask("нечего менять: не указано ни одного поля", taskId);
         }
         if (args.containsKey("priority") && !isKnownPriority(args.get("priority"))) {
-            return ValidationResult.fail("неизвестный приоритет: " + args.get("priority"));
+            return ValidationResult.failForTask("неизвестный приоритет: " + args.get("priority"), taskId);
         }
         return ValidationResult.ok(taskId);
     }

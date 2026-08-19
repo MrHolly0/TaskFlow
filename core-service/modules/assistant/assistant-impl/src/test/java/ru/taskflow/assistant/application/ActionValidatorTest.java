@@ -65,6 +65,25 @@ class ActionValidatorTest {
     }
 
     @Test
+    void validate_keepsTargetTaskIdOnEmptyUpdateRejection() {
+        // Ярлык разрешился, дальше не собралось — не то же самое, что
+        // «неизвестный ярлык»: AgentLoop использует эту задачу как rejectedTarget.
+        var result = validator.validate(AssistantActionType.UPDATE,
+                Map.of("task_ref", "T1"), windowWith(taskId));
+
+        assertThat(result.targetTaskId()).isEqualTo(taskId);
+    }
+
+    @Test
+    void validate_keepsTargetTaskIdOnRescheduleWithoutDeadline() {
+        var result = validator.validate(AssistantActionType.RESCHEDULE,
+                Map.of("task_ref", "T1"), windowWith(taskId));
+
+        assertThat(result.valid()).isFalse();
+        assertThat(result.targetTaskId()).isEqualTo(taskId);
+    }
+
+    @Test
     void validate_acceptsUpdateWithOneField() {
         var result = validator.validate(AssistantActionType.UPDATE,
                 Map.of("task_ref", "T1", "priority", "HIGH"), windowWith(taskId));

@@ -23,7 +23,6 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -93,16 +92,17 @@ public class AgentLoop {
         }
 
         if (!parsed1.needsSecondPass() || budgetExceeded(start)) {
-            return finishWithFallback(userText, titled1.actions(), rejections, response1.text(), window, 1);
+            return finishWithFallback(userText, titled1.actions(), rejections, response1.text(), window, 1,
+                    entryPoint, parsed1.rejectedTarget());
         }
 
-        return runSecondPass(userId, userText, historyPass1, tools, response1, parsed1, titled1.actions(), window, rejections);
+        return runSecondPass(userId, userText, historyPass1, tools, response1, parsed1, titled1.actions(), window, rejections, entryPoint);
     }
 
     private AgentOutcome runSecondPass(UUID userId, String userText, List<LlmMessage> historyPass1, List<Map<String, Object>> tools,
                                         LlmToolResponse response1, ParsedToolCalls parsed1,
                                         List<ProposedAction> pass1Actions, TaskContextWindow window,
-                                        List<String> rejections) {
+                                        List<String> rejections, AssistantEntryPoint entryPoint) {
         LlmToolCall searchCall = findSearchCall(response1.toolCalls());
         List<TaskResponse> found = taskService.search(userId, parsed1.searchQuery(), false, 20);
         ExtendedWindow extended = extendWindow(window, found);
@@ -142,24 +142,70 @@ public class AgentLoop {
                     assistantText, extended.window(), 2, false, parsed2.ambiguous(), parsed2.ambiguityReason());
         }
 
-        return finishWithFallback(userText, combined, rejections, assistantText, extended.window(), 2);
+        UUID rejectedTarget = parsed2.rejectedTarget() != null ? parsed2.rejectedTarget() : parsed1.rejectedTarget();
+        return finishWithFallback(userText, combined, rejections, assistantText, extended.window(), 2,
+                entryPoint, rejectedTarget);
     }
 
+    /**
+     * Двоякость — не особый случай, а результат разбора: реплика читается как
+     * название задачи (структура) и при этом либо модель промолчала, либо
+     * предложила действие над задачей, с которой реплика не совпадает почти
+     * дословно (мера DuplicateGuard, его порог). Совпадает — это дубль, им уже
+     * занимается DuplicateGuard; не совпадает — оба прочтения правдоподобны.
+     */
     private AgentOutcome finishWithFallback(String userText, List<ProposedAction> actions, List<String> rejections,
-                                            String assistantText, TaskContextWindow window, int passes) {
-        // Пустой actions() бывает по двум причинам: модель ничего не предложила,
-        // либо предложила, но фильтры (DuplicateGuard и другие) отбросили. Запасной
-        // путь имеет смысл только в первом случае — во втором решение фильтров уже
-        // принято, и подменять его сырой репликой нельзя (см. Task 0 части 3б).
-        boolean modelSaidNothing = actions.isEmpty() && rejections.isEmpty();
-        if (!modelSaidNothing || !looksLikeStandaloneTask(userText)) {
-            return new AgentOutcome(actions, rejections, null, null, assistantText, window, passes, false);
+                                            String assistantText, TaskContextWindow window, int passes,
+                                            AssistantEntryPoint entryPoint, UUID rejectedTarget) {
+        // Пустой actions() бывает по трём причинам: модель ничего не предложила,
+        // предложила — но фильтры отбросили (Task 0 части 3б, чужое решение не
+        // подменяем), или ярлык разрешился, а дальше ActionValidator отклонил
+        // (нечего менять, не разобрался срок) — rejectedTarget тогда не null,
+        // и это не «фильтр отбросил осмысленное», а тот же случай, что и
+        // молчание: у модели не было валидного действия, но задача понятна.
+        boolean modelSaidNothing = actions.isEmpty() && (rejections.isEmpty() || rejectedTarget != null);
+        boolean readsLikeATaskName = looksLikeStandaloneTask(userText);
+
+        if (modelSaidNothing && readsLikeATaskName) {
+            // Пустой actions() бывает по двум причинам: модель ничего не предложила,
+            // либо предложила, но фильтры (DuplicateGuard и другие) отбросили. Запасной
+            // путь имеет смысл только в первом случае (см. Task 0 части 3б) — здесь он есть.
+            DuplicateGuard.GuardResult guarded = duplicateGuard.filter(List.of(fallbackCreateAction(userText)), window);
+            List<String> allRejections = new ArrayList<>(rejections);
+            allRejections.addAll(guarded.rejections());
+            return new AgentOutcome(guarded.actions(), allRejections, null, null, assistantText, window, passes, false);
         }
 
-        DuplicateGuard.GuardResult guarded = duplicateGuard.filter(List.of(fallbackCreateAction(userText)), window);
-        List<String> allRejections = new ArrayList<>(rejections);
-        allRejections.addAll(guarded.rejections());
-        return new AgentOutcome(guarded.actions(), allRejections, null, null, assistantText, window, passes, false);
+        if (readsLikeATaskName && actions.size() == 1 && actions.getFirst().targetTaskId() != null) {
+            ProposedAction existing = actions.getFirst();
+            String targetTitle = window.titleFor(existing.targetTaskId());
+            if (!duplicateGuard.isDuplicateOf(userText, targetTitle)) {
+                List<ProposedAction> alternatives = orderAlternatives(existing, fallbackCreateAction(userText), entryPoint);
+                String reason = "реплика могла означать «" + existing.summary() + "», а могла — новую задачу";
+                return new AgentOutcome(alternatives, rejections, null, null, assistantText, window, passes, false,
+                        true, reason);
+            }
+        }
+
+        return new AgentOutcome(actions, rejections, null, null, assistantText, window, passes, false);
+    }
+
+    /**
+     * Из быстрого добавления создание идёт первым вариантом (там чаще хотят
+     * добавить новое), из чата — первым остаётся то, что предложила модель.
+     * Значение по умолчанию, не запрет: применяется только к порядку показа
+     * и к тому, какой вариант выбран изначально.
+     */
+    private List<ProposedAction> orderAlternatives(ProposedAction existing, ProposedAction create, AssistantEntryPoint entryPoint) {
+        List<ProposedAction> ordered = entryPoint == AssistantEntryPoint.QUICK_ADD
+                ? List.of(create, existing)
+                : List.of(existing, create);
+        List<ProposedAction> renumbered = new ArrayList<>(2);
+        for (int i = 0; i < ordered.size(); i++) {
+            ProposedAction a = ordered.get(i);
+            renumbered.add(new ProposedAction(i + 1, a.type(), a.targetTaskId(), a.payload(), a.summary(), i == 0));
+        }
+        return renumbered;
     }
 
     private ProposedAction fallbackCreateAction(String userText) {
@@ -170,6 +216,9 @@ public class AgentLoop {
                 truncate("Создать — " + title), true);
     }
 
+    // Только структура — длина, число слов, не вопрос. Ни одного глагола:
+    // открытый класс форм и синонимов такой список всё равно не покрыл бы
+    // (см. историю в плане Task 5, вторая редакция).
     private boolean looksLikeStandaloneTask(String userText) {
         String title = normalizeTitle(userText);
         if (title.length() < 8 || title.length() > MAX_FALLBACK_TITLE_LENGTH || title.endsWith("?")) {
@@ -177,27 +226,7 @@ public class AgentLoop {
         }
 
         String[] words = WORDS.split(title);
-        if (words.length < 2) {
-            return false;
-        }
-
-        String lower = title.toLowerCase(Locale.ROOT);
-        return !startsWithAny(lower,
-                "найди", "найти", "покажи", "показать",
-                "закрой", "закрыть", "заверши", "завершить",
-                "отмени", "отменить", "перенеси", "перенести", "сдвинь",
-                "измени", "изменить", "удали", "удалить", "очисти", "очистить",
-                "что ", "как ", "почему ", "где ", "когда ", "сколько ",
-                "привет", "спасибо", "ничего");
-    }
-
-    private boolean startsWithAny(String value, String... prefixes) {
-        for (String prefix : prefixes) {
-            if (value.startsWith(prefix)) {
-                return true;
-            }
-        }
-        return false;
+        return words.length >= 2;
     }
 
     private String normalizeTitle(String userText) {

@@ -13,6 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Единственное место, где сырые вызовы инструментов от модели превращаются
@@ -43,6 +44,7 @@ public class ToolCallParser {
         String searchQuery = null;
         boolean ambiguous = false;
         String ambiguityReason = null;
+        UUID rejectedTarget = null;
 
         for (ToolCall call : calls) {
             Map<String, Object> args;
@@ -58,6 +60,9 @@ public class ToolCallParser {
                 var validation = actionValidator.validate(type, args, window);
                 if (!validation.valid()) {
                     rejections.add(call.name() + ": " + validation.error());
+                    if (rejectedTarget == null && validation.targetTaskId() != null) {
+                        rejectedTarget = validation.targetTaskId();
+                    }
                     continue;
                 }
                 if (actions.size() >= MAX_ACTIONS) {
@@ -116,7 +121,7 @@ public class ToolCallParser {
         }
 
         return new ParsedToolCalls(actions, rejections, clarification, clarificationOptions, searchQuery,
-                ambiguous, ambiguityReason);
+                ambiguous, ambiguityReason, rejectedTarget);
     }
 
     // Ровно один вариант выбран по умолчанию — переключатели в интерфейсе,

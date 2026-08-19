@@ -195,6 +195,29 @@ class ToolCallParserTest {
     }
 
     @Test
+    void parse_capturesRejectedTargetFromResolvedRefValidationFailure() {
+        var result = parser.parse(List.of(call("update_task", "{\"task_ref\":\"T1\"}")), window);
+
+        assertThat(result.actions()).isEmpty();
+        assertThat(result.rejections()).hasSize(1);
+        assertThat(result.rejectedTarget()).isEqualTo(taskId);
+    }
+
+    @Test
+    void parse_rejectedTargetNullWhenRefUnknown() {
+        var result = parser.parse(List.of(call("update_task", "{\"task_ref\":\"T99\"}")), window);
+
+        assertThat(result.rejectedTarget()).isNull();
+    }
+
+    @Test
+    void parse_rejectedTargetNullForUnrelatedRejection() {
+        var result = parser.parse(List.of(call("delete_everything", "{}")), window);
+
+        assertThat(result.rejectedTarget()).isNull();
+    }
+
+    @Test
     void parse_ambiguousDefaultsFalse() {
         var result = parser.parse(List.of(call("complete_task", "{\"task_ref\":\"T1\"}")), window);
 

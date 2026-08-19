@@ -209,11 +209,12 @@ class LiveModelRegressionTest {
     }
 
     /**
-     * ask_user был снят с контракта (за 25 фраз спайка ни разу не сработал) и
-     * заменён на mark_ambiguous: вместо текстового вопроса модель предлагает оба
-     * прочтения как альтернативы. Несколько попыток на реально неоднозначной
-     * фразе смягчают шум одиночного стохастического вызова, не подгоняя тест
-     * под ответ — если ни одна попытка не сработала, это честный провал.
+     * Двоякость определяет AgentLoop разбором (структура реплики + сходство с
+     * задачей, на которую модель уже указала), не только вызовом mark_ambiguous
+     * моделью — тот остаётся дополнительным сигналом. Несколько попыток здесь
+     * смягчают обычный шум живого вызова (сеть, редкая деградация модели), не
+     * то стохастическое поведение самого mark_ambiguous, которое было
+     * единственным сигналом в первой редакции и не проходило по 25 фразам.
      */
     @Test
     void handleText_marksAmbiguousOnGenuinelyAmbiguousChatPhrase() {
@@ -244,8 +245,8 @@ class LiveModelRegressionTest {
         boolean ambiguousAtLeastOnce = false;
         for (int attempt = 1; attempt <= 3 && !ambiguousAtLeastOnce; attempt++) {
             Proposal proposal = handleText(userId, "закрыть кино", AssistantEntryPoint.QUICK_ADD);
-            observations.add("попытка %d: exclusive=%s, actions=%d, reason=%s".formatted(
-                    attempt, proposal.exclusive(), proposal.actions().size(), proposal.ambiguityReason()));
+            observations.add("попытка %d: exclusive=%s, reason=%s, actions=%s".formatted(
+                    attempt, proposal.exclusive(), proposal.ambiguityReason(), proposal.actions()));
             ambiguousAtLeastOnce = proposal.exclusive() && proposal.actions().size() >= 2;
         }
 

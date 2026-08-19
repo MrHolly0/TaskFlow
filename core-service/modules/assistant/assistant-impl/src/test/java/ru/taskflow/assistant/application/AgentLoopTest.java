@@ -44,7 +44,7 @@ class AgentLoopTest {
     private final ToolRegistry toolRegistry = new ToolRegistry();
     private final ToolCallParser toolCallParser = new ToolCallParser(
             toolRegistry, new ActionValidator(taskService), new SummaryRenderer(), new ObjectMapper());
-    private final DuplicateGuard duplicateGuard = new DuplicateGuard();
+    private final DuplicateGuard duplicateGuard = new DuplicateGuard(new TitleSimilarity());
     private final TitleChangeGuard titleChangeGuard = new TitleChangeGuard();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -53,6 +53,13 @@ class AgentLoopTest {
                 "T1 · купить молоко",
                 Map.of("T1", existingTaskId),
                 Map.of("T1", "купить молоко"));
+    }
+
+    private TaskContextWindow movieWindow() {
+        return new TaskContextWindow(
+                "T1 · кино с настей",
+                Map.of("T1", existingTaskId),
+                Map.of("T1", "кино с настей"));
     }
 
     private AgentLoop loop(Clock clock) {
@@ -66,6 +73,10 @@ class AgentLoopTest {
 
     private LlmToolCall completeTaskCall() {
         return new LlmToolCall("call-1", "complete_task", "{\"task_ref\":\"T1\"}");
+    }
+
+    private LlmToolCall emptyUpdateTaskCall() {
+        return new LlmToolCall("call-update", "update_task", "{\"task_ref\":\"T1\"}");
     }
 
     private LlmToolCall createTaskCall(String title) {
@@ -100,7 +111,9 @@ class AgentLoopTest {
         when(contextBuilder.build(userId)).thenReturn(window());
         when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(completeTaskCall()), null));
 
-        var outcome = loopWithFixedClock().run(userId, "закрой молоко", zone);
+        // Короткая реплика (< 8 символов) не читается как название задачи —
+        // не задевает разбор двоякости из Task 5, тест проверяет только базовый проход.
+        var outcome = loopWithFixedClock().run(userId, "закрой", zone);
 
         assertThat(outcome.actions()).hasSize(1);
         assertThat(outcome.actions().getFirst().type()).isEqualTo(AssistantActionType.COMPLETE);
@@ -197,10 +210,186 @@ class AgentLoopTest {
         when(contextBuilder.build(userId)).thenReturn(window());
         when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(completeTaskCall()), null));
 
-        var outcome = loopWithFixedClock().run(userId, "закрой молоко", zone);
+        // Реплика почти совпадает с названием T1 — сходство выше порога дубля,
+        // это дело DuplicateGuard, не двоякость.
+        var outcome = loopWithFixedClock().run(userId, "купить молоко", zone);
 
         assertThat(outcome.ambiguous()).isFalse();
         assertThat(outcome.ambiguityReason()).isNull();
+        assertThat(outcome.actions()).hasSize(1);
+    }
+
+    // Task 5, вторая редакция: двоякость — результат разбора (структура +
+    // сходство с DuplicateGuard), не особый случай и не список глаголов.
+
+    @Test
+    void run_offersBothAlternativesWhenModelActsOnSimilarLookingTask() {
+        when(contextBuilder.build(userId)).thenReturn(movieWindow());
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(completeTaskCall()), null));
+
+        var outcome = loopWithFixedClock().run(userId, "закрыть кино", zone);
+
+        assertThat(outcome.ambiguous()).isTrue();
+        assertThat(outcome.actions()).hasSize(2);
+        assertThat(outcome.actions().get(0).type()).isEqualTo(AssistantActionType.COMPLETE);
+        assertThat(outcome.actions().get(0).accepted()).isTrue();
+        assertThat(outcome.actions().get(1).type()).isEqualTo(AssistantActionType.CREATE);
+        assertThat(outcome.actions().get(1).payload()).containsEntry("title", "закрыть кино");
+        assertThat(outcome.actions().get(1).accepted()).isFalse();
+    }
+
+    @Test
+    void run_offersBothAlternativesForASecondPhraseAgainstSameTask() {
+        when(contextBuilder.build(userId)).thenReturn(movieWindow());
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(completeTaskCall()), null));
+
+        var outcome = loopWithFixedClock().run(userId, "изменить планы на кино", zone);
+
+        assertThat(outcome.ambiguous()).isTrue();
+        assertThat(outcome.actions()).hasSize(2);
+    }
+
+    @Test
+    void run_createsStandaloneTaskWhenModelSilentAndTextReadsAsTitle() {
+        when(contextBuilder.build(userId)).thenReturn(movieWindow());
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(), null));
+
+        var outcome = loopWithFixedClock().run(userId, "изменить планы на кино", zone);
+
+        assertThat(outcome.ambiguous()).isFalse();
+        assertThat(outcome.actions()).hasSize(1);
+        assertThat(outcome.actions().getFirst().type()).isEqualTo(AssistantActionType.CREATE);
+    }
+
+    @Test
+    void run_doesNotOfferChoiceOnUnambiguousPhraseWithEmptyWindow() {
+        when(contextBuilder.build(userId)).thenReturn(new TaskContextWindow("", Map.of(), Map.of()));
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(), null));
+
+        var outcome = loopWithFixedClock().run(userId, "купить корм коту", zone);
+
+        assertThat(outcome.ambiguous()).isFalse();
+        assertThat(outcome.actions()).hasSize(1);
+        assertThat(outcome.actions().getFirst().type()).isEqualTo(AssistantActionType.CREATE);
+    }
+
+    @Test
+    void run_treatsHighSimilarityAsDuplicateNotAmbiguity() {
+        when(contextBuilder.build(userId)).thenReturn(movieWindow());
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(completeTaskCall()), null));
+
+        // Совпадает почти дословно с названием T1 («кино с настей») — при
+        // трёхсловном названии любая приставка роняет жаккар ниже 0.8, порог
+        // реально различим только на точном/почти точном совпадении.
+        var outcome = loopWithFixedClock().run(userId, "кино с настей", zone);
+
+        assertThat(outcome.ambiguous()).isFalse();
+        assertThat(outcome.actions()).hasSize(1);
+    }
+
+    @Test
+    void run_doesNotOfferChoiceWhenModelActedButPhraseIsAQuestion() {
+        when(contextBuilder.build(userId)).thenReturn(movieWindow());
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(completeTaskCall()), null));
+
+        var outcome = loopWithFixedClock().run(userId, "закрыть кино уже было?", zone);
+
+        assertThat(outcome.ambiguous()).isFalse();
+        assertThat(outcome.actions()).hasSize(1);
+    }
+
+    @Test
+    void run_ordersCreateFirstForQuickAdd() {
+        when(contextBuilder.build(userId)).thenReturn(movieWindow());
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(completeTaskCall()), null));
+
+        var outcome = loopWithFixedClock().run(userId, "закрыть кино", zone,
+                ru.taskflow.assistant.api.AssistantEntryPoint.QUICK_ADD);
+
+        assertThat(outcome.actions().get(0).type()).isEqualTo(AssistantActionType.CREATE);
+        assertThat(outcome.actions().get(0).accepted()).isTrue();
+        assertThat(outcome.actions().get(1).type()).isEqualTo(AssistantActionType.COMPLETE);
+        assertThat(outcome.actions().get(1).accepted()).isFalse();
+    }
+
+    @Test
+    void run_keepsModelActionFirstForChat() {
+        when(contextBuilder.build(userId)).thenReturn(movieWindow());
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(completeTaskCall()), null));
+
+        var outcome = loopWithFixedClock().run(userId, "закрыть кино", zone,
+                ru.taskflow.assistant.api.AssistantEntryPoint.CHAT);
+
+        assertThat(outcome.actions().get(0).type()).isEqualTo(AssistantActionType.COMPLETE);
+        assertThat(outcome.actions().get(0).accepted()).isTrue();
+        assertThat(outcome.actions().get(1).type()).isEqualTo(AssistantActionType.CREATE);
+        assertThat(outcome.actions().get(1).accepted()).isFalse();
+    }
+
+    /**
+     * Обнаружено живым прогоном и здесь же зачинено. Модель на «изменить
+     * планы на кино» реально вызывает update_task(task_ref=T1) без единого
+     * поля — ActionValidator отклоняет это как «нечего менять» ДО того, как
+     * действие попадёт в actions(). Раньше rejections() после этого был не
+     * пуст, modelSaidNothing — ложно, и обе ветки двоякости молчали: ни
+     * «промолчала» (rejections не пуст), ни «предложила действие» (actions
+     * пуст — отклонённое действие туда не попадает). Реплика вырождалась в
+     * деградацию — тот же баг, который чинит эта задача, просто с другой
+     * стороны: не список глаголов, а валидатор. Чинится тем же путём:
+     * ActionValidator теперь возвращает targetTaskId и при отказе (ярлык
+     * разрешился, дальше не собралось), ToolCallParser прокидывает его как
+     * rejectedTarget, а modelSaidNothing принимает его как замену пустым
+     * rejections. Дальше — обычный путь запасного создания (единственного
+     * действия, не двух альтернатив: отклонённая попытка не даёт валидного
+     * второго варианта, который можно было бы предложить рядом).
+     */
+    @Test
+    void run_unrelatedRejectionStillBlocksFallback() {
+        // Task 0 части 3б: отказ фильтра — уже принятое решение, подменять
+        // его сырой репликой нельзя. rejectedTarget тут не выставляется —
+        // отказ не про разрешённый ярлык, а про неизвестный инструмент.
+        when(contextBuilder.build(userId)).thenReturn(movieWindow());
+        when(gateway.callWithTools(any())).thenReturn(
+                toolResponse(List.of(new LlmToolCall("call-x", "delete_everything", "{}")), null));
+
+        var outcome = loopWithFixedClock().run(userId, "изменить планы на кино", zone);
+
+        assertThat(outcome.actions()).isEmpty();
+    }
+
+    @Test
+    void run_emptyUpdateAttemptFallsBackToCreate() {
+        when(contextBuilder.build(userId)).thenReturn(movieWindow());
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(emptyUpdateTaskCall()), null));
+
+        var outcome = loopWithFixedClock().run(userId, "изменить планы на кино", zone);
+
+        assertThat(outcome.actions()).hasSize(1);
+        assertThat(outcome.actions().getFirst().type()).isEqualTo(AssistantActionType.CREATE);
+        assertThat(outcome.ambiguous()).isFalse();
+    }
+
+    /**
+     * ИЗВЕСТНЫЙ ПРОБЕЛ, не молчаливо принятый. Два сигнала из плана —
+     * структура (длина/число слов/вопрос) и сходство с существующей задачей —
+     * не различают «покажи задачи на завтра» и «купить корм коту»: оба —
+     * два-четыре слова, без «?», ни один не похож на T1 в окне. Разница
+     * между ними смысловая (обращение к ассистенту с просьбой показать список
+     * против описания новой задачи), а разбор смысла на Java — то, чего план
+     * прямо просит не делать. Проверил assistantText как третий сигнал —
+     * ломает другой, уже подтверждённый случай (run_createsStandaloneTask...:
+     * модель одинаково говорит «ничего не нашлось» и когда фраза — новая
+     * задача). Оставляю как есть и как несовпадение с планом — не подгоняю.
+     */
+    @Test
+    void run_listingRequestStillBecomesATask_knownGap() {
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(), null));
+
+        var outcome = loopWithFixedClock().run(userId, "покажи задачи на завтра", zone);
+
+        assertThat(outcome.actions()).hasSize(1);
+        assertThat(outcome.actions().getFirst().payload()).containsEntry("title", "покажи задачи на завтра");
     }
 
     @Test

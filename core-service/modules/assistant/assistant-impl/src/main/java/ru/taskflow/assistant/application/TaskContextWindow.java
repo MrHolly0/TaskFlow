@@ -13,6 +13,18 @@ public record TaskContextWindow(String rendered, Map<String, UUID> refs, Map<Str
         return ref == null ? null : titles.get(ref);
     }
 
+    public String titleFor(UUID taskId) {
+        if (taskId == null) {
+            return null;
+        }
+        for (Map.Entry<String, UUID> entry : refs.entrySet()) {
+            if (entry.getValue().equals(taskId)) {
+                return titles.get(entry.getKey());
+            }
+        }
+        return null;
+    }
+
     public int size() {
         return refs.size();
     }

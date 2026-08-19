@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class DuplicateGuardTest {
 
-    private final DuplicateGuard guard = new DuplicateGuard();
+    private final DuplicateGuard guard = new DuplicateGuard(new TitleSimilarity());
 
     private final UUID catFoodTaskId = UUID.randomUUID();
 
@@ -164,6 +164,31 @@ class DuplicateGuardTest {
         assertThat(result.actions()).hasSize(1);
         assertThat(result.actions().get(0)).isEqualTo(different);
         assertThat(result.rejections()).isEmpty();
+    }
+
+    // isDuplicateOf на настоящих фразах из Task 5 (вторая редакция) — граница
+    // между «это та же задача» (DuplicateGuard) и «двоякость» (AgentLoop).
+
+    @Test
+    void isDuplicateOf_trueForExactMatch() {
+        assertThat(guard.isDuplicateOf("кино с настей", "кино с настей")).isTrue();
+    }
+
+    @Test
+    void isDuplicateOf_falseForShortCommandSharingOneWord() {
+        // «закрыть кино» — пересечение по одному слову из четырёх, 0.25.
+        assertThat(guard.isDuplicateOf("закрыть кино", "кино с настей")).isFalse();
+    }
+
+    @Test
+    void isDuplicateOf_falseForUpdatePhraseSharingOneWord() {
+        assertThat(guard.isDuplicateOf("изменить планы на кино", "кино с настей")).isFalse();
+    }
+
+    @Test
+    void isDuplicateOf_falseWhenOneExtraWordDropsBelowThreshold() {
+        // Трёхсловное название: любая приставка даёт не больше 0.75 — ниже 0.8.
+        assertThat(guard.isDuplicateOf("закрыть кино с настей", "кино с настей")).isFalse();
     }
 
     @Test
