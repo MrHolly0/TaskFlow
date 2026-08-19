@@ -18,11 +18,12 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
-class GroqToolCallProviderTest {
+class OpenAiCompatibleToolCallProviderTest {
 
     private static final String BASE_URL = "https://api.groq.com/openai/v1";
     private static final String COMPLETIONS_URL = BASE_URL + "/chat/completions";
@@ -31,24 +32,20 @@ class GroqToolCallProviderTest {
             """;
 
     private MockRestServiceServer server;
-    private GroqToolCallProvider provider;
+    private OpenAiCompatibleToolCallProvider provider;
     private ObjectMapper objectMapper;
     private JsonNode capturedBody;
 
     @BeforeEach
     void setUp() {
-        GroqConfig config = new GroqConfig();
-        config.setApiKey("test-key");
-        config.setBaseUrl(BASE_URL);
-        config.setLlmModel("llama-3.3-70b-versatile");
-
         objectMapper = new ObjectMapper();
 
         RestClient.Builder builder = RestClient.builder().baseUrl(BASE_URL);
         server = MockRestServiceServer.bindTo(builder).build();
         RestClient restClient = builder.build();
 
-        provider = new GroqToolCallProvider(config, objectMapper, restClient);
+        provider = new OpenAiCompatibleToolCallProvider("groq", "test-key", "llama-3.3-70b-versatile",
+                objectMapper, restClient);
     }
 
     @Test
@@ -119,19 +116,25 @@ class GroqToolCallProviderTest {
     }
 
     @Test
-    void call_returnsEmptyOnMalformedBody() {
+    void call_throwsOnMalformedBody() {
+        // Кидает, а не глотает: FallbackToolCallProvider должен отличить настоящий
+        // отказ провайдера от легитимного пустого ответа модели, а для этого нужен
+        // сигнал исключением, не безмолвный ToolCallResult.empty().
         server.expect(requestTo(COMPLETIONS_URL))
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess("это не json совсем", MediaType.TEXT_PLAIN));
 
-        ToolCallResult result = provider.call(new ToolCallRequest(
+        assertThatThrownBy(() -> provider.call(new ToolCallRequest(
                 List.of(ToolCallMessage.user("привет")),
                 List.of()
-        ));
-
-        assertThat(result).isEqualTo(ToolCallResult.empty());
+        ))).isInstanceOf(IllegalStateException.class);
 
         server.verify();
+    }
+
+    @Test
+    void name_returnsConfiguredName() {
+        assertThat(provider.name()).isEqualTo("groq");
     }
 
     @Test

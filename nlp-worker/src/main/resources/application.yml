@@ -18,6 +18,17 @@ app:
     whisper-model: whisper-large-v3
     connect-timeout-seconds: 5
     read-timeout-seconds: 30
+  llm:
+    providers:
+      - name: groq
+        base-url: https://api.groq.com/openai/v1
+        api-key: ${GROQ_API_KEY:}
+        model: openai/gpt-oss-120b
+      - name: proxyapi
+        base-url: https://api.proxyapi.ru/openai/v1
+        api-key: ${PROXYAPI_KEY:}
+        model: gpt-4o-mini
+        enabled: false
   yandex-gpt:
     api-key: ${YANDEX_GPT_API_KEY:}
     base-url: https://llm.api.cloud.yandex.net/llm/v1

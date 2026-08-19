@@ -3,9 +3,7 @@ package ru.taskflow.nlp.infrastructure.groq;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import ru.taskflow.nlp.domain.RawToolCall;
 import ru.taskflow.nlp.domain.ToolCallMessage;
@@ -21,33 +19,53 @@ import java.util.Map;
 
 /**
  * Вызов модели с инструментами (function calling) по OpenAI-совместимому
- * диалекту API. Ничего не интерпретирует — отдаёт вызовы инструментов как
+ * диалогу API. Ничего не интерпретирует — отдаёт вызовы инструментов как
  * есть, разбор и валидация остаются на стороне ядра. От конкретного
- * поставщика (Groq, ProxyAPI, ...) зависит только адрес и имя модели —
- * оба приходят из конфигурации.
+ * поставщика (Groq, ProxyAPI, ...) зависит только имя, адрес, ключ и модель —
+ * всё приходит из конфигурации, экземпляр строится на каждую запись
+ * app.llm.providers отдельно (см. ToolCallProviderConfiguration).
+ * <p>
+ * В отличие от прежней версии не глотает исключения сама — их ловит
+ * {@link FallbackToolCallProvider}, которому нужно отличить настоящий отказ
+ * провайдера от пустого, но легитимного ответа модели (пустой toolCalls с
+ * непустым text — это «модель ничего не вызвала, а написала»,
+ * не неисправность).
  */
-@Component
-@RequiredArgsConstructor
 @Slf4j
 public class OpenAiCompatibleToolCallProvider implements ToolCallProvider {
 
-    private final GroqConfig config;
+    private final String name;
+    private final String apiKey;
+    private final String model;
     private final ObjectMapper objectMapper;
     private final RestClient restClient;
+
+    public OpenAiCompatibleToolCallProvider(String name, String apiKey, String model,
+                                             ObjectMapper objectMapper, RestClient restClient) {
+        this.name = name;
+        this.apiKey = apiKey;
+        this.model = model;
+        this.objectMapper = objectMapper;
+        this.restClient = restClient;
+    }
+
+    @Override
+    public String name() {
+        return name;
+    }
 
     @Override
     public ToolCallResult call(ToolCallRequest req) {
         try {
             return callApi(req);
-        } catch (Exception e) {
-            log.error("Failed to call tool-calling API", e);
-            return ToolCallResult.empty();
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Провайдер " + name + " вернул неразбираемый ответ", e);
         }
     }
 
     private ToolCallResult callApi(ToolCallRequest req) throws JsonProcessingException {
         var request = new HashMap<String, Object>();
-        request.put("model", config.getLlmModel());
+        request.put("model", model);
         request.put("messages", req.messages().stream().map(this::toApiMessage).toList());
         request.put("tools", req.tools());
         request.put("tool_choice", "auto");
@@ -55,13 +73,13 @@ public class OpenAiCompatibleToolCallProvider implements ToolCallProvider {
 
         String rawBody = restClient.post()
                 .uri("/chat/completions")
-                .header("Authorization", "Bearer " + config.getApiKey())
+                .header("Authorization", "Bearer " + apiKey)
                 .body(request)
                 .retrieve()
                 .body(String.class);
 
         if (rawBody == null) {
-            return ToolCallResult.empty();
+            throw new IllegalStateException("Провайдер " + name + " вернул пустое тело ответа");
         }
 
         return parseResponse(rawBody);
