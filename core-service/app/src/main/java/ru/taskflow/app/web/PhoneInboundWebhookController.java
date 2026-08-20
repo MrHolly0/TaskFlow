@@ -40,7 +40,10 @@ import java.util.UUID;
  *    не подтверждаем даже существование точки.
  * 2. Подтверждаем только по ожидающей записи — нет записи на номер, молча
  *    отбрасываем.
- * 3. Сверяем confirmationNumber с тем, что сохранили при запросе.
+ * 3. Сверяем confirmationNumber с тем, что сохранили при запросе — обе
+ *    стороны нормализуем тем же нормализатором, что и clientNumber: Ucaller
+ *    не гарантирует одинаковый вид номера в ответе inboundCallWaiting и в
+ *    самом вебхуке.
  * 4. clientNumber нормализуем в E.164 тем же нормализатором, что и everywhere
  *    else, и сверяем с номером записи (запись уже ключ по этому номеру —
  *    сверка встроена в сам поиск).
@@ -123,9 +126,19 @@ public class PhoneInboundWebhookController {
             return;
         }
 
-        if (!pending.get().confirmationNumber().equals(request.confirmationNumber())) {
-            log.warn("Отклонено: confirmationNumber не совпал с ожидающей записью (callId={}, phone={})",
-                    request.callId(), mask(phone));
+        String storedConfirmation = pending.get().confirmationNumber();
+        String receivedConfirmation = request.confirmationNumber();
+        // Тот же нормализатор, что и для clientNumber выше — забыли применить его
+        // здесь при первой реализации: confirmation_number в вебхуке необязательно
+        // приходит в том же виде, что и в ответе inboundCallWaiting, откуда взят
+        // сохранённый номер.
+        String normalizedStored = PhoneNumberNormalizer.normalize(storedConfirmation).orElse(storedConfirmation);
+        String normalizedReceived = PhoneNumberNormalizer.normalize(receivedConfirmation).orElse(receivedConfirmation);
+        if (!normalizedStored.equals(normalizedReceived)) {
+            log.warn("Отклонено: confirmationNumber не совпал с ожидающей записью "
+                            + "(callId={}, phone={}, сохранённый={} -> {}, пришедший={} -> {})",
+                    request.callId(), mask(phone), storedConfirmation, normalizedStored,
+                    receivedConfirmation, normalizedReceived);
             return;
         }
 

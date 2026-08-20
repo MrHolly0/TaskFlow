@@ -122,6 +122,28 @@ class PhoneInboundWebhookControllerTest {
         verifyNoInteractions(userService, mergeTokenService);
     }
 
+    // Живой случай: сохранили confirmationNumber в E.164 (с "+", так его
+    // отдаёт нормализованный ответ inboundCallWaiting), а в самом вебхуке
+    // Ucaller прислал его без "+". Раньше сверка была сырой и отклоняла
+    // пришедшее подтверждение целиком — теперь обе стороны нормализуются.
+    @Test
+    void confirmationNumberDiffersOnlyByFormat_stillMatchesAfterNormalization() throws Exception {
+        var pending = new PhoneInboundConfirmationService.Pending("+" + CONFIRMATION_NUMBER, "103000", null);
+        when(phoneInboundConfirmationService.consumePending(PHONE)).thenReturn(Optional.of(pending));
+        UUID userId = UUID.randomUUID();
+        when(userService.findOrCreateByIdentity(eq(IdentityProvider.PHONE), eq(PHONE), any()))
+                .thenReturn(new UserDto(userId, null, null, null));
+        when(jwtService.issueAccessToken(eq(userId), any())).thenReturn("access-token");
+        when(refreshTokenService.issue(userId)).thenReturn("refresh-token");
+
+        mockMvc.perform(post("/api/v1/phone/inbound-webhook/" + SECRET)
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(webhook(CONFIRMATION_NUMBER))))
+                .andExpect(status().isOk());
+
+        verify(phoneInboundConfirmationService).storeLoginResult(PHONE, "access-token", "refresh-token");
+    }
+
     @Test
     void repeatedWebhookForSameCall_secondCallFindsNothing_doesNotProcessTwice() throws Exception {
         // getAndDelete на pending одноразовый — второй consumePending с тем
