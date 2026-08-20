@@ -87,6 +87,22 @@ class AssistantPromptBuilderTest {
                 .contains("работай с найденной через её ярлык");
     }
 
+    // Живой дефект: «сходил в кино» при активной «кино с настей» создавало
+    // новую задачу вместо закрытия существующей — правило про инфинитив/
+    // повелительное наклонение не оговаривало прошедшее время, и модель
+    // подвела его под то же правило.
+    @Test
+    void build_distinguishesPastTenseFromNewTaskCommand() {
+        var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());
+
+        assertThat(parts.systemPrompt())
+                .contains("Прошедшее время — не это");
+        assertThat(parts.systemPrompt())
+                .contains("сообщение о сделанном, а не название новой задачи");
+        assertThat(parts.systemPrompt())
+                .contains("закрывай её (complete_task), а не создавай вторую");
+    }
+
     @Test
     void build_instructsToFillDescriptionOnlyWithExtraDetails() {
         var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());
