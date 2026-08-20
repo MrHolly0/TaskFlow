@@ -43,3 +43,5 @@ databaseChangeLog:
       file: db/changelog/021-web-push-channel.yaml
   - include:
       file: db/changelog/022-push-toggle.yaml
+  - include:
+      file: db/changelog/023-free-channels-by-default.yaml

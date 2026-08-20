@@ -33,6 +33,7 @@ import {
 } from '@/app/components/ui/dropdown-menu';
 import { QuickInputModal } from '@/app/components/QuickInputModal';
 import { MuninLogo } from '@/app/components/MuninLogo';
+import { NotificationChannelPrompt } from '@/app/components/NotificationChannelPrompt';
 
 interface NavItem {
   href: string;
@@ -156,6 +157,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
         {/* Page Content */}
         <main className="flex-1 overflow-y-auto p-4 lg:p-6 pb-24 lg:pb-8">
+          <NotificationChannelPrompt />
           {children}
         </main>
 

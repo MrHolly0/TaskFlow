@@ -43,8 +43,13 @@ export function usePushSubscription() {
       return;
     }
     let cancelled = false;
-    navigator.serviceWorker.ready
-      .then((registration) => registration.pushManager.getSubscription())
+    // serviceWorker.ready может не разрешиться никогда — регистрация иногда
+    // не завершается (нет активного воркера, сетевая заминка). Без тайм-аута
+    // checking завис бы навсегда, и с ним вместе — весь выбор канала в
+    // NotificationChannelPrompt, который ждёт готовности push перед показом.
+    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000));
+    Promise.race([navigator.serviceWorker.ready, timeout])
+      .then((registration) => (registration ? registration.pushManager.getSubscription() : null))
       .then((existing) => {
         if (!cancelled) {
           setSubscribed(!!existing);

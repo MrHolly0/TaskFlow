@@ -250,7 +250,7 @@ public class UserServiceImpl implements UserService {
     }
 
     private UserSettingsDto defaultSettings(String timezone, String displayName) {
-        return new UserSettingsDto(true, true, true, true, 60, true, "groq", null, "SILENCE", "SILENCE", timezone, displayName);
+        return new UserSettingsDto(true, true, false, true, 60, true, "groq", null, "SILENCE", "SILENCE", timezone, displayName);
     }
 
     private UserDto toDto(UserJpaEntity e) {

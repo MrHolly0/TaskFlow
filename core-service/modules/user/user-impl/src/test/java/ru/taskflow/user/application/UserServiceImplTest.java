@@ -110,6 +110,24 @@ class UserServiceImplTest {
     }
 
     @Test
+    void getSettings_noRowYet_defaultsEmailOffAndPushTelegramOn() {
+        // 20.08.2026: бесплатные каналы включены по умолчанию, личный ящик —
+        // нет. Это должно быть видно уже в самом первом ответе /settings, до
+        // того как для пользователя вообще создана строка user_settings.
+        UUID userId = UUID.randomUUID();
+        var user = new UserJpaEntity();
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(settingsRepository.findByUserId(userId)).thenReturn(Optional.empty());
+        UserServiceImpl service = newService();
+
+        UserSettingsDto settings = service.getSettings(userId);
+
+        assertThat(settings.notifyEmail()).isFalse();
+        assertThat(settings.notifyTelegram()).isTrue();
+        assertThat(settings.notifyPush()).isTrue();
+    }
+
+    @Test
     void getSettings_returnsStoredTimezone() {
         UUID userId = UUID.randomUUID();
         var user = new UserJpaEntity();

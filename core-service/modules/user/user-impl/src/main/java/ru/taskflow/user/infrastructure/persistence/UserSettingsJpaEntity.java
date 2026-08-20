@@ -26,8 +26,13 @@ public class UserSettingsJpaEntity {
     @Column(name = "notify_telegram")
     private boolean notifyTelegram = true;
 
+    // Личный ящик Яндекса, лимит около 500 писем в сутки — по умолчанию
+    // выключено для новых пользователей (решение владельца от 20.08.2026).
+    // У существующих строк, где уже true, значение сохранится — эта
+    // константа управляет только НОВЫМИ записями (see также миграция
+    // 023-free-channels-by-default.yaml для DEFAULT самой колонки).
     @Column(name = "notify_email")
-    private boolean notifyEmail = true;
+    private boolean notifyEmail = false;
 
     @Column(name = "notify_push")
     private boolean notifyPush = true;

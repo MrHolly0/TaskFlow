@@ -1,0 +1,15 @@
+databaseChangeLog:
+  - changeSet:
+      id: 023-free-channels-by-default
+      author: taskflow
+      changes:
+        - sql:
+            sql: "ALTER TABLE user_settings ALTER COLUMN notify_email SET DEFAULT false;"
+
+# Меняется значение DEFAULT для новых строк — ALTER COLUMN SET DEFAULT не
+# переписывает уже существующие значения. У кого notify_email уже true,
+# так и останется true: молча выключить работающие уведомления человеку,
+# который на них рассчитывает, — худшее, что можно сделать. Решение
+# владельца от 20.08.2026: бесплатные каналы (push, Telegram) остаются
+# включёнными по умолчанию, почта — личный ящик с лимитом около 500
+# писем в сутки — по умолчанию выключена для новых пользователей.
