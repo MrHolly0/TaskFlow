@@ -20,6 +20,7 @@ import { PhoneCodeStep } from '@/app/components/PhoneCodeStep';
 import { MuninLogo } from '@/app/components/MuninLogo';
 import { TelegramLoginButton } from '@/app/components/TelegramLoginButton';
 import { useAuthMethods } from '@/lib/hooks/useAuthMethods';
+import { formatPhoneInput } from '@/lib/phoneMask';
 
 const features = [
   { icon: IconSparkles, title: 'Фокус-режим', desc: '1–3 задачи. Только самое важное.' },
@@ -220,8 +221,8 @@ export function AuthPage() {
                       required
                       autoFocus
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="+7 999 123-45-67"
+                      onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
+                      placeholder="+7 (999) 123-45-67"
                       disabled={loading}
                       className="h-11"
                     />

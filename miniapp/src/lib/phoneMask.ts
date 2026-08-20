@@ -1,0 +1,25 @@
+// Только отображение — на сервер по-прежнему уходит сырой ввод, нормализация
+// в E.164 уже сделана на бэкенде (PhoneNumberNormalizer). Маска здесь просто
+// приводит частые варианты набора (с 8, с +7, с 7, без кода) к одному виду
+// по мере ввода, чтобы человек видел единообразный номер, а не что напечатал.
+export function formatPhoneInput(raw: string): string {
+  let digits = raw.replace(/\D/g, '');
+
+  if (digits.startsWith('8')) {
+    digits = '7' + digits.slice(1);
+  } else if (!digits.startsWith('7') && digits.length > 0) {
+    digits = '7' + digits;
+  }
+  digits = digits.slice(0, 11);
+
+  if (digits.length === 0) return '';
+
+  const rest = digits.slice(1);
+  let result = '+7';
+  if (rest.length > 0) result += ` (${rest.slice(0, 3)}`;
+  if (rest.length >= 3) result += ') ';
+  if (rest.length > 3) result += rest.slice(3, 6);
+  if (rest.length > 6) result += `-${rest.slice(6, 8)}`;
+  if (rest.length > 8) result += `-${rest.slice(8, 10)}`;
+  return result;
+}

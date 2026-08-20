@@ -26,6 +26,7 @@ import { MergeConflictDialog } from '@/app/components/MergeConflictDialog';
 import { isTelegramWebApp } from '@/lib/auth';
 import { plural } from '@/lib/plural';
 import { useAuthMethods } from '@/lib/hooks/useAuthMethods';
+import { formatPhoneInput } from '@/lib/phoneMask';
 import {
   useIdentities,
   useRequestBindEmailCode,
@@ -529,8 +530,8 @@ function PhoneSection({
             required
             autoFocus
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="+7 999 123-45-67"
+            onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
+            placeholder="+7 (999) 123-45-67"
             disabled={requestCode.isPending}
             className="h-10"
           />
