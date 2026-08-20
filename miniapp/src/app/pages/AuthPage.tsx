@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { IconPhone, IconSparkles, IconBolt, IconShield } from '@tabler/icons-react';
+import { IconPhone, IconMail, IconSparkles, IconBolt, IconShield } from '@tabler/icons-react';
 import { motion } from 'motion/react';
 import { useStore } from '@/lib/store';
 import {
@@ -275,7 +275,7 @@ export function AuthPage() {
                           disabled={loading}
                           className="flex items-center justify-center gap-3 py-3 px-6 rounded-2xl font-semibold transition-all active:scale-95 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed border border-border bg-muted/50 text-foreground"
                         >
-                          <IconPhone className="w-5 h-5" />
+                          {mode === 'email' ? <IconPhone className="w-5 h-5" /> : <IconMail className="w-5 h-5" />}
                           {mode === 'email' ? 'Телефон' : 'Почта'}
                         </button>
                       )}
