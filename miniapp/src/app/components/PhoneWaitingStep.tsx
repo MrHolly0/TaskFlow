@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { IconArrowLeft, IconPhone, IconCopy, IconCheck } from '@tabler/icons-react';
 import { Button, buttonVariants } from '@/app/components/ui/button';
 import { cn } from '@/lib/utils';
+import { formatPhoneInput } from '@/lib/phoneMask';
 
 const TOTAL_WAIT_SECONDS = 5 * 60;
 const POLL_INTERVAL_MS = 2000;
@@ -37,6 +38,7 @@ export function PhoneWaitingStep<T extends PhoneConfirmationStatus>({
   const [cancelling, setCancelling] = useState(false);
   const [copied, setCopied] = useState(false);
   const stoppedRef = useRef(false);
+  const dialableNumber = `+${confirmationNumber.replace(/\D/g, '')}`;
 
   useEffect(() => {
     stoppedRef.current = false;
@@ -75,7 +77,7 @@ export function PhoneWaitingStep<T extends PhoneConfirmationStatus>({
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(confirmationNumber);
+      await navigator.clipboard.writeText(dialableNumber);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -103,7 +105,8 @@ export function PhoneWaitingStep<T extends PhoneConfirmationStatus>({
         <div className="space-y-1.5 text-center">
           <h2 className="text-lg font-semibold">Время вышло</h2>
           <p className="text-sm text-muted-foreground">
-            Звонок не пришёл за пять минут. Попробуйте ещё раз.
+            Подтверждение не пришло за пять минут — возможно, звонок не
+            дошёл. Попробуйте ещё раз.
           </p>
         </div>
         <Button onClick={onBack} className="w-full h-11">Начать заново</Button>
@@ -113,6 +116,7 @@ export function PhoneWaitingStep<T extends PhoneConfirmationStatus>({
 
   const minutes = Math.floor(secondsLeft / 60);
   const seconds = secondsLeft % 60;
+  const displayNumber = formatPhoneInput(confirmationNumber);
 
   return (
     <div className="space-y-6">
@@ -135,12 +139,12 @@ export function PhoneWaitingStep<T extends PhoneConfirmationStatus>({
 
       <div className="space-y-3">
         <p className="text-center text-3xl font-mono font-semibold tracking-wide select-all">
-          {confirmationNumber}
+          {displayNumber}
         </p>
 
         <div className="flex items-center gap-2">
           <a
-            href={`tel:${confirmationNumber}`}
+            href={`tel:${dialableNumber}`}
             className={cn(buttonVariants({ size: 'lg' }), 'flex-1')}
           >
             <IconPhone className="w-4 h-4" />

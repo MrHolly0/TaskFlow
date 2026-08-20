@@ -123,9 +123,51 @@ class UcallerPhoneVerificationProviderTest {
 
         PhoneConfirmationRequest result = provider.requestConfirmation(PHONE);
 
-        assertThat(result.confirmationNumber()).isEqualTo("79001000011");
+        assertThat(result.confirmationNumber()).isEqualTo("+79001000011");
         assertThat(result.ucallerId()).isEqualTo("103000");
         serverOut[0].verify();
+    }
+
+    // Ucaller отдаёт confirmation_number без "+" (79001000011) — так его
+    // нельзя набрать с мобильного. Проверяем на всех формах, которые Ucaller
+    // может вернуть по документации и по факту, что все они приводятся к
+    // одному E.164 тем же нормализатором, что и везде в проекте.
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "79001000011",
+            "+79001000011",
+            "89001000011",
+            "9001000011",
+            "7 900 100 00 11",
+            "8(900)100-00-11",
+    })
+    void requestConfirmation_variousConfirmationNumberForms_normalizedToE164(String rawConfirmationNumber) {
+        MockRestServiceServer[] serverOut = new MockRestServiceServer[1];
+        var provider = fullyConfigured(serverOut);
+
+        serverOut[0].expect(method(HttpMethod.GET))
+                .andRespond(withSuccess(
+                        "{\"status\":true,\"ucaller_id\":103000,\"confirmation_number\":\"" + rawConfirmationNumber + "\"}",
+                        MediaType.APPLICATION_JSON));
+
+        PhoneConfirmationRequest result = provider.requestConfirmation(PHONE);
+
+        assertThat(result.confirmationNumber()).isEqualTo("+79001000011");
+    }
+
+    @Test
+    void requestConfirmation_confirmationNumberNotNormalizable_throwsIllegalState() {
+        MockRestServiceServer[] serverOut = new MockRestServiceServer[1];
+        var provider = fullyConfigured(serverOut);
+
+        serverOut[0].expect(method(HttpMethod.GET))
+                .andRespond(withSuccess(
+                        "{\"status\":true,\"ucaller_id\":103000,\"confirmation_number\":\"12345\"}",
+                        MediaType.APPLICATION_JSON));
+
+        assertThatThrownBy(() -> provider.requestConfirmation(PHONE))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("12345");
     }
 
     @Test

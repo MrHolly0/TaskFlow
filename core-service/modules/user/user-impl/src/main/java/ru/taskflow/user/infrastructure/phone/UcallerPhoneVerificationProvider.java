@@ -10,6 +10,7 @@ import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import ru.taskflow.user.application.PhoneConfirmationRequest;
+import ru.taskflow.user.application.PhoneNumberNormalizer;
 import ru.taskflow.user.application.PhoneVerificationProvider;
 
 /**
@@ -88,8 +89,14 @@ public class UcallerPhoneVerificationProvider implements PhoneVerificationProvid
             String reason = response != null && response.error() != null ? response.error() : "пустой ответ";
             throw new IllegalStateException("Ucaller не принял запрос входящего звонка: " + reason);
         }
+        // Ucaller отдаёт confirmation_number без "+" (вид 7XXXXXXXXXX) — набрать
+        // такой номер с мобильного нельзя. Приводим тем же нормализатором, что
+        // и везде остальном, вместо второго на фронтенде.
+        String confirmationNumber = PhoneNumberNormalizer.normalize(response.confirmationNumber())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Ucaller вернул confirmation_number, не приводимый к E.164: " + response.confirmationNumber()));
         return new PhoneConfirmationRequest(
-                response.confirmationNumber(),
+                confirmationNumber,
                 response.ucallerId() != null ? response.ucallerId().toString() : null);
     }
 
