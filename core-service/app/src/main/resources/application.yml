@@ -36,6 +36,13 @@ spring:
 
 server:
   port: ${SERVER_PORT:8080}
+  # Доверять X-Forwarded-For только от nginx (соединение из приватной сети —
+  # у настоящего интернет-клиента такого адреса быть не может), а не любому,
+  # кто его пришлёт. native — RemoteIpValve Tomcat со стандартным
+  # internal-proxies (loopback + приватные диапазоны, docker-сеть туда
+  # попадает); framework (ForwardedHeaderFilter) такой проверки не делает —
+  # переписывает адрес по заголовку от кого угодно.
+  forward-headers-strategy: native
 
 app:
   branding:

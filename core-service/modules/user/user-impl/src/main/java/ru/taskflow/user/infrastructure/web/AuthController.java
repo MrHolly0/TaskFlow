@@ -202,15 +202,15 @@ public class AuthController {
         }
     }
 
+    // getRemoteAddr(), не заголовок напрямую: server.forward-headers-strategy=native
+    // (см. application.yml) включает RemoteIpValve Tomcat — тот сам разворачивает
+    // X-Forwarded-For в getRemoteAddr(), но только если соединение до приложения
+    // пришло из доверенной сети (internal-proxies). Читать заголовок здесь самим —
+    // значит доверять ему от кого угодно, включая прямое обращение в обход nginx.
     private boolean telegramAllowed(HttpServletRequest httpRequest) {
-        return countryResolver.resolveCountryIso(clientIp(httpRequest))
+        return countryResolver.resolveCountryIso(httpRequest.getRemoteAddr())
                 .map(iso -> !"RU".equalsIgnoreCase(iso))
                 .orElse(false);
-    }
-
-    private String clientIp(HttpServletRequest request) {
-        String realIp = request.getHeader("X-Real-IP");
-        return realIp != null && !realIp.isBlank() ? realIp : request.getRemoteAddr();
     }
 
     private AuthResponse issueTokens(UUID userId, String username) {
