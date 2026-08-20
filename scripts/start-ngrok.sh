@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PORT=${SERVER_PORT:-8080}
 SECRET=${TELEGRAM_WEBHOOK_SECRET:-}
 BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
 
@@ -10,7 +9,11 @@ if [[ -z "$BOT_TOKEN" ]]; then
   exit 1
 fi
 
-ngrok http "$PORT" --log=stdout &
+# Порт nginx (80), не core-service (8080) напрямую: туннель, бьющий мимо
+# nginx, обходит и настоящий IP клиента (set_real_ip_from/real_ip_header
+# работают только для того, что реально пришло через nginx), и раздачу
+# miniapp, и остальные location-блоки.
+ngrok http 80 --log=stdout &
 NGROK_PID=$!
 
 sleep 2
