@@ -94,16 +94,16 @@ public class AgentLoop {
 
         if (!parsed1.needsSecondPass() || budgetExceeded(start)) {
             return finishWithFallback(userText, titled1.actions(), rejections, response1.text(), window, 1,
-                    entryPoint, parsed1.rejectedTarget());
+                    parsed1.rejectedTarget());
         }
 
-        return runSecondPass(userId, userText, historyPass1, tools, response1, parsed1, titled1.actions(), window, rejections, entryPoint);
+        return runSecondPass(userId, userText, historyPass1, tools, response1, parsed1, titled1.actions(), window, rejections);
     }
 
     private AgentOutcome runSecondPass(UUID userId, String userText, List<LlmMessage> historyPass1, List<Map<String, Object>> tools,
                                         LlmToolResponse response1, ParsedToolCalls parsed1,
                                         List<ProposedAction> pass1Actions, TaskContextWindow window,
-                                        List<String> rejections, AssistantEntryPoint entryPoint) {
+                                        List<String> rejections) {
         LlmToolCall searchCall = findSearchCall(response1.toolCalls());
         List<TaskResponse> found = taskService.search(userId, parsed1.searchQuery(), false, 20);
         ExtendedWindow extended = extendWindow(window, found);
@@ -145,7 +145,7 @@ public class AgentLoop {
 
         UUID rejectedTarget = parsed2.rejectedTarget() != null ? parsed2.rejectedTarget() : parsed1.rejectedTarget();
         return finishWithFallback(userText, combined, rejections, assistantText, extended.window(), 2,
-                entryPoint, rejectedTarget);
+                rejectedTarget);
     }
 
     /**
@@ -157,7 +157,7 @@ public class AgentLoop {
      */
     private AgentOutcome finishWithFallback(String userText, List<ProposedAction> actions, List<String> rejections,
                                             String assistantText, TaskContextWindow window, int passes,
-                                            AssistantEntryPoint entryPoint, UUID rejectedTarget) {
+                                            UUID rejectedTarget) {
         // Пустой actions() бывает по четырём причинам: модель ничего не
         // предложила, предложила — но фильтры отбросили (Task 0 части 3б,
         // чужое решение не подменяем), ярлык разрешился, а дальше
@@ -180,12 +180,21 @@ public class AgentLoop {
             return new AgentOutcome(guarded.actions(), allRejections, null, null, assistantText, window, passes, false);
         }
 
-        if (readsLikeATaskName && actions.size() == 1 && actions.getFirst().targetTaskId() != null) {
+        // complete_task сюда не попадает: «закрыть X» и «создать X» — не два
+        // правдоподобных прочтения одной реплики так, как ими являются
+        // «изменить X» и «создать X» (та настоящая двоякость, которую эта
+        // ветка и чинит, — «изменить планы на кино»). Если модель, уже
+        // знающая правило про прошедшее время, решила, что дело сделано,
+        // предлагать завести его заново незачем — looksLikeStandaloneTask
+        // не знает про время глагола и не должен, но здесь решение не за
+        // ним: модель уже высказалась однозначно.
+        if (readsLikeATaskName && actions.size() == 1 && actions.getFirst().targetTaskId() != null
+                && actions.getFirst().type() != AssistantActionType.COMPLETE) {
             ProposedAction existing = actions.getFirst();
             String targetTitle = window.titleFor(existing.targetTaskId());
             if (!duplicateGuard.isDuplicateOf(userText, targetTitle)) {
-                List<ProposedAction> alternatives = orderAlternatives(existing, fallbackCreateAction(userText), entryPoint);
-                String reason = "реплика могла означать «" + existing.summary() + "», а могла — новую задачу";
+                List<ProposedAction> alternatives = orderAlternatives(existing, fallbackCreateAction(userText));
+                String reason = "реплика могла означать «" + targetTitle + "», а могла — новую задачу";
                 return new AgentOutcome(alternatives, rejections, null, null, assistantText, window, passes, false,
                         true, reason);
             }
@@ -195,15 +204,14 @@ public class AgentLoop {
     }
 
     /**
-     * Из быстрого добавления создание идёт первым вариантом (там чаще хотят
-     * добавить новое), из чата — первым остаётся то, что предложила модель.
-     * Значение по умолчанию, не запрет: применяется только к порядку показа
-     * и к тому, какой вариант выбран изначально.
+     * Предложение модели — всегда первым и выбранным по умолчанию, независимо
+     * от точки входа: мы дополняем его альтернативой, а не спорим с ним.
+     * «Создание первым для быстрого добавления» — правило для другой ветки
+     * (modelSaidNothing выше), где вариант создания синтезировали мы сами,
+     * потому что модель ничего не предложила; здесь она уже высказалась.
      */
-    private List<ProposedAction> orderAlternatives(ProposedAction existing, ProposedAction create, AssistantEntryPoint entryPoint) {
-        List<ProposedAction> ordered = entryPoint == AssistantEntryPoint.QUICK_ADD
-                ? List.of(create, existing)
-                : List.of(existing, create);
+    private List<ProposedAction> orderAlternatives(ProposedAction existing, ProposedAction create) {
+        List<ProposedAction> ordered = List.of(existing, create);
         List<ProposedAction> renumbered = new ArrayList<>(2);
         for (int i = 0; i < ordered.size(); i++) {
             ProposedAction a = ordered.get(i);

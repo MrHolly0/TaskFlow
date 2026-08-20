@@ -222,31 +222,44 @@ class AgentLoopTest {
     // Task 5, вторая редакция: двоякость — результат разбора (структура +
     // сходство с DuplicateGuard), не особый случай и не список глаголов.
 
+    // Живой дефект: «сходил в кино» при активной «кино с настей» — модель
+    // верно предложила complete_task, а эта ветка синтезировала вторым
+    // вариантом «создать» и он же оказывался выбран из быстрого добавления.
+    // «Закрыть X» и «создать X» — не два правдоподобных прочтения одной
+    // реплики так, как ими являются «изменить X» и «создать X» (см. ниже,
+    // run_offersBothAlternativesForASecondPhraseAgainstSameTask, тот случай
+    // остаётся). Раз модель уже решила, что дело сделано, предлагать завести
+    // его заново незачем.
     @Test
-    void run_offersBothAlternativesWhenModelActsOnSimilarLookingTask() {
+    void run_doesNotOfferCreateAlternativeWhenModelClosesMatchingTask() {
         when(contextBuilder.build(userId)).thenReturn(movieWindow());
         when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(completeTaskCall()), null));
 
         var outcome = loopWithFixedClock().run(userId, "закрыть кино", zone);
 
-        assertThat(outcome.ambiguous()).isTrue();
-        assertThat(outcome.actions()).hasSize(2);
-        assertThat(outcome.actions().get(0).type()).isEqualTo(AssistantActionType.COMPLETE);
-        assertThat(outcome.actions().get(0).accepted()).isTrue();
-        assertThat(outcome.actions().get(1).type()).isEqualTo(AssistantActionType.CREATE);
-        assertThat(outcome.actions().get(1).payload()).containsEntry("title", "закрыть кино");
-        assertThat(outcome.actions().get(1).accepted()).isFalse();
+        assertThat(outcome.ambiguous()).isFalse();
+        assertThat(outcome.actions()).hasSize(1);
+        assertThat(outcome.actions().getFirst().type()).isEqualTo(AssistantActionType.COMPLETE);
+        assertThat(outcome.actions().getFirst().accepted()).isTrue();
     }
 
     @Test
     void run_offersBothAlternativesForASecondPhraseAgainstSameTask() {
         when(contextBuilder.build(userId)).thenReturn(movieWindow());
-        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(completeTaskCall()), null));
+        // Не emptyUpdateTaskCall(): без единого поля ActionValidator отклонил
+        // бы его как «нечего менять» (см. run_unrelatedRejectionStillBlocksFallback)
+        // раньше, чем действие дошло бы до этой ветки.
+        var updateWithField = new LlmToolCall("call-update", "update_task",
+                "{\"task_ref\":\"T1\",\"priority\":\"HIGH\"}");
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(updateWithField), null));
 
         var outcome = loopWithFixedClock().run(userId, "изменить планы на кино", zone);
 
         assertThat(outcome.ambiguous()).isTrue();
         assertThat(outcome.actions()).hasSize(2);
+        // Причина собирается из названия задачи, не из готовой сводки с
+        // глаголом (была бы «...означать «Изменить — кино с настей»...»).
+        assertThat(outcome.ambiguityReason()).isEqualTo("реплика могла означать «кино с настей», а могла — новую задачу");
     }
 
     @Test
@@ -298,29 +311,40 @@ class AgentLoopTest {
         assertThat(outcome.actions()).hasSize(1);
     }
 
+    // Раньше быстрое добавление переставляло местами: create_task первым и
+    // выбранным, даже когда модель уже уверенно предложила своё действие —
+    // ровно так «сходил в кино» превращалось в предложенную по умолчанию
+    // новую задачу. Мы дополняем предложение модели альтернативой, а не
+    // спорим с ним, независимо от точки входа; «создание первым» остаётся
+    // только для случая, когда модель промолчала и вариант синтезировали мы
+    // сами (run_createsStandaloneTaskWhenModelSilentAndTextReadsAsTitle).
     @Test
-    void run_ordersCreateFirstForQuickAdd() {
+    void run_keepsModelActionFirstEvenForQuickAdd() {
         when(contextBuilder.build(userId)).thenReturn(movieWindow());
-        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(completeTaskCall()), null));
+        var updateWithField = new LlmToolCall("call-update", "update_task",
+                "{\"task_ref\":\"T1\",\"priority\":\"HIGH\"}");
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(updateWithField), null));
 
-        var outcome = loopWithFixedClock().run(userId, "закрыть кино", zone,
+        var outcome = loopWithFixedClock().run(userId, "изменить планы на кино", zone,
                 ru.taskflow.assistant.api.AssistantEntryPoint.QUICK_ADD);
 
-        assertThat(outcome.actions().get(0).type()).isEqualTo(AssistantActionType.CREATE);
+        assertThat(outcome.actions().get(0).type()).isEqualTo(AssistantActionType.UPDATE);
         assertThat(outcome.actions().get(0).accepted()).isTrue();
-        assertThat(outcome.actions().get(1).type()).isEqualTo(AssistantActionType.COMPLETE);
+        assertThat(outcome.actions().get(1).type()).isEqualTo(AssistantActionType.CREATE);
         assertThat(outcome.actions().get(1).accepted()).isFalse();
     }
 
     @Test
     void run_keepsModelActionFirstForChat() {
         when(contextBuilder.build(userId)).thenReturn(movieWindow());
-        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(completeTaskCall()), null));
+        var updateWithField = new LlmToolCall("call-update", "update_task",
+                "{\"task_ref\":\"T1\",\"priority\":\"HIGH\"}");
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(updateWithField), null));
 
-        var outcome = loopWithFixedClock().run(userId, "закрыть кино", zone,
+        var outcome = loopWithFixedClock().run(userId, "изменить планы на кино", zone,
                 ru.taskflow.assistant.api.AssistantEntryPoint.CHAT);
 
-        assertThat(outcome.actions().get(0).type()).isEqualTo(AssistantActionType.COMPLETE);
+        assertThat(outcome.actions().get(0).type()).isEqualTo(AssistantActionType.UPDATE);
         assertThat(outcome.actions().get(0).accepted()).isTrue();
         assertThat(outcome.actions().get(1).type()).isEqualTo(AssistantActionType.CREATE);
         assertThat(outcome.actions().get(1).accepted()).isFalse();

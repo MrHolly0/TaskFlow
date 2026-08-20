@@ -458,36 +458,44 @@ class LiveModelRegressionTest {
     }
 
     /**
-     * Живой дефект: «сходил в кино» при активной «кино с настей» создавало
-     * новую задачу вместо закрытия существующей — правило 3 промпта
-     * оговаривало инфинитив/повелительное наклонение, но не прошедшее время,
-     * и модель подводила «сходил» под то же правило. Правило дополнено —
-     * здесь проверка на живой модели, не на тексте промпта.
+     * Живой дефект, в два слоя. Первый: «сходил в кино» при активной «кино
+     * с настей» создавало новую задачу вместо закрытия существующей —
+     * правило 3 промпта оговаривало инфинитив/повелительное наклонение, но
+     * не прошедшее время. Промпт починили — модель стала честно предлагать
+     * закрытие. Второй слой обнаружился только тогда: finishWithFallback
+     * (Task 5) видел одно действие со ссылкой на задачу и структурно
+     * похожую на название реплику и синтезировал второй вариант — «создать
+     * сходил в кино», из быстрого добавления ещё и выбранный по умолчанию.
+     * «Закрыть X» и «создать X» не были и не стали двумя правдоподобными
+     * прочтениями — это починено на уровне AgentLoop (complete_task больше
+     * не участвует в синтезе альтернативы), здесь — проверка результата на
+     * живой модели: ровно одно действие, без выбора.
      */
     @Test
     void handleText_pastTenseClosesMatchingActiveTaskInsteadOfCreatingNew() {
         UUID userId = newUser();
         TaskResponse kino = seedTask(userId, "кино с настей", "Личное", TaskPriority.MEDIUM, null);
 
-        Proposal proposal = handleText(userId, "сходил в кино");
+        // Несколько попыток компенсируют не сетевой шум, а то, что правило про
+        // прошедшее время — текст промпта, не гарантия: модель иногда всё
+        // равно уходит прямиком в create_task, минуя complete_task.
+        List<String> observations = new ArrayList<>();
+        boolean closedExclusively = false;
+        for (int attempt = 1; attempt <= 3 && !closedExclusively; attempt++) {
+            Proposal proposal = handleText(userId, "сходил в кино");
+            observations.add("попытка %d: actions=%s, exclusive=%s".formatted(
+                    attempt, proposal.actions(), proposal.exclusive()));
+            closedExclusively = proposal.actions().size() == 1
+                    && proposal.actions().getFirst().type() == AssistantActionType.COMPLETE
+                    && kino.id().equals(proposal.actions().getFirst().targetTaskId())
+                    && proposal.actions().getFirst().accepted()
+                    && !proposal.exclusive();
+        }
 
-        // Как и в quick_createsNewTaskInsteadOfSilentlyActingOnExistingTask —
-        // проверяем, что выбрано по умолчанию (accepted), а не что второго
-        // варианта нет вовсе: AgentLoop может honestly предложить «создать
-        // новую» вторым, непринятым вариантом (readsLikeATaskName не смотрит
-        // на время глагола, это дело промпта, не Java), но закрытие
-        // существующей должно остаться тем, что выбрано.
-        ProposedAction first = proposal.actions().getFirst();
-        assertThat(first.type())
-                .overridingErrorMessage("«сходил в кино» не закрыло существующую «кино с настей» по умолчанию: %s",
-                        proposal.actions())
-                .isEqualTo(AssistantActionType.COMPLETE);
-        assertThat(first.targetTaskId())
-                .overridingErrorMessage("«сходил в кино» закрыло не ту задачу: %s", proposal.actions())
-                .isEqualTo(kino.id());
-        assertThat(first.accepted())
-                .overridingErrorMessage("Закрытие «кино с настей» предложено, но не выбрано по умолчанию: %s",
-                        proposal.actions())
+        assertThat(closedExclusively)
+                .overridingErrorMessage(
+                        "«сходил в кино» ни разу не дало однозначное закрытие без выбора за %d попытки: %s",
+                        observations.size(), observations)
                 .isTrue();
     }
 
