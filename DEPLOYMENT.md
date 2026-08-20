@@ -166,8 +166,8 @@ Set production values in `.env`:
 # Update APP_DOMAIN for Mini App API URL
 APP_DOMAIN=your-domain.com
 
-# Update Telegram webhook URL
-TELEGRAM_WEBHOOK_URL=https://your-domain.com/telegram/webhook
+# Update public base URL (used for Telegram menu button, email links, Ucaller callback)
+PUBLIC_BASE_URL=https://your-domain.com
 
 # Use strong JWT_SECRET (generate with: openssl rand -hex 32)
 JWT_SECRET=<generated-secret>
@@ -329,7 +329,7 @@ sudo certbot renew --force-renewal
 | REDIS_PASSWORD | No | taskflow | Redis password |
 | TELEGRAM_BOT_TOKEN | Yes | | From BotFather |
 | TELEGRAM_BOT_USERNAME | Yes | | Bot username |
-| TELEGRAM_WEBHOOK_URL | Yes (prod) | | Full webhook URL |
+| PUBLIC_BASE_URL | Yes (prod) | | Public app URL, e.g. https://your-domain.com |
 | TELEGRAM_WEBHOOK_SECRET | Yes (prod) | | Secret token |
 | GROQ_API_KEY | Yes | | Groq API key |
 | JWT_SECRET | No | changeme-in-production | Use strong secret in prod |

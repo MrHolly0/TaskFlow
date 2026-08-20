@@ -26,7 +26,7 @@ app:
   mail:
     from: ${SMTP_FROM:}
   frontend:
-    miniapp-url: ${MINIAPP_URL:}
+    miniapp-url: ${PUBLIC_BASE_URL:}
   telegram:
     bot-token: ${TELEGRAM_BOT_TOKEN:}
     api-base-url: https://api.telegram.org

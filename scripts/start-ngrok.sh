@@ -26,5 +26,8 @@ curl -s "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
   ${SECRET:+-d "secret_token=${SECRET}"} | python3 -m json.tool
 
 echo ""
-echo "Webhook set. Press Ctrl+C to stop ngrok."
+echo "Webhook set. Update PUBLIC_BASE_URL in infra/.env to: ${NGROK_URL}"
+echo "Then restart core-service/notification-worker for it to take effect:"
+echo "  docker compose -f infra/docker-compose.yml up -d core-service notification-worker"
+echo "Press Ctrl+C to stop ngrok."
 wait "$NGROK_PID"

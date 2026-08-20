@@ -40,6 +40,7 @@ server:
 app:
   branding:
     name: ${APP_NAME:Мунин}
+  public-base-url: ${PUBLIC_BASE_URL:}
   jwt:
     secret: ${JWT_SECRET:dev_secret_key_must_be_at_least_32_characters_long}
     access-token-ttl-seconds: ${JWT_TTL_SECONDS:900}
@@ -56,7 +57,7 @@ app:
     auth-date-max-age: ${TELEGRAM_AUTH_MAX_AGE:86400}
     webhook-secret: ${TELEGRAM_WEBHOOK_SECRET:}
     voice-dir: ${TELEGRAM_VOICE_DIR:/tmp/taskflow/voice}
-    miniapp-url: ${MINIAPP_URL:}
+    miniapp-url: ${PUBLIC_BASE_URL:}
   nlp:
     worker-url: ${NLP_WORKER_URL:http://localhost:8081}
     connect-timeout-seconds: 5
