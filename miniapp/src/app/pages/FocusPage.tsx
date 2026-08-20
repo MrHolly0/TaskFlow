@@ -9,6 +9,7 @@ import { formatDeadline, getPriorityBgColor, cn } from '@/lib/utils';
 import { useFocusTasks, useUpcomingFocusTasks, useCompleteTask, useUpdateTask, useTasksList } from '@/lib/hooks/useTasks';
 import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
 import { useDisplayName } from '@/lib/hooks/useSettings';
+import { useMinuteTick } from '@/lib/hooks/useMinuteTick';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
 import { TaskDetailModal } from '@/app/components/TaskDetailModal';
@@ -71,6 +72,7 @@ interface FocusTaskCardProps {
 
 function FocusTaskCard({ task, index, timezone, onComplete, onSnooze, onClick }: FocusTaskCardProps) {
   const [completing, setCompleting] = useState(false);
+  useMinuteTick();
 
   const handleComplete = () => {
     setCompleting(true);

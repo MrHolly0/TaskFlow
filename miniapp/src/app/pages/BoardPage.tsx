@@ -29,6 +29,7 @@ import {
 } from '@tabler/icons-react';
 import { formatDeadline, cn } from '@/lib/utils';
 import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
+import { useMinuteTick } from '@/lib/hooks/useMinuteTick';
 import { Badge } from '@/app/components/ui/badge';
 import { Card } from '@/app/components/ui/card';
 import { Button } from '@/app/components/ui/button';
@@ -88,6 +89,7 @@ function DraggableTaskCard({
     id: task.id,
   });
   const { timezone, isReady: timezoneReady } = useUserTimezone();
+  useMinuteTick();
 
   const style = transform
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }

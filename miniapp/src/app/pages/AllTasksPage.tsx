@@ -5,6 +5,7 @@ import { formatDeadline, endOfZonedDay, cn } from '@/lib/utils';
 import { getStatusLabel } from '@/lib/store';
 import { useTasksList } from '@/lib/hooks/useTasks';
 import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
+import { useMinuteTick } from '@/lib/hooks/useMinuteTick';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
@@ -48,6 +49,7 @@ export function AllTasksPage() {
 
   const { data: allTasks = [], isLoading, error } = useTasksList();
   const { timezone, isReady: timezoneReady } = useUserTimezone();
+  useMinuteTick();
 
   const filteredTasks = (allTasks || []).filter((task) => {
     if (search && !task.title.toLowerCase().includes(search.toLowerCase())) return false;
