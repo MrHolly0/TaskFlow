@@ -19,6 +19,7 @@ import ru.taskflow.task.api.exception.TaskNotFoundException;
 import ru.taskflow.task.infrastructure.persistence.*;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -348,6 +349,24 @@ class TaskServiceTest {
         var captor = ArgumentCaptor.forClass(Pageable.class);
         verify(taskRepository).search(any(), any(), anyBoolean(), captor.capture());
         assertThat(captor.getValue().getPageSize()).isEqualTo(20);
+    }
+
+    @Test
+    void getStats_includesCompletedRowsReturnedByRepository() {
+        var completedAt = OffsetDateTime.parse("2026-08-15T10:00:00Z");
+        when(taskRepository.findStatsRows(eq(userId), any(OffsetDateTime.class), any(OffsetDateTime.class)))
+                .thenReturn(List.<Object[]>of(new Object[] {
+                        completedAt.minusDays(1),
+                        completedAt,
+                        null,
+                        "DONE"
+                }));
+
+        var result = taskService.getStats(userId);
+
+        assertThat(result.tasks()).hasSize(1);
+        assertThat(result.tasks().getFirst().completedAt()).isEqualTo(completedAt.withOffsetSameInstant(ZoneOffset.UTC));
+        assertThat(result.tasks().getFirst().status()).isEqualTo(TaskStatus.DONE);
     }
 
     @Test

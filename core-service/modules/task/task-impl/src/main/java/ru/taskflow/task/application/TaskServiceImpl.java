@@ -16,13 +16,18 @@ import ru.taskflow.task.api.dto.DigestResponse;
 import ru.taskflow.task.api.dto.FocusResponse;
 import ru.taskflow.task.api.dto.TaskFilterRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
+import ru.taskflow.task.api.dto.TaskStatsItem;
+import ru.taskflow.task.api.dto.TaskStatsResponse;
 import ru.taskflow.task.api.dto.TaskTransferResult;
 import ru.taskflow.task.api.dto.UpdateTaskRequest;
 import ru.taskflow.task.api.exception.GroupNotFoundException;
 import ru.taskflow.task.api.exception.TaskNotFoundException;
 import ru.taskflow.task.infrastructure.persistence.*;
 
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -385,6 +390,16 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
+    public TaskStatsResponse getStats(UUID userId) {
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        OffsetDateTime from = now.minusDays(8);
+        List<TaskStatsItem> tasks = taskRepository.findStatsRows(userId, from, now).stream()
+                .map(this::toStatsItem)
+                .toList();
+        return new TaskStatsResponse(tasks);
+    }
+
+    @Override
     @Transactional
     public TaskTransferResult transferOwnership(UUID from, UUID to) {
         int tasks = taskRepository.reassignOwner(from, to);
@@ -400,6 +415,34 @@ public class TaskServiceImpl implements TaskService {
         long groups = groupRepository.countByUserId(userId);
         long tags = tagRepository.countByUserId(userId);
         return new TaskTransferResult((int) tasks, (int) groups, (int) tags);
+    }
+
+    private TaskStatsItem toStatsItem(Object[] row) {
+        return new TaskStatsItem(
+                toOffsetDateTime(row[0]),
+                toOffsetDateTime(row[1]),
+                toOffsetDateTime(row[2]),
+                TaskStatus.valueOf(row[3].toString())
+        );
+    }
+
+    private OffsetDateTime toOffsetDateTime(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof OffsetDateTime offsetDateTime) {
+            return offsetDateTime;
+        }
+        if (value instanceof Timestamp timestamp) {
+            return timestamp.toInstant().atOffset(ZoneOffset.UTC);
+        }
+        if (value instanceof Instant instant) {
+            return instant.atOffset(ZoneOffset.UTC);
+        }
+        if (value instanceof LocalDateTime localDateTime) {
+            return localDateTime.atOffset(ZoneOffset.UTC);
+        }
+        return OffsetDateTime.parse(value.toString());
     }
 
     /**

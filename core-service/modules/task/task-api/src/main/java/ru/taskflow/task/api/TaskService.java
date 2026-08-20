@@ -7,6 +7,7 @@ import ru.taskflow.task.api.dto.DigestResponse;
 import ru.taskflow.task.api.dto.FocusResponse;
 import ru.taskflow.task.api.dto.TaskFilterRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
+import ru.taskflow.task.api.dto.TaskStatsResponse;
 import ru.taskflow.task.api.dto.TaskTransferResult;
 import ru.taskflow.task.api.dto.UpdateTaskRequest;
 
@@ -33,6 +34,8 @@ public interface TaskService {
     FocusResponse getUpcomingFocusTasks(UUID userId);
 
     DigestResponse getDigest(UUID userId, LocalDate date);
+
+    TaskStatsResponse getStats(UUID userId);
 
     TaskResponse createQuick(UUID userId, CreateTaskRequest request);
 

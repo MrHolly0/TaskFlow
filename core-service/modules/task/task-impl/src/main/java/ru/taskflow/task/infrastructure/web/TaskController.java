@@ -20,6 +20,7 @@ import ru.taskflow.task.api.dto.DigestResponse;
 import ru.taskflow.task.api.dto.FocusResponse;
 import ru.taskflow.task.api.dto.TaskFilterRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
+import ru.taskflow.task.api.dto.TaskStatsResponse;
 import ru.taskflow.task.api.dto.UpdateTaskRequest;
 
 import java.time.LocalDate;
@@ -126,6 +127,12 @@ public class TaskController {
             @RequestParam(defaultValue = "#{T(java.time.LocalDate).now()}") LocalDate date
     ) {
         return taskService.getDigest(user.userId(), date);
+    }
+
+    @GetMapping("/stats")
+    @Operation(summary = "Статистика задач", description = "Возвращает данные для графиков, включая скрытые выполненные задачи")
+    public TaskStatsResponse getStats(@AuthenticationPrincipal AuthenticatedUser user) {
+        return taskService.getStats(user.userId());
     }
 
     @PostMapping("/quick")

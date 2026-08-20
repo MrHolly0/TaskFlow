@@ -1,20 +1,20 @@
 import { Card } from '@/app/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { useTasksList } from '@/lib/hooks/useTasks';
+import { useTaskStats } from '@/lib/hooks/useTasks';
 import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
 import { isSameZonedDay, zonedDayKey } from '@/lib/utils';
 
 export function StatsPage() {
-  const { data: allTasks = [] } = useTasksList();
+  const { data: statsTasks = [] } = useTaskStats();
   const { timezone, isReady: timezoneReady } = useUserTimezone();
 
   const now = new Date();
   const weekAgo = new Date(now);
   weekAgo.setDate(weekAgo.getDate() - 7);
 
-  const created = allTasks.filter((t: any) => new Date(t.createdAt) >= weekAgo).length;
-  const done = allTasks.filter((t: any) => t.completedAt && new Date(t.completedAt) >= weekAgo).length;
-  const overdue = allTasks.filter((t: any) =>
+  const created = statsTasks.filter((t) => new Date(t.createdAt) >= weekAgo).length;
+  const done = statsTasks.filter((t) => t.completedAt && new Date(t.completedAt) >= weekAgo).length;
+  const overdue = statsTasks.filter((t) =>
     t.deadline && new Date(t.deadline) < now && t.status !== 'DONE' && t.status !== 'CANCELLED'
   ).length;
 
@@ -22,11 +22,11 @@ export function StatsPage() {
     const date = new Date();
     date.setDate(date.getDate() - (6 - i));
 
-    const totalDay = allTasks.filter((task: any) =>
+    const totalDay = statsTasks.filter((task) =>
       isSameZonedDay(task.createdAt, date, timezone)
     ).length;
 
-    const completedDay = allTasks.filter((task: any) =>
+    const completedDay = statsTasks.filter((task) =>
       task.completedAt && isSameZonedDay(task.completedAt, date, timezone)
     ).length;
 
@@ -38,7 +38,7 @@ export function StatsPage() {
   }) : [];
 
   const activeDays = timezoneReady
-    ? new Set(allTasks.map((t: any) => zonedDayKey(t.createdAt, timezone))).size
+    ? new Set(statsTasks.map((t) => zonedDayKey(t.createdAt, timezone))).size
     : 0;
 
   return (
