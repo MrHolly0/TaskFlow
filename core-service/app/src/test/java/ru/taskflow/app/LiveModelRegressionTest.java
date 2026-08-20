@@ -457,6 +457,81 @@ class LiveModelRegressionTest {
                 .isTrue();
     }
 
+    /**
+     * Живой дефект: «сходил в кино» при активной «кино с настей» создавало
+     * новую задачу вместо закрытия существующей — правило 3 промпта
+     * оговаривало инфинитив/повелительное наклонение, но не прошедшее время,
+     * и модель подводила «сходил» под то же правило. Правило дополнено —
+     * здесь проверка на живой модели, не на тексте промпта.
+     */
+    @Test
+    void handleText_pastTenseClosesMatchingActiveTaskInsteadOfCreatingNew() {
+        UUID userId = newUser();
+        TaskResponse kino = seedTask(userId, "кино с настей", "Личное", TaskPriority.MEDIUM, null);
+
+        Proposal proposal = handleText(userId, "сходил в кино");
+
+        // Как и в quick_createsNewTaskInsteadOfSilentlyActingOnExistingTask —
+        // проверяем, что выбрано по умолчанию (accepted), а не что второго
+        // варианта нет вовсе: AgentLoop может honestly предложить «создать
+        // новую» вторым, непринятым вариантом (readsLikeATaskName не смотрит
+        // на время глагола, это дело промпта, не Java), но закрытие
+        // существующей должно остаться тем, что выбрано.
+        ProposedAction first = proposal.actions().getFirst();
+        assertThat(first.type())
+                .overridingErrorMessage("«сходил в кино» не закрыло существующую «кино с настей» по умолчанию: %s",
+                        proposal.actions())
+                .isEqualTo(AssistantActionType.COMPLETE);
+        assertThat(first.targetTaskId())
+                .overridingErrorMessage("«сходил в кино» закрыло не ту задачу: %s", proposal.actions())
+                .isEqualTo(kino.id());
+        assertThat(first.accepted())
+                .overridingErrorMessage("Закрытие «кино с настей» предложено, но не выбрано по умолчанию: %s",
+                        proposal.actions())
+                .isTrue();
+    }
+
+    /**
+     * Живой дефект: create_task описывал group как «название группы»,
+     * не сообщая модели, какие группы существуют — задача про кино не
+     * попадала в существующую «Личное», модель о ней не знала и, судя по
+     * всему, придумывала своё название. Промпт теперь передаёт список
+     * групп с прямым запретом придумывать новые.
+     */
+    @Test
+    void handleText_createTaskUsesExistingGroupNotInventedOne() {
+        UUID userId = newUser();
+        seedTask(userId, "Полить цветы", "Личное", TaskPriority.LOW, null);
+
+        // Несколько попыток компенсируют не сетевой шум, а необязательность
+        // самого группирования: "оставляй без группы, если ни одна не
+        // подходит" — валидный ответ по промпту, попадание в "Личное" не
+        // гарантировано с первого раза. Но придуманное имя — недопустимо
+        // в любой из попыток, это и есть исходный дефект.
+        List<String> observations = new ArrayList<>();
+        boolean landedInPersonal = false;
+        for (int attempt = 1; attempt <= 3 && !landedInPersonal; attempt++) {
+            Proposal proposal = handleText(userId, "сходить в кино");
+            Optional<ProposedAction> create = createAction(proposal);
+            assertThat(create)
+                    .overridingErrorMessage("Модель не создала задачу на «сходить в кино»: %s", proposal.actions())
+                    .isPresent();
+
+            Object group = create.get().payload().get("group");
+            observations.add("попытка %d: group=%s".formatted(attempt, group));
+            assertThat(group == null || "Личное".equals(group))
+                    .overridingErrorMessage("Задача про кино получила придуманную группу вместо "
+                            + "существующей «Личное»: group=%s, actions=%s", group, proposal.actions())
+                    .isTrue();
+            landedInPersonal = "Личное".equals(group);
+        }
+
+        assertThat(landedInPersonal)
+                .overridingErrorMessage("Задача про кино ни разу не попала в существующую «Личное» за %d попытки: %s",
+                        observations.size(), observations)
+                .isTrue();
+    }
+
     private Optional<ProposedAction> createAction(Proposal proposal) {
         return proposal.actions().stream().filter(a -> a.type() == AssistantActionType.CREATE).findFirst();
     }
