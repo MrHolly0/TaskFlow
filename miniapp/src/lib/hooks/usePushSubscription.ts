@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
@@ -25,6 +26,11 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
 
 export type BrowserPermission = 'default' | 'granted' | 'denied' | 'unsupported';
 
+interface PushState {
+  permission: BrowserPermission;
+  subscribed: boolean;
+}
+
 function currentPermission(): BrowserPermission {
   if (!('Notification' in window) || !('serviceWorker' in navigator) || !('PushManager' in window)) {
     return 'unsupported';
@@ -32,38 +38,49 @@ function currentPermission(): BrowserPermission {
   return Notification.permission as BrowserPermission;
 }
 
-export function usePushSubscription() {
-  const [permission, setPermission] = useState<BrowserPermission>(currentPermission());
-  const [subscribed, setSubscribed] = useState(false);
-  const [checking, setChecking] = useState(permission !== 'unsupported');
-
-  useEffect(() => {
-    if (permission === 'unsupported') {
-      setChecking(false);
-      return;
+// serviceWorker.ready может не разрешиться никогда — регистрация иногда не
+// завершается (нет активного воркера, сетевая заминка). Без тайм-аута
+// проверка зависла бы навсегда, и с ней вместе — весь выбор канала в
+// NotificationChannelPrompt, который ждёт готовности push перед показом.
+async function checkPushState(): Promise<PushState> {
+  const permission = currentPermission();
+  if (permission === 'unsupported') {
+    return { permission, subscribed: false };
+  }
+  const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000));
+  try {
+    const registration = await Promise.race([navigator.serviceWorker.ready, timeout]);
+    if (!registration) {
+      return { permission, subscribed: false };
     }
-    let cancelled = false;
-    // serviceWorker.ready может не разрешиться никогда — регистрация иногда
-    // не завершается (нет активного воркера, сетевая заминка). Без тайм-аута
-    // checking завис бы навсегда, и с ним вместе — весь выбор канала в
-    // NotificationChannelPrompt, который ждёт готовности push перед показом.
-    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000));
-    Promise.race([navigator.serviceWorker.ready, timeout])
-      .then((registration) => (registration ? registration.pushManager.getSubscription() : null))
-      .then((existing) => {
-        if (!cancelled) {
-          setSubscribed(!!existing);
-          setChecking(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setChecking(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const existing = await registration.pushManager.getSubscription();
+    return { permission, subscribed: !!existing };
+  } catch {
+    return { permission, subscribed: false };
+  }
+}
+
+const PUSH_QUERY_KEY = ['push-subscription'];
+
+/**
+ * Разрешение и живая подписка — общий кэш через React Query, не собственный
+ * useState на каждый вызов хука. Раньше SettingsPage и
+ * useNotificationChannelStatus (через NotificationChannelPrompt) держали
+ * каждый свою копию: подписался в одном месте — другое узнавало об этом
+ * только при полном перемонтировании (обычно выглядело как «помогает
+ * только перезагрузка страницы»). Мутации subscribe/unsubscribe пишут прямо
+ * в кэш через setQueryData, тем же приёмом, что useUpdateSettings.
+ */
+export function usePushSubscription() {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: PUSH_QUERY_KEY,
+    queryFn: checkPushState,
+  });
+
+  const permission = data?.permission ?? currentPermission();
+  const subscribed = data?.subscribed ?? false;
+  const checking = permission !== 'unsupported' && isLoading;
 
   // Разрешение спрашиваем только отсюда — по явному нажатию переключателя,
   // никогда сами при загрузке. Отказ необратим для сайта: вернуть человека,
@@ -73,8 +90,9 @@ export function usePushSubscription() {
       return false;
     }
     const result = await Notification.requestPermission();
-    setPermission(result as BrowserPermission);
+    const newPermission = result as BrowserPermission;
     if (result !== 'granted') {
+      queryClient.setQueryData<PushState>(PUSH_QUERY_KEY, { permission: newPermission, subscribed: false });
       return false;
     }
 
@@ -88,9 +106,9 @@ export function usePushSubscription() {
       endpoint: json.endpoint,
       keys: { p256dh: json.keys?.p256dh, auth: json.keys?.auth },
     });
-    setSubscribed(true);
+    queryClient.setQueryData<PushState>(PUSH_QUERY_KEY, { permission: newPermission, subscribed: true });
     return true;
-  }, [permission]);
+  }, [permission, queryClient]);
 
   const unsubscribe = useCallback(async () => {
     if (permission === 'unsupported') return;
@@ -101,8 +119,8 @@ export function usePushSubscription() {
       await subscription.unsubscribe();
       await getClient().delete('/push/subscriptions', { params: { endpoint } });
     }
-    setSubscribed(false);
-  }, [permission]);
+    queryClient.setQueryData<PushState>(PUSH_QUERY_KEY, { permission, subscribed: false });
+  }, [permission, queryClient]);
 
   return { permission, subscribed, checking, subscribe, unsubscribe };
 }

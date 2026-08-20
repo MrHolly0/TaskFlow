@@ -34,18 +34,13 @@ import { useInstallPrompt } from '@/lib/hooks/useInstallPrompt';
 import { usePushSubscription } from '@/lib/hooks/usePushSubscription';
 import { isTouchDevice } from '@/lib/device';
 
-function useSetting(key: string, defaultValue: string): [string, (v: string) => void] {
-  const stored = localStorage.getItem(key) ?? defaultValue;
-  const set = (v: string) => localStorage.setItem(key, v);
-  return [stored, set];
-}
-
-function useBoolSetting(key: string, defaultValue: boolean): [boolean, (v: boolean) => void] {
-  const stored = localStorage.getItem(key);
-  const value = stored === null ? defaultValue : stored === 'true';
-  const set = (v: boolean) => localStorage.setItem(key, String(v));
-  return [value, set];
-}
+const REMINDER_TIME_OPTIONS = [
+  { value: '15m', label: 'За 15 минут', minutes: 15 },
+  { value: '30m', label: 'За 30 минут', minutes: 30 },
+  { value: '1h', label: 'За 1 час', minutes: 60 },
+  { value: '2h', label: 'За 2 часа', minutes: 120 },
+  { value: '1d', label: 'За день', minutes: 1440 },
+];
 
 const AUTO_CLEAN_OPTIONS = [
   { value: 'off', label: 'Не удалять автоматически', days: null },
@@ -71,9 +66,6 @@ export function SettingsPage() {
   const user = useStore((s) => s.user);
   const logout = useStore((s) => s.logout);
   const profileDisplayName = useDisplayName();
-
-  const [reminderTime, setReminderTime] = useSetting('settings.reminderTime', '1h');
-  const [urgentExtra, setUrgentExtra] = useBoolSetting('settings.urgentExtra', true);
 
   const { data: serverSettings } = useSettings();
   const { data: identities } = useIdentities();
@@ -129,6 +121,19 @@ export function SettingsPage() {
   const handleTimezoneChange = (value: string) => {
     updateSettings.mutate({ timezone: value });
   };
+
+  const currentReminderTime = REMINDER_TIME_OPTIONS.find(
+    (o) => o.minutes === serverSettings?.defaultReminderMinutes,
+  )?.value ?? '1h';
+
+  const handleReminderTimeChange = (value: string) => {
+    const option = REMINDER_TIME_OPTIONS.find((o) => o.value === value);
+    if (!option) return;
+    updateSettings.mutate({ defaultReminderMinutes: option.minutes });
+  };
+
+  const urgentExtra = serverSettings?.urgentExtraReminder ?? true;
+  const handleUrgentExtraToggle = (v: boolean) => updateSettings.mutate({ urgentExtraReminder: v });
 
   // Локальная копия синхронизируется с сервером при загрузке/перезагрузке
   // настроек, но дальше живёт своей жизнью — иначе набор текста дёргался бы
@@ -315,16 +320,20 @@ export function SettingsPage() {
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="reminder-time">Время напоминания</Label>
-            <Select value={reminderTime} onValueChange={setReminderTime} disabled={!notificationsEnabled}>
+            <Select
+              value={currentReminderTime}
+              onValueChange={handleReminderTimeChange}
+              disabled={!notificationsEnabled || updateSettings.isPending}
+            >
               <SelectTrigger id="reminder-time" className="h-10">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="15m">За 15 минут</SelectItem>
-                <SelectItem value="30m">За 30 минут</SelectItem>
-                <SelectItem value="1h">За 1 час</SelectItem>
-                <SelectItem value="2h">За 2 часа</SelectItem>
-                <SelectItem value="1d">За день</SelectItem>
+                {REMINDER_TIME_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>
+                    {o.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -338,8 +347,8 @@ export function SettingsPage() {
             <Switch
               id="urgent-reminder"
               checked={urgentExtra}
-              onCheckedChange={setUrgentExtra}
-              disabled={!notificationsEnabled}
+              onCheckedChange={handleUrgentExtraToggle}
+              disabled={!notificationsEnabled || updateSettings.isPending}
             />
           </div>
         </section>
