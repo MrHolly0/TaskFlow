@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { IconBrandTelegram, IconSparkles, IconBolt, IconShield } from '@tabler/icons-react';
+import { IconPhone, IconSparkles, IconBolt, IconShield } from '@tabler/icons-react';
 import { motion } from 'motion/react';
 import { useStore } from '@/lib/store';
 import {
@@ -19,6 +19,7 @@ import { EmailCodeStep } from '@/app/components/EmailCodeStep';
 import { PhoneCodeStep } from '@/app/components/PhoneCodeStep';
 import { MuninLogo } from '@/app/components/MuninLogo';
 import { TelegramLoginButton } from '@/app/components/TelegramLoginButton';
+import { TelegramGlyph } from '@/app/components/TelegramLogo';
 import { useAuthMethods } from '@/lib/hooks/useAuthMethods';
 import { formatPhoneInput } from '@/lib/phoneMask';
 
@@ -232,20 +233,7 @@ export function AuthPage() {
                   </form>
                 )}
 
-                {showPhone && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode((m) => (m === 'email' ? 'phone' : 'email'));
-                      setError(null);
-                    }}
-                    className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer underline underline-offset-2"
-                  >
-                    {mode === 'email' ? 'Войти по номеру телефона' : 'Войти по почте'}
-                  </button>
-                )}
-
-                {showTelegram && (
+                {(showTelegram || showPhone) && (
                   <>
                     <div className="flex items-center gap-3">
                       <Separator className="flex-1" />
@@ -254,18 +242,35 @@ export function AuthPage() {
                     </div>
 
                     <div className="flex flex-wrap gap-3 justify-center">
-                      {isTelegramWebApp() ? (
+                      {showTelegram && (
+                        isTelegramWebApp() ? (
+                          <button
+                            onClick={handleTelegramLogin}
+                            disabled={loading}
+                            className="flex items-center justify-center gap-3 py-3 px-6 rounded-2xl font-semibold text-white transition-all active:scale-95 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+                            style={{ backgroundColor: '#0088cc' }}
+                          >
+                            <TelegramGlyph className="w-5 h-5 text-white" />
+                            Telegram
+                          </button>
+                        ) : (
+                          <TelegramLoginButton onAuth={handleWidgetAuth} />
+                        )
+                      )}
+
+                      {showPhone && (
                         <button
-                          onClick={handleTelegramLogin}
+                          type="button"
+                          onClick={() => {
+                            setMode((m) => (m === 'email' ? 'phone' : 'email'));
+                            setError(null);
+                          }}
                           disabled={loading}
-                          className="flex items-center justify-center gap-3 py-3 px-6 rounded-2xl font-semibold text-white transition-all active:scale-95 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
-                          style={{ backgroundColor: '#0088cc' }}
+                          className="flex items-center justify-center gap-3 py-3 px-6 rounded-2xl font-semibold transition-all active:scale-95 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed border border-border bg-muted/50 text-foreground"
                         >
-                          <IconBrandTelegram className="w-5 h-5" />
-                          Telegram
+                          <IconPhone className="w-5 h-5" />
+                          {mode === 'email' ? 'Телефон' : 'Почта'}
                         </button>
-                      ) : (
-                        <TelegramLoginButton onAuth={handleWidgetAuth} />
                       )}
                     </div>
                   </>
