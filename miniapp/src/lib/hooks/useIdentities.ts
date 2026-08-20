@@ -11,7 +11,7 @@ const getClient = () => {
   });
 };
 
-export type IdentityProvider = 'TELEGRAM' | 'EMAIL';
+export type IdentityProvider = 'TELEGRAM' | 'EMAIL' | 'PHONE';
 
 export interface Identity {
   provider: IdentityProvider;
@@ -72,6 +72,29 @@ export const useConfirmBindEmail = () => {
   return useMutation({
     mutationFn: async ({ email, code }: { email: string; code: string }) => {
       const response = await getClient().post<IdentityBindResponse>('/identities/email/confirm', { email, code });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['identities'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['groups'] });
+    },
+  });
+};
+
+export const useRequestBindPhoneCode = () => {
+  return useMutation({
+    mutationFn: async (phone: string) => {
+      await getClient().post('/identities/phone/request-code', { phone });
+    },
+  });
+};
+
+export const useConfirmBindPhone = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ phone, code }: { phone: string; code: string }) => {
+      const response = await getClient().post<IdentityBindResponse>('/identities/phone/confirm', { phone, code });
       return response.data;
     },
     onSuccess: () => {

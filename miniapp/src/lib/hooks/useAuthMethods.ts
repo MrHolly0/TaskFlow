@@ -6,6 +6,7 @@ const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
 export interface AuthMethods {
   email: boolean;
   telegram: boolean;
+  phone: boolean;
 }
 
 export const useAuthMethods = () => {

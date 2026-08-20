@@ -10,11 +10,13 @@ import {
   getStoredToken,
   getUserFromToken,
   requestEmailCode,
+  requestPhoneCode,
 } from '@/lib/auth';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Separator } from '@/app/components/ui/separator';
 import { EmailCodeStep } from '@/app/components/EmailCodeStep';
+import { PhoneCodeStep } from '@/app/components/PhoneCodeStep';
 import { MuninLogo } from '@/app/components/MuninLogo';
 import { TelegramLoginButton } from '@/app/components/TelegramLoginButton';
 import { useAuthMethods } from '@/lib/hooks/useAuthMethods';
@@ -28,8 +30,10 @@ const features = [
 export function AuthPage() {
   const setAuthenticated = useStore((s) => s.setAuthenticated);
   const login = useStore((s) => s.login);
-  const [step, setStep] = useState<'main' | 'code'>('main');
+  const [step, setStep] = useState<'main' | 'email-code' | 'phone-code'>('main');
+  const [mode, setMode] = useState<'email' | 'phone'>('email');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { data: authMethods } = useAuthMethods();
@@ -37,6 +41,7 @@ export function AuthPage() {
   // так же как при ошибке запроса: неизвестное состояние не рисуем как
   // разрешающее.
   const showTelegram = authMethods?.telegram === true;
+  const showPhone = authMethods?.phone === true;
 
   const applyAuth = () => {
     const token = getStoredToken();
@@ -98,9 +103,25 @@ export function AuthPage() {
     setError(null);
     try {
       await requestEmailCode(email);
-      setStep('code');
+      setStep('email-code');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Не получилось отправить код, попробуйте позже';
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePhoneSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await requestPhoneCode(phone);
+      setStep('phone-code');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Не получилось позвонить, попробуйте позже';
       setError(message);
     } finally {
       setLoading(false);
@@ -155,7 +176,7 @@ export function AuthPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3, duration: 0.4 }}
           >
-            {step === 'code' ? (
+            {step === 'email-code' ? (
               <EmailCodeStep
                 email={email}
                 onBack={() => {
@@ -164,23 +185,64 @@ export function AuthPage() {
                 }}
                 onVerified={applyAuth}
               />
+            ) : step === 'phone-code' ? (
+              <PhoneCodeStep
+                phone={phone}
+                onBack={() => {
+                  setStep('main');
+                  setError(null);
+                }}
+                onVerified={applyAuth}
+              />
             ) : (
               <div className="space-y-5">
-                <form onSubmit={handleEmailSubmit} className="flex gap-2">
-                  <Input
-                    type="email"
-                    required
-                    autoFocus
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="почта@пример.ру"
-                    disabled={loading}
-                    className="h-11"
-                  />
-                  <Button type="submit" disabled={loading || !email} className="h-11 shrink-0">
-                    Продолжить
-                  </Button>
-                </form>
+                {mode === 'email' ? (
+                  <form onSubmit={handleEmailSubmit} className="flex gap-2">
+                    <Input
+                      type="email"
+                      required
+                      autoFocus
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="почта@пример.ру"
+                      disabled={loading}
+                      className="h-11"
+                    />
+                    <Button type="submit" disabled={loading || !email} className="h-11 shrink-0">
+                      Продолжить
+                    </Button>
+                  </form>
+                ) : (
+                  <form onSubmit={handlePhoneSubmit} className="flex gap-2">
+                    <Input
+                      type="tel"
+                      inputMode="tel"
+                      required
+                      autoFocus
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="+7 999 123-45-67"
+                      disabled={loading}
+                      className="h-11"
+                    />
+                    <Button type="submit" disabled={loading || !phone} className="h-11 shrink-0">
+                      Продолжить
+                    </Button>
+                  </form>
+                )}
+
+                {showPhone && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode((m) => (m === 'email' ? 'phone' : 'email'));
+                      setError(null);
+                    }}
+                    className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer underline underline-offset-2"
+                  >
+                    {mode === 'email' ? 'Войти по номеру телефона' : 'Войти по почте'}
+                  </button>
+                )}
 
                 {showTelegram && (
                   <>

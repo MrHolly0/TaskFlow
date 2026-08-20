@@ -90,6 +90,21 @@ export const verifyEmailCode = async (email: string, code: string): Promise<Auth
   return response.data;
 };
 
+export const requestPhoneCode = async (phone: string): Promise<void> => {
+  await axios.post(`${API_BASE}/auth/phone/request-code`, { phone });
+};
+
+export const verifyPhoneCode = async (phone: string, code: string): Promise<AuthResponse> => {
+  const response = await axios.post<AuthResponse>(`${API_BASE}/auth/phone/verify`, { phone, code });
+  const { token } = response.data;
+  setApiToken(token);
+  localStorage.setItem('auth_token', token);
+  if (response.data.refreshToken) {
+    localStorage.setItem('refresh_token', response.data.refreshToken);
+  }
+  return response.data;
+};
+
 export const authenticateViaLoginWidget = async (
   widgetData: Record<string, string | number>
 ): Promise<AuthResponse> => {

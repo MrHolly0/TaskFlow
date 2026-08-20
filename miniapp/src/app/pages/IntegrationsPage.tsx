@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { IconMail } from '@tabler/icons-react';
+import { IconMail, IconPhone } from '@tabler/icons-react';
 import { Card } from '@/app/components/ui/card';
 import { Badge } from '@/app/components/ui/badge';
 import { Button, buttonVariants } from '@/app/components/ui/button';
@@ -19,6 +19,7 @@ import {
 } from '@/app/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import { EmailCodeStep } from '@/app/components/EmailCodeStep';
+import { PhoneCodeStep } from '@/app/components/PhoneCodeStep';
 import { TelegramLoginButton } from '@/app/components/TelegramLoginButton';
 import { TelegramLogo } from '@/app/components/TelegramLogo';
 import { MergeConflictDialog } from '@/app/components/MergeConflictDialog';
@@ -28,6 +29,8 @@ import {
   useIdentities,
   useRequestBindEmailCode,
   useConfirmBindEmail,
+  useRequestBindPhoneCode,
+  useConfirmBindPhone,
   useBindTelegram,
   useMergeAccounts,
   useUnbindIdentity,
@@ -160,6 +163,7 @@ export function IntegrationsPage() {
 
   const telegram = identities.find((i) => i.provider === 'TELEGRAM');
   const email = identities.find((i) => i.provider === 'EMAIL');
+  const phone = identities.find((i) => i.provider === 'PHONE');
   const canUnbind = identities.length > 1;
 
   const handleUnbind = (provider: IdentityProvider) => {
@@ -199,6 +203,16 @@ export function IntegrationsPage() {
           canUnbind={canUnbind}
           onUnbind={() => handleUnbind('EMAIL')}
           unbinding={unbind.isPending && unbind.variables === 'EMAIL'}
+        />
+
+        <Separator />
+
+        <PhoneSection
+          connected={Boolean(phone)}
+          externalId={phone?.externalId}
+          canUnbind={canUnbind}
+          onUnbind={() => handleUnbind('PHONE')}
+          unbinding={unbind.isPending && unbind.variables === 'PHONE'}
         />
       </Card>
     </div>
@@ -394,6 +408,129 @@ function EmailSection({
           onBack={() => setStep('email')}
           onVerified={() => setStep('idle')}
           requestCode={(e) => requestCode.mutateAsync(e)}
+          verifyCode={verifyAndBind}
+        />
+      )}
+
+      <MergeConflictDialog
+        conflict={merge.conflict}
+        merging={merge.merging}
+        onConfirm={merge.confirm}
+        onCancel={merge.cancel}
+      />
+    </section>
+  );
+}
+
+function PhoneSection({
+  connected,
+  externalId,
+  canUnbind,
+  onUnbind,
+  unbinding,
+}: {
+  connected: boolean;
+  externalId?: string;
+  canUnbind: boolean;
+  onUnbind: () => void;
+  unbinding: boolean;
+}) {
+  const [step, setStep] = useState<'idle' | 'phone' | 'code'>('idle');
+  const [phone, setPhone] = useState('');
+  const requestCode = useRequestBindPhoneCode();
+  const confirmPhone = useConfirmBindPhone();
+  const merge = useMergeFlow(
+    (result) => toast.success(mergeToastMessage(result.mergedFrom ?? EMPTY_TRANSFER)),
+    () => setStep('idle'),
+  );
+
+  const handleSubmitPhone = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (requestCode.isPending || !phone) return;
+    try {
+      await requestCode.mutateAsync(phone);
+      setStep('code');
+    } catch {
+      toast.error('Не получилось позвонить, попробуйте позже');
+    }
+  };
+
+  const verifyAndBind = async (bindPhone: string, code: string) => {
+    try {
+      const result = await confirmPhone.mutateAsync({ phone: bindPhone, code });
+      toast.success(mergeToastMessage(result.mergedFrom ?? EMPTY_TRANSFER));
+      return result;
+    } catch (err) {
+      if (merge.catchConflict(err)) return undefined;
+      throw err;
+    }
+  };
+
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+            <IconPhone className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <p className="text-sm font-medium">Телефон</p>
+            <StatusBadge connected={connected}>{connected ? externalId : 'Не подключен'}</StatusBadge>
+          </div>
+        </div>
+
+        {connected ? (
+          <AlertDialog>
+            <AlertDialogTrigger
+              className={cn(buttonVariants({ variant: 'outline', size: 'sm' }))}
+              disabled={!canUnbind || unbinding}
+              title={!canUnbind ? 'Это единственный способ входа' : undefined}
+            >
+              {unbinding ? 'Отвязываем...' : 'Отвязать'}
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Отвязать телефон?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Больше нельзя будет войти по этому номеру. Задачи и данные останутся — доступ через оставшийся способ входа не изменится.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Отмена</AlertDialogCancel>
+                <AlertDialogAction onClick={onUnbind}>Отвязать</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        ) : step === 'idle' ? (
+          <Button size="sm" onClick={() => setStep('phone')}>Подключить</Button>
+        ) : null}
+      </div>
+
+      {step === 'phone' && (
+        <form onSubmit={handleSubmitPhone} className="flex gap-2">
+          <Input
+            type="tel"
+            inputMode="tel"
+            required
+            autoFocus
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="+7 999 123-45-67"
+            disabled={requestCode.isPending}
+            className="h-10"
+          />
+          <Button type="submit" disabled={requestCode.isPending || !phone} className="h-10 shrink-0">
+            Продолжить
+          </Button>
+        </form>
+      )}
+
+      {step === 'code' && (
+        <PhoneCodeStep
+          phone={phone}
+          onBack={() => setStep('phone')}
+          onVerified={() => setStep('idle')}
+          requestCode={(p) => requestCode.mutateAsync(p)}
           verifyCode={verifyAndBind}
         />
       )}
