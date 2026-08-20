@@ -54,6 +54,7 @@ services:
       APP_NAME: ${APP_NAME:-Мунин}
       UCALLER_SERVICE_ID: ${UCALLER_SERVICE_ID:-}
       UCALLER_SECRET_KEY: ${UCALLER_SECRET_KEY:-}
+      UCALLER_CALLBACK_SECRET: ${UCALLER_CALLBACK_SECRET:-}
     volumes:
       - ${GEOIP_DB_HOST_PATH:-./geoip/GeoLite2-Country.mmdb}:/data/geoip/GeoLite2-Country.mmdb:ro
     depends_on:

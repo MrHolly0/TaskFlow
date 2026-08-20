@@ -21,13 +21,14 @@ import ru.taskflow.user.api.UserService;
 import ru.taskflow.user.application.AuthRateLimiter;
 import ru.taskflow.user.application.EmailSender;
 import ru.taskflow.user.application.LoginCodeService;
+import ru.taskflow.user.application.PhoneConfirmationRequest;
+import ru.taskflow.user.application.PhoneInboundConfirmationService;
 import ru.taskflow.user.application.PhoneVerificationProvider;
 import ru.taskflow.user.application.RefreshTokenService;
 import ru.taskflow.user.infrastructure.geo.CountryResolver;
 import ru.taskflow.user.infrastructure.web.dto.RequestCodeRequest;
-import ru.taskflow.user.infrastructure.web.dto.RequestPhoneCodeRequest;
+import ru.taskflow.user.infrastructure.web.dto.RequestPhoneConfirmationRequest;
 import ru.taskflow.user.infrastructure.web.dto.VerifyCodeRequest;
-import ru.taskflow.user.infrastructure.web.dto.VerifyPhoneCodeRequest;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -53,6 +54,7 @@ class AuthControllerTest {
     private static final String EMAIL = "User@Example.com";
     private static final String NORMALIZED_EMAIL = "user@example.com";
     private static final String CODE = "123456";
+    private static final String PHONE = "+79991234567";
 
     @Mock
     private TelegramInitDataValidator initDataValidator;
@@ -74,6 +76,8 @@ class AuthControllerTest {
     private CountryResolver countryResolver;
     @Mock
     private PhoneVerificationProvider phoneVerificationProvider;
+    @Mock
+    private PhoneInboundConfirmationService phoneInboundConfirmationService;
 
     private AuthController controller;
     private MockMvc mockMvc;
@@ -83,11 +87,10 @@ class AuthControllerTest {
     void setUp() {
         lenient().when(rateLimiter.allow(any())).thenReturn(true);
         lenient().when(rateLimiter.allowForEmailConfirm(any(), any())).thenReturn(true);
-        lenient().when(rateLimiter.allowForPhoneConfirm(any(), any())).thenReturn(true);
         lenient().when(phoneVerificationProvider.isAvailable()).thenReturn(false);
         controller = new AuthController(initDataValidator, loginWidgetValidator, jwtService,
                 userService, refreshTokenService, loginCodeService, emailSender, rateLimiter, countryResolver,
-                phoneVerificationProvider);
+                phoneVerificationProvider, phoneInboundConfirmationService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
@@ -196,74 +199,82 @@ class AuthControllerTest {
     }
 
     @Test
-    void requestPhoneCode_validPhone_normalizesAndConfirmsIssued() throws Exception {
-        when(loginCodeService.issueCode(IdentityProvider.PHONE, "+79991234567")).thenReturn("1234");
-        when(phoneVerificationProvider.sendCode("+79991234567", "1234")).thenReturn("1234");
+    void requestPhoneConfirmation_validPhone_createsPendingAndReturnsConfirmationNumber() throws Exception {
+        when(phoneVerificationProvider.requestConfirmation(PHONE))
+                .thenReturn(new PhoneConfirmationRequest("79001000011", "103000"));
 
-        mockMvc.perform(post("/api/v1/auth/phone/request-code")
+        mockMvc.perform(post("/api/v1/auth/phone/request-confirmation")
                         .contentType("application/json")
-                        .content(objectMapper.writeValueAsString(new RequestPhoneCodeRequest("8 (999) 123-45-67"))))
-                .andExpect(status().isOk());
+                        .content(objectMapper.writeValueAsString(new RequestPhoneConfirmationRequest("8 (999) 123-45-67"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.confirmationNumber").value("79001000011"));
 
-        verify(phoneVerificationProvider).sendCode("+79991234567", "1234");
-        verify(loginCodeService).confirmIssued(IdentityProvider.PHONE, "+79991234567", "1234");
-    }
-
-    // Провайдер может подтвердить звонок другим кодом, чем мы передали (пул
-    // номеров для передачи кода конечен) — сохранить обязаны код из ответа
-    // провайдера, а не тот, что сами сгенерировали.
-    @Test
-    void requestPhoneCode_providerReturnsDifferentCode_confirmsIssuedWithProviderCode() throws Exception {
-        when(loginCodeService.issueCode(IdentityProvider.PHONE, "+79991234567")).thenReturn("1234");
-        when(phoneVerificationProvider.sendCode("+79991234567", "1234")).thenReturn("9081");
-
-        mockMvc.perform(post("/api/v1/auth/phone/request-code")
-                        .contentType("application/json")
-                        .content(objectMapper.writeValueAsString(new RequestPhoneCodeRequest("8 (999) 123-45-67"))))
-                .andExpect(status().isOk());
-
-        verify(loginCodeService).confirmIssued(IdentityProvider.PHONE, "+79991234567", "9081");
-        verify(loginCodeService, never()).confirmIssued(IdentityProvider.PHONE, "+79991234567", "1234");
+        verify(phoneInboundConfirmationService).createPending(PHONE, "79001000011", "103000", null);
     }
 
     @Test
-    void requestPhoneCode_malformedPhone_returns400WithoutIssuingCode() throws Exception {
-        mockMvc.perform(post("/api/v1/auth/phone/request-code")
+    void requestPhoneConfirmation_malformedPhone_returns400WithoutCallingProvider() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/phone/request-confirmation")
                         .contentType("application/json")
-                        .content(objectMapper.writeValueAsString(new RequestPhoneCodeRequest("not-a-phone"))))
+                        .content(objectMapper.writeValueAsString(new RequestPhoneConfirmationRequest("not-a-phone"))))
                 .andExpect(status().isBadRequest());
 
-        verifyNoInteractions(loginCodeService, phoneVerificationProvider);
+        verifyNoInteractions(phoneVerificationProvider, phoneInboundConfirmationService);
     }
 
     @Test
-    void verifyPhoneCode_correctCode_issuesTokensAndCreatesPhoneIdentity() throws Exception {
-        UUID userId = UUID.randomUUID();
-        var dto = new UserDto(userId, null, null, null);
-        when(loginCodeService.verifyCode(IdentityProvider.PHONE, "+79991234567", "1234")).thenReturn(true);
-        when(userService.findOrCreateByIdentity(eq(IdentityProvider.PHONE), eq("+79991234567"), any(UserProfile.class)))
-                .thenReturn(dto);
-        when(jwtService.issueAccessToken(eq(userId), any())).thenReturn("access-token");
-        when(refreshTokenService.issue(userId)).thenReturn("refresh-token");
+    void requestPhoneConfirmation_providerFails_returns503WithoutCreatingPending() throws Exception {
+        when(phoneVerificationProvider.requestConfirmation(PHONE))
+                .thenThrow(new IllegalStateException("Ucaller не принял запрос"));
 
-        mockMvc.perform(post("/api/v1/auth/phone/verify")
+        mockMvc.perform(post("/api/v1/auth/phone/request-confirmation")
                         .contentType("application/json")
-                        .content(objectMapper.writeValueAsString(new VerifyPhoneCodeRequest("+79991234567", "1234"))))
+                        .content(objectMapper.writeValueAsString(new RequestPhoneConfirmationRequest("8 (999) 123-45-67"))))
+                .andExpect(status().isServiceUnavailable());
+
+        verifyNoInteractions(phoneInboundConfirmationService);
+    }
+
+    @Test
+    void phoneConfirmationStatus_resultConfirmed_returnsTokens() throws Exception {
+        when(phoneInboundConfirmationService.pollResult(PHONE))
+                .thenReturn(Optional.of(new PhoneInboundConfirmationService.LoginResult("access-token", "refresh-token")));
+
+        mockMvc.perform(get("/api/v1/auth/phone/confirmation-status").param("phone", PHONE))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("confirmed"))
+                .andExpect(jsonPath("$.token").value("access-token"))
+                .andExpect(jsonPath("$.refreshToken").value("refresh-token"));
+    }
+
+    @Test
+    void phoneConfirmationStatus_noResultButPending_returnsWaiting() throws Exception {
+        when(phoneInboundConfirmationService.pollResult(PHONE)).thenReturn(Optional.empty());
+        when(phoneInboundConfirmationService.hasPending(PHONE)).thenReturn(true);
+
+        mockMvc.perform(get("/api/v1/auth/phone/confirmation-status").param("phone", PHONE))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("waiting"));
+    }
+
+    @Test
+    void phoneConfirmationStatus_neitherResultNorPending_returnsExpired() throws Exception {
+        when(phoneInboundConfirmationService.pollResult(PHONE)).thenReturn(Optional.empty());
+        when(phoneInboundConfirmationService.hasPending(PHONE)).thenReturn(false);
+
+        mockMvc.perform(get("/api/v1/auth/phone/confirmation-status").param("phone", PHONE))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("expired"));
+    }
+
+    @Test
+    void cancelPhoneConfirmation_deletesPending() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/phone/cancel-confirmation")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new RequestPhoneConfirmationRequest("8 (999) 123-45-67"))))
                 .andExpect(status().isOk());
 
-        verify(userService).findOrCreateByIdentity(eq(IdentityProvider.PHONE), eq("+79991234567"), any(UserProfile.class));
-    }
-
-    @Test
-    void verifyPhoneCode_wrongCode_returns401WithoutCreatingIdentity() throws Exception {
-        when(loginCodeService.verifyCode(IdentityProvider.PHONE, "+79991234567", "1234")).thenReturn(false);
-
-        mockMvc.perform(post("/api/v1/auth/phone/verify")
-                        .contentType("application/json")
-                        .content(objectMapper.writeValueAsString(new VerifyPhoneCodeRequest("+79991234567", "1234"))))
-                .andExpect(status().isUnauthorized());
-
-        verifyNoInteractions(userService);
+        verify(phoneInboundConfirmationService).cancelPending(PHONE);
     }
 
     @Test

@@ -15,6 +15,7 @@ import ru.taskflow.app.application.MergeTokenService;
 import ru.taskflow.app.web.dto.IdentityBindResponse;
 import ru.taskflow.app.web.dto.MergeConflictResponse;
 import ru.taskflow.app.web.dto.MergeRequest;
+import ru.taskflow.app.web.dto.PhoneBindConfirmationStatusResponse;
 import ru.taskflow.shared.security.AuthenticatedUser;
 import ru.taskflow.shared.security.TelegramLoginWidgetValidator;
 import ru.taskflow.task.api.TaskService;
@@ -23,13 +24,15 @@ import ru.taskflow.user.api.UserService;
 import ru.taskflow.user.api.dto.IdentityDto;
 import ru.taskflow.user.application.EmailSender;
 import ru.taskflow.user.application.LoginCodeService;
+import ru.taskflow.user.application.PhoneConfirmationRequest;
+import ru.taskflow.user.application.PhoneInboundConfirmationService;
 import ru.taskflow.user.application.PhoneNumberNormalizer;
 import ru.taskflow.user.application.PhoneVerificationProvider;
 import ru.taskflow.user.infrastructure.web.dto.RequestCodeRequest;
-import ru.taskflow.user.infrastructure.web.dto.RequestPhoneCodeRequest;
+import ru.taskflow.user.infrastructure.web.dto.RequestPhoneConfirmationRequest;
+import ru.taskflow.user.infrastructure.web.dto.RequestPhoneConfirmationResponse;
 import ru.taskflow.user.infrastructure.web.dto.TelegramLoginWidgetAuthRequest;
 import ru.taskflow.user.infrastructure.web.dto.VerifyCodeRequest;
-import ru.taskflow.user.infrastructure.web.dto.VerifyPhoneCodeRequest;
 
 import java.util.List;
 import java.util.Locale;
@@ -63,6 +66,7 @@ public class IdentityController {
     private final LoginCodeService loginCodeService;
     private final EmailSender emailSender;
     private final PhoneVerificationProvider phoneVerificationProvider;
+    private final PhoneInboundConfirmationService phoneInboundConfirmationService;
     private final TelegramLoginWidgetValidator loginWidgetValidator;
     private final AccountTransferService accountTransferService;
     private final MergeTokenService mergeTokenService;
@@ -99,43 +103,57 @@ public class IdentityController {
         return bindOrConflict(user.userId(), IdentityProvider.EMAIL, normalizedEmail);
     }
 
-    @PostMapping("/phone/request-code")
+    @PostMapping("/phone/request-confirmation")
     @ResponseStatus(HttpStatus.OK)
-    @Operation(summary = "Запросить код для привязки телефона",
-            description = "Учётка уже известна из токена — скрывать нечего; отказ звонка возвращается ошибкой, "
-                    + "а не проглатывается, как на /auth/phone/request-code")
-    public void requestPhoneCode(@Valid @RequestBody RequestPhoneCodeRequest request) {
+    @Operation(summary = "Запросить привязку подтверждением по звонку",
+            description = "Учётка уже известна из токена — звонит человек сам, кода нет; отказ провайдера "
+                    + "возвращается ошибкой, а не проглатывается")
+    public RequestPhoneConfirmationResponse requestPhoneConfirmation(
+            @Valid @RequestBody RequestPhoneConfirmationRequest request, @AuthenticationPrincipal AuthenticatedUser user) {
         String normalizedPhone = PhoneNumberNormalizer.normalize(request.phone())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid phone"));
-        String code = loginCodeService.issueCode(IdentityProvider.PHONE, normalizedPhone);
-        // В отличие от /auth/phone/request-code (вход) здесь нечего скрывать —
-        // учётка уже известна из токена, а не выясняется по номеру. Поэтому
-        // отказ звонка не проглатываем: иначе фронтенд не отличит «звонок не
-        // состоялся» от «код действительно отправлен» и покажет экран ввода,
-        // которого ждать бессмысленно.
-        String actualCode;
+        PhoneConfirmationRequest confirmation;
         try {
-            // Сохраняем код, который вернул провайдер, а не тот, что передали
-            // ему — см. UcallerPhoneVerificationProvider.sendCode.
-            actualCode = phoneVerificationProvider.sendCode(normalizedPhone, code);
+            confirmation = phoneVerificationProvider.requestConfirmation(normalizedPhone);
         } catch (RuntimeException e) {
-            log.warn("Не удалось отправить код привязки телефона: {}", e.getMessage());
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Не удалось позвонить, попробуйте позже");
+            log.warn("Не удалось запросить входящее подтверждение привязки: {}", e.getMessage());
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Не удалось запросить звонок, попробуйте позже");
         }
-        loginCodeService.confirmIssued(IdentityProvider.PHONE, normalizedPhone, actualCode);
+        phoneInboundConfirmationService.createPending(
+                normalizedPhone, confirmation.confirmationNumber(), confirmation.ucallerId(), user.userId());
+        return new RequestPhoneConfirmationResponse(confirmation.confirmationNumber());
     }
 
-    @PostMapping("/phone/confirm")
-    @Operation(summary = "Подтвердить телефон кодом",
-            description = "Привязывает телефон к текущей учётке; 409, если телефон уже принадлежит другой — с токеном для /merge")
-    public ResponseEntity<?> confirmPhone(@Valid @RequestBody VerifyPhoneCodeRequest request,
-                                           @AuthenticationPrincipal AuthenticatedUser user) {
+    @GetMapping("/phone/confirmation-status")
+    @Operation(summary = "Состояние входящего подтверждения привязки",
+            description = "Опрашивается экраном ожидания; при подтверждении отдаёт identity, при конфликте — "
+                    + "состав чужой учётки и токен для /merge, ровно один раз")
+    public PhoneBindConfirmationStatusResponse phoneConfirmationStatus(@RequestParam String phone) {
+        String normalizedPhone = PhoneNumberNormalizer.normalize(phone)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid phone"));
+        var result = phoneInboundConfirmationService.pollResult(normalizedPhone);
+        if (result.isPresent()) {
+            return switch (result.get()) {
+                case PhoneInboundConfirmationService.BindResult bind -> PhoneBindConfirmationStatusResponse.confirmed(
+                        new IdentityDto(IdentityProvider.PHONE, normalizedPhone, bind.verifiedAt()));
+                case PhoneInboundConfirmationService.ConflictResult conflict -> PhoneBindConfirmationStatusResponse.conflict(
+                        conflict.tasks(), conflict.groups(), conflict.tags(), conflict.mergeToken());
+                default -> PhoneBindConfirmationStatusResponse.waiting();
+            };
+        }
+        if (phoneInboundConfirmationService.hasPending(normalizedPhone)) {
+            return PhoneBindConfirmationStatusResponse.waiting();
+        }
+        return PhoneBindConfirmationStatusResponse.expired();
+    }
+
+    @PostMapping("/phone/cancel-confirmation")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(summary = "Отменить ожидание входящего звонка", description = "Удаляет ожидающую запись")
+    public void cancelPhoneConfirmation(@Valid @RequestBody RequestPhoneConfirmationRequest request) {
         String normalizedPhone = PhoneNumberNormalizer.normalize(request.phone())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid phone"));
-        if (!loginCodeService.verifyCode(IdentityProvider.PHONE, normalizedPhone, request.code())) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid code");
-        }
-        return bindOrConflict(user.userId(), IdentityProvider.PHONE, normalizedPhone);
+        phoneInboundConfirmationService.cancelPending(normalizedPhone);
     }
 
     @PostMapping("/telegram")

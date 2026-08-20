@@ -29,7 +29,6 @@ import static org.mockito.Mockito.when;
 class LoginCodeServiceTest {
 
     private static final String EMAIL = "user@example.com";
-    private static final String PHONE = "+79991234567";
     private static final Instant NOW_INSTANT = Instant.parse("2026-08-14T12:00:00Z");
 
     @Mock
@@ -55,19 +54,6 @@ class LoginCodeServiceTest {
     }
 
     @Test
-    void issueCode_noPriorCodes_returnsFourDigitCodeForPhone() {
-        // Четыре цифры — потолок самого механизма звонка (Ucaller), не выбор
-        // ради простоты; отдельно проверяем, что для телефона именно так.
-        when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.PHONE, PHONE)).thenReturn(List.of());
-        when(repository.countByChannelAndIdentifierAndCreatedAtAfter(any(), any(), any())).thenReturn(0L);
-        newService();
-
-        String code = service.issueCode(IdentityProvider.PHONE, PHONE);
-
-        assertThat(code).matches("\\d{4}");
-    }
-
-    @Test
     void issueCode_lowercasesEmailForRateCheck() {
         when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.EMAIL, "user@example.com")).thenReturn(List.of());
         when(repository.countByChannelAndIdentifierAndCreatedAtAfter(any(), any(), any())).thenReturn(0L);
@@ -76,19 +62,6 @@ class LoginCodeServiceTest {
         service.issueCode(IdentityProvider.EMAIL, "User@Example.com");
 
         verify(repository).findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.EMAIL, "user@example.com");
-    }
-
-    @Test
-    void issueCode_doesNotChangePhoneCasing() {
-        // Телефон приходит уже нормализованным к E.164 вызывающей стороной —
-        // сервис не должен пытаться его как-то преобразовывать сам.
-        when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.PHONE, PHONE)).thenReturn(List.of());
-        when(repository.countByChannelAndIdentifierAndCreatedAtAfter(any(), any(), any())).thenReturn(0L);
-        newService();
-
-        service.issueCode(IdentityProvider.PHONE, PHONE);
-
-        verify(repository).findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.PHONE, PHONE);
     }
 
     @Test
@@ -190,34 +163,6 @@ class LoginCodeServiceTest {
 
         assertThat(result).isFalse();
         assertThat(entity.getConsumedAt()).isNull();
-    }
-
-    @Test
-    void verifyCode_phoneChannel_rejectedOnThirdAttemptNotFifth() {
-        // Телефон — три попытки, не пять: код в сто раз слабее (4 цифры
-        // против 6), и лимит частоты один на всех каналов этого не компенсирует.
-        String rawCode = "1234";
-        var entity = activeCode(IdentityProvider.PHONE, PHONE, now(), 3);
-        entity.setCodeHash(sha256(rawCode));
-        when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.PHONE, PHONE)).thenReturn(List.of(entity));
-        newService();
-
-        boolean result = service.verifyCode(IdentityProvider.PHONE, PHONE, rawCode);
-
-        assertThat(result).isFalse();
-    }
-
-    @Test
-    void verifyCode_phoneChannel_secondAttemptStillAllowed() {
-        String rawCode = "1234";
-        var entity = activeCode(IdentityProvider.PHONE, PHONE, now(), 2);
-        entity.setCodeHash(sha256(rawCode));
-        when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.PHONE, PHONE)).thenReturn(List.of(entity));
-        newService();
-
-        boolean result = service.verifyCode(IdentityProvider.PHONE, PHONE, rawCode);
-
-        assertThat(result).isTrue();
     }
 
     @Test

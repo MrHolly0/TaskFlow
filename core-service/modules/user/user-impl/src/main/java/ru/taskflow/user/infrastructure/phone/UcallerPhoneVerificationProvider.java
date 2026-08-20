@@ -9,14 +9,16 @@ import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import ru.taskflow.user.application.PhoneConfirmationRequest;
 import ru.taskflow.user.application.PhoneVerificationProvider;
 
 /**
- * Звонок с кодом в последних цифрах номера через Ucaller. Код передаём
- * готовым (см. LoginCodeService) — initCall умеет генерировать свой, но нам
- * нужен единый механизм хранения/проверки для почты и телефона. Наш code —
- * пожелание, а не гарантия: {@link #sendCode} возвращает код из ответа
- * Ucaller, и хранить нужно именно его (см. {@link PhoneVerificationProvider}).
+ * Подтверждение номера через Ucaller. Основной способ — входящий звонок
+ * ({@link #requestConfirmation}): человек звонит на выданный номер, а не мы
+ * ему, и заблокировать исходящий вызов человека некому. Прежний способ —
+ * исходящий звонок с кодом ({@link #sendCode}) — оставлен нетронутым, но не
+ * используется контроллерами: доставка на реальный номер не работала, хотя
+ * Ucaller каждый раз отчитывался об успехе (`call_status: 1`).
  *
  * Как и CountryResolver для GeoLite2: без ключей провайдер не роняет
  * приложение при старте, просто логирует ошибку и остаётся недоступным —
@@ -27,29 +29,68 @@ import ru.taskflow.user.application.PhoneVerificationProvider;
 @Slf4j
 public class UcallerPhoneVerificationProvider implements PhoneVerificationProvider, HealthIndicator {
 
+    private static final String CALLBACK_PATH = "/api/v1/phone/inbound-webhook/";
+
     private final String serviceId;
     private final String secretKey;
+    private final String publicBaseUrl;
+    private final String callbackSecret;
     private final RestClient restClient;
 
     public UcallerPhoneVerificationProvider(
             @Value("${app.ucaller.service-id:}") String serviceId,
             @Value("${app.ucaller.secret-key:}") String secretKey,
+            @Value("${app.public-base-url:}") String publicBaseUrl,
+            @Value("${app.ucaller.callback-secret:}") String callbackSecret,
             @Qualifier("ucallerRestClient") RestClient restClient) {
         this.serviceId = serviceId;
         this.secretKey = secretKey;
+        this.publicBaseUrl = publicBaseUrl;
+        this.callbackSecret = callbackSecret;
         this.restClient = restClient;
     }
 
     @PostConstruct
     void logIfUnavailable() {
-        if (!isAvailable()) {
+        if (serviceId == null || serviceId.isBlank() || secretKey == null || secretKey.isBlank()) {
             log.error("UCALLER_SERVICE_ID/UCALLER_SECRET_KEY не заданы — вход по телефону отключён");
+        } else if (publicBaseUrl == null || publicBaseUrl.isBlank() || callbackSecret == null || callbackSecret.isBlank()) {
+            log.error("PUBLIC_BASE_URL/UCALLER_CALLBACK_SECRET не заданы — Ucaller не сможет уведомить о входящем "
+                    + "звонке, вход по телефону отключён");
         }
     }
 
     @Override
     public boolean isAvailable() {
-        return serviceId != null && !serviceId.isBlank() && secretKey != null && !secretKey.isBlank();
+        return serviceId != null && !serviceId.isBlank()
+                && secretKey != null && !secretKey.isBlank()
+                && publicBaseUrl != null && !publicBaseUrl.isBlank()
+                && callbackSecret != null && !callbackSecret.isBlank();
+    }
+
+    @Override
+    public PhoneConfirmationRequest requestConfirmation(String phoneE164) {
+        if (!isAvailable()) {
+            throw new IllegalStateException("Ucaller не настроен");
+        }
+        String digits = phoneE164.startsWith("+") ? phoneE164.substring(1) : phoneE164;
+        String callbackUrl = publicBaseUrl + CALLBACK_PATH + callbackSecret;
+        UcallerInboundResponse response = restClient.get()
+                .uri(uriBuilder -> uriBuilder.path("/inboundCallWaiting")
+                        .queryParam("service_id", serviceId)
+                        .queryParam("key", secretKey)
+                        .queryParam("phone", digits)
+                        .queryParam("callback_url", callbackUrl)
+                        .build())
+                .retrieve()
+                .body(UcallerInboundResponse.class);
+        if (response == null || !response.status() || response.confirmationNumber() == null) {
+            String reason = response != null && response.error() != null ? response.error() : "пустой ответ";
+            throw new IllegalStateException("Ucaller не принял запрос входящего звонка: " + reason);
+        }
+        return new PhoneConfirmationRequest(
+                response.confirmationNumber(),
+                response.ucallerId() != null ? response.ucallerId().toString() : null);
     }
 
     @Override
@@ -99,6 +140,13 @@ public class UcallerPhoneVerificationProvider implements PhoneVerificationProvid
             boolean status,
             String code,
             @JsonProperty("ucaller_id") Long ucallerId,
+            String error
+    ) {}
+
+    private record UcallerInboundResponse(
+            boolean status,
+            @JsonProperty("ucaller_id") Long ucallerId,
+            @JsonProperty("confirmation_number") String confirmationNumber,
             String error
     ) {}
 }

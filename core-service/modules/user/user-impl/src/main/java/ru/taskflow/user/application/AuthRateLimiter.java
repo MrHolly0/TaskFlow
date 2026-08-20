@@ -18,8 +18,10 @@ import java.util.Locale;
  * <p>
  * Два независимых лимита: общий по IP на любую точку входа — защита от
  * перебора вообще, и более узкий по паре (IP, адрес почты) — специально для
- * подтверждения кода, где перебор идёт запросом кода заново, а не только
- * попытками ввода на один код (тот лимит уже есть в LoginCodeService).
+ * подтверждения кода почты, где перебор идёт запросом кода заново, а не
+ * только попытками ввода на один код (тот лимит уже есть в LoginCodeService).
+ * У телефона своего такого лимита больше нет — код сгонять нечем, подтверждение
+ * идёт звонком, а не подбором цифр.
  */
 @Component
 @RequiredArgsConstructor
@@ -27,7 +29,6 @@ public class AuthRateLimiter {
 
     private static final int IP_LIMIT_PER_MINUTE = 30;
     private static final int IP_EMAIL_LIMIT_PER_MINUTE = 5;
-    private static final int IP_PHONE_LIMIT_PER_MINUTE = 5;
     private static final Duration WINDOW = Duration.ofSeconds(60);
 
     private final StringRedisTemplate redis;
@@ -40,11 +41,6 @@ public class AuthRateLimiter {
     public boolean allowForEmailConfirm(HttpServletRequest request, String email) {
         String key = "auth:rate:ip-email:" + clientIp(request) + ":" + email.toLowerCase(Locale.ROOT);
         return increment(key, IP_EMAIL_LIMIT_PER_MINUTE);
-    }
-
-    public boolean allowForPhoneConfirm(HttpServletRequest request, String phoneE164) {
-        String key = "auth:rate:ip-phone:" + clientIp(request) + ":" + phoneE164;
-        return increment(key, IP_PHONE_LIMIT_PER_MINUTE);
     }
 
     private boolean increment(String keyPrefix, int limit) {

@@ -25,10 +25,11 @@ import ru.taskflow.user.api.UserService;
 import ru.taskflow.user.api.dto.IdentityDto;
 import ru.taskflow.user.application.EmailSender;
 import ru.taskflow.user.application.LoginCodeService;
+import ru.taskflow.user.application.PhoneConfirmationRequest;
+import ru.taskflow.user.application.PhoneInboundConfirmationService;
 import ru.taskflow.user.application.PhoneVerificationProvider;
-import ru.taskflow.user.infrastructure.web.dto.RequestPhoneCodeRequest;
+import ru.taskflow.user.infrastructure.web.dto.RequestPhoneConfirmationRequest;
 import ru.taskflow.user.infrastructure.web.dto.VerifyCodeRequest;
-import ru.taskflow.user.infrastructure.web.dto.VerifyPhoneCodeRequest;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -43,6 +44,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -64,6 +66,8 @@ class IdentityControllerTest {
     @Mock
     private PhoneVerificationProvider phoneVerificationProvider;
     @Mock
+    private PhoneInboundConfirmationService phoneInboundConfirmationService;
+    @Mock
     private TelegramLoginWidgetValidator loginWidgetValidator;
     @Mock
     private AccountTransferService accountTransferService;
@@ -78,7 +82,8 @@ class IdentityControllerTest {
     @BeforeEach
     void setUp() {
         var controller = new IdentityController(userService, taskService, loginCodeService, emailSender,
-                phoneVerificationProvider, loginWidgetValidator, accountTransferService, mergeTokenService);
+                phoneVerificationProvider, phoneInboundConfirmationService, loginWidgetValidator,
+                accountTransferService, mergeTokenService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                 .build();
@@ -127,76 +132,58 @@ class IdentityControllerTest {
     }
 
     @Test
-    void requestPhoneCode_validPhone_normalizesAndConfirmsIssued() throws Exception {
-        when(loginCodeService.issueCode(IdentityProvider.PHONE, "+79991234567")).thenReturn("1234");
-        when(phoneVerificationProvider.sendCode("+79991234567", "1234")).thenReturn("1234");
+    void requestPhoneConfirmation_validPhone_createsPendingBoundToCurrentUser() throws Exception {
+        when(phoneVerificationProvider.requestConfirmation("+79991234567"))
+                .thenReturn(new PhoneConfirmationRequest("79001000011", "103000"));
 
-        mockMvc.perform(post("/api/v1/identities/phone/request-code")
+        mockMvc.perform(post("/api/v1/identities/phone/request-confirmation")
                         .contentType("application/json")
-                        .content(objectMapper.writeValueAsString(new RequestPhoneCodeRequest("8 (999) 123-45-67"))))
-                .andExpect(status().isOk());
+                        .content(objectMapper.writeValueAsString(new RequestPhoneConfirmationRequest("8 (999) 123-45-67"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.confirmationNumber").value("79001000011"));
 
-        verify(phoneVerificationProvider).sendCode("+79991234567", "1234");
-        verify(loginCodeService).confirmIssued(IdentityProvider.PHONE, "+79991234567", "1234");
-    }
-
-    @Test
-    void requestPhoneCode_providerReturnsDifferentCode_confirmsIssuedWithProviderCode() throws Exception {
-        when(loginCodeService.issueCode(IdentityProvider.PHONE, "+79991234567")).thenReturn("1234");
-        when(phoneVerificationProvider.sendCode("+79991234567", "1234")).thenReturn("9081");
-
-        mockMvc.perform(post("/api/v1/identities/phone/request-code")
-                        .contentType("application/json")
-                        .content(objectMapper.writeValueAsString(new RequestPhoneCodeRequest("8 (999) 123-45-67"))))
-                .andExpect(status().isOk());
-
-        verify(loginCodeService).confirmIssued(IdentityProvider.PHONE, "+79991234567", "9081");
-        verify(loginCodeService, never()).confirmIssued(IdentityProvider.PHONE, "+79991234567", "1234");
+        verify(phoneInboundConfirmationService).createPending("+79991234567", "79001000011", "103000", userId);
     }
 
     // В отличие от входа, привязка ничего не скрывает — учётка уже известна
-    // из токена. Отказ звонка обязан вернуться ошибкой, а не 200: иначе
-    // фронтенд покажет экран ввода кода, которого никогда не будет.
+    // из токена. Отказ провайдера обязан вернуться ошибкой, а не 200: иначе
+    // фронтенд покажет экран ожидания звонка, которого никогда не будет.
     @Test
-    void requestPhoneCode_providerFails_returns503WithoutConfirmingIssued() throws Exception {
-        when(loginCodeService.issueCode(IdentityProvider.PHONE, "+79991234567")).thenReturn("1234");
-        when(phoneVerificationProvider.sendCode("+79991234567", "1234"))
-                .thenThrow(new IllegalStateException("Ucaller отклонил звонок: insufficient balance"));
+    void requestPhoneConfirmation_providerFails_returns503WithoutCreatingPending() throws Exception {
+        when(phoneVerificationProvider.requestConfirmation("+79991234567"))
+                .thenThrow(new IllegalStateException("Ucaller не принял запрос"));
 
-        mockMvc.perform(post("/api/v1/identities/phone/request-code")
+        mockMvc.perform(post("/api/v1/identities/phone/request-confirmation")
                         .contentType("application/json")
-                        .content(objectMapper.writeValueAsString(new RequestPhoneCodeRequest("8 (999) 123-45-67"))))
+                        .content(objectMapper.writeValueAsString(new RequestPhoneConfirmationRequest("8 (999) 123-45-67"))))
                 .andExpect(status().isServiceUnavailable());
 
-        verify(loginCodeService, never()).confirmIssued(any(), anyString(), anyString());
+        verifyNoInteractions(phoneInboundConfirmationService);
     }
 
     @Test
-    void confirmPhone_noConflict_bindsImmediatelyWithoutToken() throws Exception {
-        when(loginCodeService.verifyCode(IdentityProvider.PHONE, "+79991234567", "1234")).thenReturn(true);
-        when(userService.findIdentityOwner(IdentityProvider.PHONE, "+79991234567")).thenReturn(Optional.empty());
-        when(userService.bindIdentity(userId, IdentityProvider.PHONE, "+79991234567"))
-                .thenReturn(new IdentityDto(IdentityProvider.PHONE, "+79991234567", OffsetDateTime.now()));
+    void phoneConfirmationStatus_resultConfirmed_returnsIdentity() throws Exception {
+        OffsetDateTime verifiedAt = OffsetDateTime.now();
+        when(phoneInboundConfirmationService.pollResult("+79991234567"))
+                .thenReturn(Optional.of(new PhoneInboundConfirmationService.BindResult(verifiedAt)));
 
-        mockMvc.perform(post("/api/v1/identities/phone/confirm")
-                        .contentType("application/json")
-                        .content(objectMapper.writeValueAsString(new VerifyPhoneCodeRequest("+79991234567", "1234"))))
-                .andExpect(status().isOk());
-
-        verifyNoInteractions(accountTransferService, mergeTokenService);
+        mockMvc.perform(get("/api/v1/identities/phone/confirmation-status")
+                        .param("phone", "+79991234567"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("confirmed"))
+                .andExpect(jsonPath("$.identity.externalId").value("+79991234567"));
     }
 
     @Test
-    void confirmPhone_conflict_doesNotTransferAndReturns409WithSummaryAndToken() throws Exception {
-        when(loginCodeService.verifyCode(IdentityProvider.PHONE, "+79991234567", "1234")).thenReturn(true);
-        when(userService.findIdentityOwner(IdentityProvider.PHONE, "+79991234567")).thenReturn(Optional.of(otherUserId));
-        when(taskService.countOwnership(otherUserId)).thenReturn(new TaskTransferResult(115, 12, 3));
-        when(mergeTokenService.issue(otherUserId, userId, IdentityProvider.PHONE, "+79991234567")).thenReturn("merge-token-abc");
+    void phoneConfirmationStatus_resultConflict_returnsSummaryAndToken() throws Exception {
+        when(phoneInboundConfirmationService.pollResult("+79991234567"))
+                .thenReturn(Optional.of(new PhoneInboundConfirmationService.ConflictResult(115, 12, 3, "merge-token-abc")));
 
-        mockMvc.perform(post("/api/v1/identities/phone/confirm")
-                        .contentType("application/json")
-                        .content(objectMapper.writeValueAsString(new VerifyPhoneCodeRequest("+79991234567", "1234"))))
-                .andExpect(status().isConflict())
+        mockMvc.perform(get("/api/v1/identities/phone/confirmation-status")
+                        .param("phone", "+79991234567"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("conflict"))
+                .andExpect(jsonPath("$.tasks").value(115))
                 .andExpect(jsonPath("$.mergeToken").value("merge-token-abc"));
 
         verifyNoInteractions(accountTransferService);
@@ -204,13 +191,45 @@ class IdentityControllerTest {
     }
 
     @Test
-    void confirmPhone_malformedPhone_returns400() throws Exception {
-        mockMvc.perform(post("/api/v1/identities/phone/confirm")
+    void phoneConfirmationStatus_noResultButPending_returnsWaiting() throws Exception {
+        when(phoneInboundConfirmationService.pollResult("+79991234567")).thenReturn(Optional.empty());
+        when(phoneInboundConfirmationService.hasPending("+79991234567")).thenReturn(true);
+
+        mockMvc.perform(get("/api/v1/identities/phone/confirmation-status")
+                        .param("phone", "+79991234567"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("waiting"));
+    }
+
+    @Test
+    void phoneConfirmationStatus_neitherResultNorPending_returnsExpired() throws Exception {
+        when(phoneInboundConfirmationService.pollResult("+79991234567")).thenReturn(Optional.empty());
+        when(phoneInboundConfirmationService.hasPending("+79991234567")).thenReturn(false);
+
+        mockMvc.perform(get("/api/v1/identities/phone/confirmation-status")
+                        .param("phone", "+79991234567"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("expired"));
+    }
+
+    @Test
+    void cancelPhoneConfirmation_deletesPending() throws Exception {
+        mockMvc.perform(post("/api/v1/identities/phone/cancel-confirmation")
                         .contentType("application/json")
-                        .content(objectMapper.writeValueAsString(new VerifyPhoneCodeRequest("not-a-phone", "1234"))))
+                        .content(objectMapper.writeValueAsString(new RequestPhoneConfirmationRequest("8 (999) 123-45-67"))))
+                .andExpect(status().isOk());
+
+        verify(phoneInboundConfirmationService).cancelPending("+79991234567");
+    }
+
+    @Test
+    void requestPhoneConfirmation_malformedPhone_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/identities/phone/request-confirmation")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new RequestPhoneConfirmationRequest("not-a-phone"))))
                 .andExpect(status().isBadRequest());
 
-        verifyNoInteractions(loginCodeService, userService, mergeTokenService);
+        verifyNoInteractions(phoneVerificationProvider, phoneInboundConfirmationService);
     }
 
     @Test

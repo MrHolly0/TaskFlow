@@ -19,15 +19,11 @@ import java.util.HexFormat;
 import java.util.Locale;
 
 /**
- * Общая для почты и телефона выдача одноразовых кодов входа.
- *
- * Длина и число попыток зависят от канала: почта — шесть цифр, миллион
- * вариантов; телефон — четыре, потолок самого механизма звонка (провайдер
- * передаёт код последними цифрами номера, из которого звонит, а такой номер
- * не бывает длиннее). Четыре цифры — это в сто раз слабее шести, поэтому для
- * телефона попыток на код меньше: 3 вместо 5 — тот же лимит в час и на
- * повторный запрос не спасает сам по себе при таком узком пространстве
- * вариантов.
+ * Одноразовые коды входа на почту. Раньше тем же путём шёл и телефон, но
+ * подтверждение номера теперь устроено иначе — входящим звонком, без кода
+ * вообще (см. PhoneInboundConfirmationService) — телефон сюда больше не
+ * заходит, канал остался параметром на случай, если понадобится ещё один
+ * код-based способ, а не потому что EMAIL — единственно возможное значение.
  *
  * Код хранится хэшем (SHA-256), не текстом — это учётные данные, и доступ
  * к базе на чтение не должен превращаться в возможность войти чужой учёткой.
@@ -37,20 +33,13 @@ import java.util.Locale;
  * гасит прежние коды и сохраняет новый. Вызывающая сторона обязана звать
  * confirmIssued() только после того, как код реально отправлен: иначе
  * неудачная отправка расходовала бы лимит частоты впустую.
- *
- * Нормализация идентификатора (E.164 для телефона) — забота вызывающей
- * стороны: сюда должен приходить уже приведённый к единому виду identifier,
- * этот сервис для телефона его не трогает, а для почты по-прежнему
- * приводит к нижнему регистру на всякий случай (двойная нормализация
- * почты безвредна).
  */
 @Service
 @RequiredArgsConstructor
 public class LoginCodeService {
 
     private static final Duration CODE_TTL = Duration.ofMinutes(10);
-    private static final int MAX_ATTEMPTS_EMAIL = 5;
-    private static final int MAX_ATTEMPTS_PHONE = 3;
+    private static final int MAX_ATTEMPTS = 5;
     private static final Duration COOLDOWN = Duration.ofSeconds(60);
     private static final int MAX_PER_HOUR = 5;
     private static final Duration RATE_WINDOW = Duration.ofHours(1);
@@ -114,7 +103,7 @@ public class LoginCodeService {
         if (entity.getExpiresAt().isBefore(now)) {
             return false;
         }
-        if (entity.getAttempts() >= maxAttempts(channel)) {
+        if (entity.getAttempts() >= MAX_ATTEMPTS) {
             return false;
         }
 
@@ -133,18 +122,12 @@ public class LoginCodeService {
         return true;
     }
 
-    private int maxAttempts(IdentityProvider channel) {
-        return channel == IdentityProvider.PHONE ? MAX_ATTEMPTS_PHONE : MAX_ATTEMPTS_EMAIL;
-    }
-
     private String normalize(IdentityProvider channel, String identifier) {
         return channel == IdentityProvider.EMAIL ? identifier.toLowerCase(Locale.ROOT) : identifier;
     }
 
     private String generateCode(IdentityProvider channel) {
-        return channel == IdentityProvider.PHONE
-                ? String.format("%04d", random.nextInt(10_000))
-                : String.format("%06d", random.nextInt(1_000_000));
+        return String.format("%06d", random.nextInt(1_000_000));
     }
 
     private String hash(String code) {

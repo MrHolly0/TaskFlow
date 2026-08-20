@@ -52,6 +52,7 @@ app:
   ucaller:
     service-id: ${UCALLER_SERVICE_ID:}
     secret-key: ${UCALLER_SECRET_KEY:}
+    callback-secret: ${UCALLER_CALLBACK_SECRET:}
   telegram:
     bot-token: ${TELEGRAM_BOT_TOKEN:}
     auth-date-max-age: ${TELEGRAM_AUTH_MAX_AGE:86400}

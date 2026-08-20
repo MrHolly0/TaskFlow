@@ -17,6 +17,8 @@ import ru.taskflow.user.api.UserService;
 import ru.taskflow.user.application.AuthRateLimiter;
 import ru.taskflow.user.application.EmailSender;
 import ru.taskflow.user.application.LoginCodeService;
+import ru.taskflow.user.application.PhoneConfirmationRequest;
+import ru.taskflow.user.application.PhoneInboundConfirmationService;
 import ru.taskflow.user.application.PhoneNumberNormalizer;
 import ru.taskflow.user.application.PhoneVerificationProvider;
 import ru.taskflow.user.application.RefreshTokenService;
@@ -47,6 +49,7 @@ public class AuthController {
     private final AuthRateLimiter rateLimiter;
     private final CountryResolver countryResolver;
     private final PhoneVerificationProvider phoneVerificationProvider;
+    private final PhoneInboundConfirmationService phoneInboundConfirmationService;
 
     @GetMapping("/methods")
     @ResponseStatus(HttpStatus.OK)
@@ -139,46 +142,56 @@ public class AuthController {
         return issueTokens(dto.id(), dto.username());
     }
 
-    @PostMapping("/phone/request-code")
+    @PostMapping("/phone/request-confirmation")
     @ResponseStatus(HttpStatus.OK)
-    @Operation(summary = "Запросить код входа по телефону",
-            description = "Отвечает одинаково независимо от того, известен номер или дошёл ли звонок")
-    public void requestPhoneCode(@Valid @RequestBody RequestPhoneCodeRequest request, HttpServletRequest httpRequest) {
+    @Operation(summary = "Запросить вход подтверждением по звонку",
+            description = "Человек звонит на возвращённый номер сам — код вводить не нужно; кто в итоге "
+                    + "вошёл, решает GET /phone/confirmation-status")
+    public RequestPhoneConfirmationResponse requestPhoneConfirmation(
+            @Valid @RequestBody RequestPhoneConfirmationRequest request, HttpServletRequest httpRequest) {
         requireWithinRateLimit(httpRequest);
         String normalizedPhone = PhoneNumberNormalizer.normalize(request.phone())
                 .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
                         HttpStatus.BAD_REQUEST, "Invalid phone"));
-        String code = loginCodeService.issueCode(IdentityProvider.PHONE, normalizedPhone);
+        PhoneConfirmationRequest confirmation;
         try {
-            // Сохраняем код, который вернул провайдер, а не тот, что передали
-            // ему: пул номеров для передачи кода последними цифрами конечен,
-            // и даже документированная гарантия «использует наш code» не
-            // повод доверять ей без проверки.
-            String actualCode = phoneVerificationProvider.sendCode(normalizedPhone, code);
-            loginCodeService.confirmIssued(IdentityProvider.PHONE, normalizedPhone, actualCode);
+            confirmation = phoneVerificationProvider.requestConfirmation(normalizedPhone);
         } catch (RuntimeException e) {
-            log.warn("Не удалось позвонить с кодом входа: {}", e.getMessage());
+            log.warn("Не удалось запросить входящее подтверждение: {}", e.getMessage());
+            throw new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.SERVICE_UNAVAILABLE, "Не удалось запросить звонок, попробуйте позже");
         }
+        phoneInboundConfirmationService.createPending(
+                normalizedPhone, confirmation.confirmationNumber(), confirmation.ucallerId(), null);
+        return new RequestPhoneConfirmationResponse(confirmation.confirmationNumber());
     }
 
-    @PostMapping("/phone/verify")
+    @GetMapping("/phone/confirmation-status")
     @ResponseStatus(HttpStatus.OK)
-    @Operation(summary = "Подтвердить код и войти", description = "Создаёт учётку по идентичности PHONE, если её ещё нет")
-    public AuthResponse verifyPhoneCode(@Valid @RequestBody VerifyPhoneCodeRequest request, HttpServletRequest httpRequest) {
-        requireWithinRateLimit(httpRequest);
+    @Operation(summary = "Состояние входящего подтверждения",
+            description = "Опрашивается экраном ожидания; при подтверждении отдаёт токены ровно один раз")
+    public PhoneConfirmationStatusResponse phoneConfirmationStatus(@RequestParam String phone) {
+        String normalizedPhone = PhoneNumberNormalizer.normalize(phone)
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "Invalid phone"));
+        var result = phoneInboundConfirmationService.pollResult(normalizedPhone);
+        if (result.isPresent() && result.get() instanceof PhoneInboundConfirmationService.LoginResult login) {
+            return PhoneConfirmationStatusResponse.confirmed(login.accessToken(), login.refreshToken());
+        }
+        if (phoneInboundConfirmationService.hasPending(normalizedPhone)) {
+            return PhoneConfirmationStatusResponse.waiting();
+        }
+        return PhoneConfirmationStatusResponse.expired();
+    }
+
+    @PostMapping("/phone/cancel-confirmation")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(summary = "Отменить ожидание входящего звонка", description = "Удаляет ожидающую запись")
+    public void cancelPhoneConfirmation(@Valid @RequestBody RequestPhoneConfirmationRequest request) {
         String normalizedPhone = PhoneNumberNormalizer.normalize(request.phone())
                 .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
                         HttpStatus.BAD_REQUEST, "Invalid phone"));
-        if (!rateLimiter.allowForPhoneConfirm(httpRequest, normalizedPhone)) {
-            throw new org.springframework.web.server.ResponseStatusException(
-                    HttpStatus.TOO_MANY_REQUESTS, "слишком много попыток, попробуйте позже");
-        }
-        if (!loginCodeService.verifyCode(IdentityProvider.PHONE, normalizedPhone, request.code())) {
-            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid code");
-        }
-        var dto = userService.findOrCreateByIdentity(
-                IdentityProvider.PHONE, normalizedPhone, new UserProfile(null, null, null, null));
-        return issueTokens(dto.id(), dto.username());
+        phoneInboundConfirmationService.cancelPending(normalizedPhone);
     }
 
     private void requireWithinRateLimit(HttpServletRequest httpRequest) {
