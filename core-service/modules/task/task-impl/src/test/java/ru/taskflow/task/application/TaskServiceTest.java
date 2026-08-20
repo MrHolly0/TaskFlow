@@ -71,6 +71,42 @@ class TaskServiceTest {
     }
 
     @Test
+    void create_withDeadline_schedulesReminder() {
+        var deadline = OffsetDateTime.parse("2026-08-25T10:00:00Z");
+        var request = new CreateTaskRequest("сдать курсовую", null, null, deadline, null, null, List.of(), null, null);
+        var entity = new TaskJpaEntity();
+        entity.setId(taskId);
+        entity.setUserId(userId);
+        entity.setTitle("сдать курсовую");
+        entity.setDeadline(deadline);
+        var response = mockResponse(taskId, "сдать курсовую");
+
+        when(taskRepository.save(any())).thenReturn(entity);
+        when(taskMapper.toResponse(entity)).thenReturn(response);
+
+        taskService.create(userId, request);
+
+        verify(notificationService).scheduleTaskReminder(userId, taskId, "сдать курсовую", deadline);
+    }
+
+    @Test
+    void create_withoutDeadline_doesNotScheduleReminder() {
+        var request = new CreateTaskRequest("купить молоко", null, null, null, null, null, List.of(), null, null);
+        var entity = new TaskJpaEntity();
+        entity.setId(taskId);
+        entity.setUserId(userId);
+        entity.setTitle("купить молоко");
+        var response = mockResponse(taskId, "купить молоко");
+
+        when(taskRepository.save(any())).thenReturn(entity);
+        when(taskMapper.toResponse(entity)).thenReturn(response);
+
+        taskService.create(userId, request);
+
+        verify(notificationService, never()).scheduleTaskReminder(any(), any(), any(), any());
+    }
+
+    @Test
     void findById_returnsTask_whenExists() {
         var entity = taskEntity();
         var response = mockResponse(taskId, "задача");

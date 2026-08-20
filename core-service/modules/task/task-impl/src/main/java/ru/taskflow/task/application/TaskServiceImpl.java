@@ -64,6 +64,7 @@ public class TaskServiceImpl implements TaskService {
      *
      * Задача сразу видна в списках. Если указана группа,
      * автоматически создаётся, если её не существует.
+     * Если указан дедлайн, расписывает напоминание.
      *
      * @param userId ID пользователя
      * @param request параметры новой задачи (название, описание, приоритет и т.д.)
@@ -89,6 +90,11 @@ public class TaskServiceImpl implements TaskService {
 
         TaskJpaEntity savedTask = taskRepository.save(task);
         auditService.record(userId, savedTask.getId(), AuditEventType.CREATED, null);
+
+        if (savedTask.getDeadline() != null) {
+            notificationService.scheduleTaskReminder(userId, savedTask.getId(), savedTask.getTitle(), savedTask.getDeadline());
+        }
+
         return taskMapper.toResponse(savedTask);
     }
 

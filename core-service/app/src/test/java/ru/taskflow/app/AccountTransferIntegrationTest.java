@@ -10,13 +10,11 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import ru.taskflow.app.application.AccountTransferService;
 import ru.taskflow.notify.api.NotificationChannel;
-import ru.taskflow.notify.api.NotificationService;
 import ru.taskflow.notify.infrastructure.persistence.ScheduledNotificationRepository;
 import ru.taskflow.task.api.TaskPriority;
 import ru.taskflow.task.api.TaskService;
 import ru.taskflow.task.api.TaskSource;
 import ru.taskflow.task.api.dto.CreateTaskRequest;
-import ru.taskflow.task.api.dto.TaskResponse;
 import ru.taskflow.user.api.IdentityProvider;
 import ru.taskflow.user.api.UserProfile;
 import ru.taskflow.user.api.UserService;
@@ -55,8 +53,6 @@ class AccountTransferIntegrationTest {
     @Autowired
     private TaskService taskService;
     @Autowired
-    private NotificationService notificationService;
-    @Autowired
     private ScheduledNotificationRepository scheduledNotificationRepository;
 
     @Test
@@ -76,11 +72,13 @@ class AccountTransferIntegrationTest {
             String groupName = "Группа " + (i % 5);
             List<String> tags = i % 3 == 0 ? List.of("важное") : List.of();
             OffsetDateTime deadline = i % 4 == 0 ? OffsetDateTime.now().plusDays(1) : null;
-            TaskResponse created = taskService.create(source.id(), new CreateTaskRequest(
+            // create() сам планирует напоминание при наличии дедлайна — раньше не
+            // планировал, и этот цикл компенсировал это ручным вызовом ниже. Теперь
+            // ручной вызов дублировал бы запись.
+            taskService.create(source.id(), new CreateTaskRequest(
                     "Задача " + i, null, TaskPriority.MEDIUM, deadline, null, groupName, tags, null, TaskSource.MANUAL));
             if (deadline != null) {
                 expectedNotifications++;
-                notificationService.scheduleTaskReminder(source.id(), created.id(), created.title(), deadline);
             }
         }
 
