@@ -29,6 +29,7 @@ public class CountryResolver implements HealthIndicator {
 
     private final String databasePath;
     private volatile DatabaseReader reader;
+    private volatile String unavailableReason;
 
     public CountryResolver(@Value("${app.geoip.database-path:}") String databasePath) {
         this.databasePath = databasePath;
@@ -53,18 +54,37 @@ public class CountryResolver implements HealthIndicator {
 
     private DatabaseReader openReader() {
         if (databasePath == null || databasePath.isBlank()) {
-            log.error("GEOIP_DB_PATH не задан — определение страны по IP отключено, кнопка Telegram будет скрыта для всех");
+            unavailableReason = "GEOIP_DB_PATH не задан";
+            log.error("{} — определение страны по IP отключено, кнопка Telegram будет скрыта для всех", unavailableReason);
             return null;
         }
         File file = new File(databasePath);
-        if (!file.isFile()) {
-            log.error("Файл базы GeoLite2 не найден по пути {} — определение страны по IP отключено", databasePath);
+        if (!file.exists()) {
+            unavailableReason = "файла нет по пути " + databasePath;
+            log.error("База GeoLite2 недоступна: {} — определение страны по IP отключено", unavailableReason);
+            return null;
+        }
+        // Частая ловушка bind-монтирования: если на хосте по указанному пути
+        // ничего нет, Docker вместо ошибки создаёт там пустой каталог — и
+        // в контейнере, и на хосте. Раньше это выглядело как «файл не
+        // найден» неотличимо от опечатки в пути, и разбор занимал время;
+        // называем это прямо, а не общей фразой.
+        if (file.isDirectory()) {
+            unavailableReason = "по пути " + databasePath + " каталог, а не файл — похоже на docker bind-mount "
+                    + "несуществующего на хосте файла (Docker создаёт директорию вместо ошибки)";
+            log.error("{} — определение страны по IP отключено", unavailableReason);
+            return null;
+        }
+        if (!file.canRead()) {
+            unavailableReason = "файл по пути " + databasePath + " недоступен для чтения (права доступа)";
+            log.error("{} — определение страны по IP отключено", unavailableReason);
             return null;
         }
         try {
             return new DatabaseReader.Builder(file).build();
         } catch (IOException e) {
-            log.error("Не удалось открыть базу GeoLite2 по пути {}: {}", databasePath, e.getMessage());
+            unavailableReason = "не удалось открыть файл по пути " + databasePath + ": " + e.getMessage();
+            log.error("{} — определение страны по IP отключено", unavailableReason);
             return null;
         }
     }
@@ -86,7 +106,7 @@ public class CountryResolver implements HealthIndicator {
     @Override
     public Health health() {
         return reader == null
-                ? Health.down().withDetail("reason", "база GeoLite2 недоступна").build()
+                ? Health.down().withDetail("reason", unavailableReason != null ? unavailableReason : "база GeoLite2 недоступна").build()
                 : Health.up().build();
     }
 }
