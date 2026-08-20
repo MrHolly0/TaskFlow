@@ -250,7 +250,9 @@ public class UserServiceImpl implements UserService {
     }
 
     private UserSettingsDto defaultSettings(String timezone, String displayName) {
-        return new UserSettingsDto(true, true, false, true, 60, true, "groq", null, "SILENCE", "SILENCE", timezone, displayName);
+        // notifyPush=false — "включён" без разрешения браузера и живой
+        // подписки не бывает, а у свежей учётки их ещё нет ни одного.
+        return new UserSettingsDto(true, true, false, false, 60, true, "groq", null, "SILENCE", "SILENCE", timezone, displayName);
     }
 
     private UserDto toDto(UserJpaEntity e) {

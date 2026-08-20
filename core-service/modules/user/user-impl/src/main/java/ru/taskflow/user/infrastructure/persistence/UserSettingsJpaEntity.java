@@ -34,8 +34,14 @@ public class UserSettingsJpaEntity {
     @Column(name = "notify_email")
     private boolean notifyEmail = false;
 
+    // "Включён" здесь может означать только "разрешение браузера выдано и
+    // подписка жива" — то, что новая учётка ещё не может утверждать про
+    // себя. Раньше это поле стартовало с true при разрешении, которое
+    // запрашивается только по явному нажатию переключателя, — комбинация,
+    // которой не бывает (см. также миграцию 026-push-off-by-default.yaml
+    // для DEFAULT самой колонки).
     @Column(name = "notify_push")
-    private boolean notifyPush = true;
+    private boolean notifyPush = false;
 
     @Column(name = "default_reminder_minutes")
     private int defaultReminderMinutes = 60;

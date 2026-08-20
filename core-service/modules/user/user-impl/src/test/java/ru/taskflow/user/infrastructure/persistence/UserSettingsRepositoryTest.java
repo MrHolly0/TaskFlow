@@ -18,12 +18,13 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 20.08.2026: значение notify_email по умолчанию для НОВЫХ строк меняется на
- * false (личный почтовый ящик, лимит писем в сутки). Существующих
- * пользователей это трогать не должно — молча выключить работающие
- * уведомления человеку, который на них рассчитывает, нельзя. Тест проверяет
- * именно это: у уже сохранённой строки со значением true чтение не должно
- * подменить его новым дефолтом.
+ * 20.08.2026: значение notify_email, а затем и notify_push по умолчанию для
+ * НОВЫХ строк меняется на false (email — личный почтовый ящик с лимитом
+ * писем в сутки; push — включённым по умолчанию не может быть то, для чего
+ * ещё не выдано разрешение браузера). Существующих пользователей это трогать
+ * не должно — молча выключить работающие уведомления человеку, который на
+ * них рассчитывает, нельзя. Тесты проверяют именно это: у уже сохранённой
+ * строки со значением true чтение не должно подменить его новым дефолтом.
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -75,12 +76,30 @@ class UserSettingsRepositoryTest {
     }
 
     @Test
-    void newlyConstructedEntity_defaultsEmailToFalse() {
+    void existingRowWithPushEnabled_keepsItsValueAfterReload() {
+        var user = userRepository.saveAndFlush(new UserJpaEntity());
+        var settings = new UserSettingsJpaEntity();
+        settings.setUser(user);
+        settings.setNotifyPush(true);
+        settingsRepository.saveAndFlush(settings);
+
+        entityManager.clear();
+
+        var reloaded = settingsRepository.findByUserId(user.getId()).orElseThrow();
+        assertThat(reloaded.isNotifyPush())
+                .overridingErrorMessage("Существующая запись не должна менять значение из-за нового дефолта")
+                .isTrue();
+    }
+
+    @Test
+    void newlyConstructedEntity_defaultsEmailAndPushToFalse() {
         // Java-дефолт для НОВЫХ объектов — то, что реально видит createDefaultSettings.
+        // push — тоже false: "включён" без разрешения браузера и живой
+        // подписки не бывает, а у новой записи нет ни того, ни другого.
         var settings = new UserSettingsJpaEntity();
 
         assertThat(settings.isNotifyEmail()).isFalse();
         assertThat(settings.isNotifyTelegram()).isTrue();
-        assertThat(settings.isNotifyPush()).isTrue();
+        assertThat(settings.isNotifyPush()).isFalse();
     }
 }

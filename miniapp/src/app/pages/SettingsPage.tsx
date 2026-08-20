@@ -70,7 +70,13 @@ export function SettingsPage() {
   const { data: serverSettings } = useSettings();
   const { data: identities } = useIdentities();
   const { canInstall, promptInstall } = useInstallPrompt();
-  const { permission: pushPermission, subscribe: subscribeToPush, unsubscribe: unsubscribeFromPush } = usePushSubscription();
+  const {
+    permission: pushPermission,
+    subscribed: pushSubscribed,
+    checking: pushChecking,
+    subscribe: subscribeToPush,
+    unsubscribe: unsubscribeFromPush,
+  } = usePushSubscription();
   const updateSettings = useUpdateSettings();
   const clearCompleted = useClearCompleted();
   const [clearResult, setClearResult] = useState<number | null>(null);
@@ -84,7 +90,7 @@ export function SettingsPage() {
   const hasEmail = identities?.some((i) => i.provider === 'EMAIL') ?? false;
   const notifyTelegram = serverSettings?.notifyTelegram ?? true;
   const notifyEmail = serverSettings?.notifyEmail ?? true;
-  const notifyPush = serverSettings?.notifyPush ?? true;
+  const notifyPush = serverSettings?.notifyPush ?? false;
   const handleNotifyTelegramToggle = (v: boolean) => updateSettings.mutate({ notifyTelegram: v });
   const handleNotifyEmailToggle = (v: boolean) => updateSettings.mutate({ notifyEmail: v });
 
@@ -94,6 +100,12 @@ export function SettingsPage() {
   // почему переключатель не поддаётся.
   const pushBlockedByBrowser = pushPermission === 'denied';
   const pushUnsupported = pushPermission === 'unsupported';
+  // Переключатель показывает фактическую доставляемость, а не просто желание:
+  // «включён» значит «разрешение выдано и подписка жива». Значение notifyPush
+  // с сервера само по себе этого не гарантирует — разрешение могло быть не
+  // выдано ни разу или подписка могла протухнуть без нашего участия
+  // (например, очистка данных браузера).
+  const pushDeliverable = pushPermission === 'granted' && pushSubscribed;
   const handleNotifyPushToggle = async (v: boolean) => {
     if (v) {
       // Разрешение браузера спрашиваем только по этому нажатию — не раньше.
@@ -310,9 +322,9 @@ export function SettingsPage() {
                 </div>
                 <Switch
                   id="notify-push"
-                  checked={notifyPush && !pushBlockedByBrowser}
+                  checked={notifyPush && pushDeliverable}
                   onCheckedChange={handleNotifyPushToggle}
-                  disabled={pushBlockedByBrowser || !notificationsEnabled || updateSettings.isPending}
+                  disabled={pushBlockedByBrowser || !notificationsEnabled || updateSettings.isPending || pushChecking}
                 />
               </div>
             )}
