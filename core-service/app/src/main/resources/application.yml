@@ -48,6 +48,9 @@ app:
     database-path: ${GEOIP_DB_PATH:}
   mail:
     from: ${SMTP_FROM:}
+  ucaller:
+    service-id: ${UCALLER_SERVICE_ID:}
+    secret-key: ${UCALLER_SECRET_KEY:}
   telegram:
     bot-token: ${TELEGRAM_BOT_TOKEN:}
     auth-date-max-age: ${TELEGRAM_AUTH_MAX_AGE:86400}
