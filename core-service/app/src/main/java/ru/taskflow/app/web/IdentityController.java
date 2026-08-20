@@ -23,9 +23,13 @@ import ru.taskflow.user.api.UserService;
 import ru.taskflow.user.api.dto.IdentityDto;
 import ru.taskflow.user.application.EmailSender;
 import ru.taskflow.user.application.LoginCodeService;
+import ru.taskflow.user.application.PhoneNumberNormalizer;
+import ru.taskflow.user.application.PhoneVerificationProvider;
 import ru.taskflow.user.infrastructure.web.dto.RequestCodeRequest;
+import ru.taskflow.user.infrastructure.web.dto.RequestPhoneCodeRequest;
 import ru.taskflow.user.infrastructure.web.dto.TelegramLoginWidgetAuthRequest;
 import ru.taskflow.user.infrastructure.web.dto.VerifyCodeRequest;
+import ru.taskflow.user.infrastructure.web.dto.VerifyPhoneCodeRequest;
 
 import java.util.List;
 import java.util.Locale;
@@ -58,6 +62,7 @@ public class IdentityController {
     private final TaskService taskService;
     private final LoginCodeService loginCodeService;
     private final EmailSender emailSender;
+    private final PhoneVerificationProvider phoneVerificationProvider;
     private final TelegramLoginWidgetValidator loginWidgetValidator;
     private final AccountTransferService accountTransferService;
     private final MergeTokenService mergeTokenService;
@@ -92,6 +97,35 @@ public class IdentityController {
         }
         String normalizedEmail = request.email().toLowerCase(Locale.ROOT);
         return bindOrConflict(user.userId(), IdentityProvider.EMAIL, normalizedEmail);
+    }
+
+    @PostMapping("/phone/request-code")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(summary = "Запросить код для привязки телефона",
+            description = "Отвечает одинаково независимо от того, дошёл ли звонок")
+    public void requestPhoneCode(@Valid @RequestBody RequestPhoneCodeRequest request) {
+        String normalizedPhone = PhoneNumberNormalizer.normalize(request.phone())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid phone"));
+        String code = loginCodeService.issueCode(IdentityProvider.PHONE, normalizedPhone);
+        try {
+            phoneVerificationProvider.sendCode(normalizedPhone, code);
+            loginCodeService.confirmIssued(IdentityProvider.PHONE, normalizedPhone, code);
+        } catch (RuntimeException e) {
+            log.warn("Не удалось отправить код привязки телефона: {}", e.getMessage());
+        }
+    }
+
+    @PostMapping("/phone/confirm")
+    @Operation(summary = "Подтвердить телефон кодом",
+            description = "Привязывает телефон к текущей учётке; 409, если телефон уже принадлежит другой — с токеном для /merge")
+    public ResponseEntity<?> confirmPhone(@Valid @RequestBody VerifyPhoneCodeRequest request,
+                                           @AuthenticationPrincipal AuthenticatedUser user) {
+        String normalizedPhone = PhoneNumberNormalizer.normalize(request.phone())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid phone"));
+        if (!loginCodeService.verifyCode(IdentityProvider.PHONE, normalizedPhone, request.code())) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid code");
+        }
+        return bindOrConflict(user.userId(), IdentityProvider.PHONE, normalizedPhone);
     }
 
     @PostMapping("/telegram")

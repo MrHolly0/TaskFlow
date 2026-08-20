@@ -27,6 +27,7 @@ public class AuthRateLimiter {
 
     private static final int IP_LIMIT_PER_MINUTE = 30;
     private static final int IP_EMAIL_LIMIT_PER_MINUTE = 5;
+    private static final int IP_PHONE_LIMIT_PER_MINUTE = 5;
     private static final Duration WINDOW = Duration.ofSeconds(60);
 
     private final StringRedisTemplate redis;
@@ -39,6 +40,11 @@ public class AuthRateLimiter {
     public boolean allowForEmailConfirm(HttpServletRequest request, String email) {
         String key = "auth:rate:ip-email:" + clientIp(request) + ":" + email.toLowerCase(Locale.ROOT);
         return increment(key, IP_EMAIL_LIMIT_PER_MINUTE);
+    }
+
+    public boolean allowForPhoneConfirm(HttpServletRequest request, String phoneE164) {
+        String key = "auth:rate:ip-phone:" + clientIp(request) + ":" + phoneE164;
+        return increment(key, IP_PHONE_LIMIT_PER_MINUTE);
     }
 
     private boolean increment(String keyPrefix, int limit) {

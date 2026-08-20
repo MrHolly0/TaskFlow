@@ -17,6 +17,8 @@ import ru.taskflow.user.api.UserService;
 import ru.taskflow.user.application.AuthRateLimiter;
 import ru.taskflow.user.application.EmailSender;
 import ru.taskflow.user.application.LoginCodeService;
+import ru.taskflow.user.application.PhoneNumberNormalizer;
+import ru.taskflow.user.application.PhoneVerificationProvider;
 import ru.taskflow.user.application.RefreshTokenService;
 import ru.taskflow.user.infrastructure.geo.CountryResolver;
 import ru.taskflow.user.infrastructure.web.dto.*;
@@ -44,14 +46,16 @@ public class AuthController {
     private final EmailSender emailSender;
     private final AuthRateLimiter rateLimiter;
     private final CountryResolver countryResolver;
+    private final PhoneVerificationProvider phoneVerificationProvider;
 
     @GetMapping("/methods")
     @ResponseStatus(HttpStatus.OK)
     @Operation(summary = "Доступные способы входа",
             description = "Почта разрешена всегда; Telegram скрывается для российских адресов и при "
-                    + "невозможности определить страну — цена ошибки несимметрична")
+                    + "невозможности определить страну — цена ошибки несимметрична; телефон — только "
+                    + "если у провайдера звонков заданы ключи")
     public AuthMethodsResponse methods(HttpServletRequest httpRequest) {
-        return new AuthMethodsResponse(true, telegramAllowed(httpRequest));
+        return new AuthMethodsResponse(true, telegramAllowed(httpRequest), phoneVerificationProvider.isAvailable());
     }
 
     @PostMapping("/telegram-miniapp")
@@ -132,6 +136,44 @@ public class AuthController {
         String localPart = normalizedEmail.substring(0, normalizedEmail.indexOf('@'));
         var dto = userService.findOrCreateByIdentity(
                 IdentityProvider.EMAIL, normalizedEmail, new UserProfile(localPart, null, null, null));
+        return issueTokens(dto.id(), dto.username());
+    }
+
+    @PostMapping("/phone/request-code")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(summary = "Запросить код входа по телефону",
+            description = "Отвечает одинаково независимо от того, известен номер или дошёл ли звонок")
+    public void requestPhoneCode(@Valid @RequestBody RequestPhoneCodeRequest request, HttpServletRequest httpRequest) {
+        requireWithinRateLimit(httpRequest);
+        String normalizedPhone = PhoneNumberNormalizer.normalize(request.phone())
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "Invalid phone"));
+        String code = loginCodeService.issueCode(IdentityProvider.PHONE, normalizedPhone);
+        try {
+            phoneVerificationProvider.sendCode(normalizedPhone, code);
+            loginCodeService.confirmIssued(IdentityProvider.PHONE, normalizedPhone, code);
+        } catch (RuntimeException e) {
+            log.warn("Не удалось позвонить с кодом входа: {}", e.getMessage());
+        }
+    }
+
+    @PostMapping("/phone/verify")
+    @ResponseStatus(HttpStatus.OK)
+    @Operation(summary = "Подтвердить код и войти", description = "Создаёт учётку по идентичности PHONE, если её ещё нет")
+    public AuthResponse verifyPhoneCode(@Valid @RequestBody VerifyPhoneCodeRequest request, HttpServletRequest httpRequest) {
+        requireWithinRateLimit(httpRequest);
+        String normalizedPhone = PhoneNumberNormalizer.normalize(request.phone())
+                .orElseThrow(() -> new org.springframework.web.server.ResponseStatusException(
+                        HttpStatus.BAD_REQUEST, "Invalid phone"));
+        if (!rateLimiter.allowForPhoneConfirm(httpRequest, normalizedPhone)) {
+            throw new org.springframework.web.server.ResponseStatusException(
+                    HttpStatus.TOO_MANY_REQUESTS, "слишком много попыток, попробуйте позже");
+        }
+        if (!loginCodeService.verifyCode(IdentityProvider.PHONE, normalizedPhone, request.code())) {
+            throw new org.springframework.web.server.ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid code");
+        }
+        var dto = userService.findOrCreateByIdentity(
+                IdentityProvider.PHONE, normalizedPhone, new UserProfile(null, null, null, null));
         return issueTokens(dto.id(), dto.username());
     }
 

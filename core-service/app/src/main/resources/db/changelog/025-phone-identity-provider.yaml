@@ -1,0 +1,9 @@
+databaseChangeLog:
+  - changeSet:
+      id: 025-phone-identity-provider
+      author: taskflow
+      changes:
+        - sql:
+            sql: "ALTER TABLE user_identities DROP CONSTRAINT chk_identity_provider;"
+        - sql:
+            sql: "ALTER TABLE user_identities ADD CONSTRAINT chk_identity_provider CHECK (provider IN ('TELEGRAM','EMAIL','PHONE'));"

@@ -21,10 +21,13 @@ import ru.taskflow.user.api.UserService;
 import ru.taskflow.user.application.AuthRateLimiter;
 import ru.taskflow.user.application.EmailSender;
 import ru.taskflow.user.application.LoginCodeService;
+import ru.taskflow.user.application.PhoneVerificationProvider;
 import ru.taskflow.user.application.RefreshTokenService;
 import ru.taskflow.user.infrastructure.geo.CountryResolver;
 import ru.taskflow.user.infrastructure.web.dto.RequestCodeRequest;
+import ru.taskflow.user.infrastructure.web.dto.RequestPhoneCodeRequest;
 import ru.taskflow.user.infrastructure.web.dto.VerifyCodeRequest;
+import ru.taskflow.user.infrastructure.web.dto.VerifyPhoneCodeRequest;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -69,6 +72,8 @@ class AuthControllerTest {
     private AuthRateLimiter rateLimiter;
     @Mock
     private CountryResolver countryResolver;
+    @Mock
+    private PhoneVerificationProvider phoneVerificationProvider;
 
     private AuthController controller;
     private MockMvc mockMvc;
@@ -78,8 +83,11 @@ class AuthControllerTest {
     void setUp() {
         lenient().when(rateLimiter.allow(any())).thenReturn(true);
         lenient().when(rateLimiter.allowForEmailConfirm(any(), any())).thenReturn(true);
+        lenient().when(rateLimiter.allowForPhoneConfirm(any(), any())).thenReturn(true);
+        lenient().when(phoneVerificationProvider.isAvailable()).thenReturn(false);
         controller = new AuthController(initDataValidator, loginWidgetValidator, jwtService,
-                userService, refreshTokenService, loginCodeService, emailSender, rateLimiter, countryResolver);
+                userService, refreshTokenService, loginCodeService, emailSender, rateLimiter, countryResolver,
+                phoneVerificationProvider);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
@@ -188,6 +196,59 @@ class AuthControllerTest {
     }
 
     @Test
+    void requestPhoneCode_validPhone_normalizesAndConfirmsIssued() throws Exception {
+        when(loginCodeService.issueCode(IdentityProvider.PHONE, "+79991234567")).thenReturn("1234");
+
+        mockMvc.perform(post("/api/v1/auth/phone/request-code")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new RequestPhoneCodeRequest("8 (999) 123-45-67"))))
+                .andExpect(status().isOk());
+
+        verify(phoneVerificationProvider).sendCode("+79991234567", "1234");
+        verify(loginCodeService).confirmIssued(IdentityProvider.PHONE, "+79991234567", "1234");
+    }
+
+    @Test
+    void requestPhoneCode_malformedPhone_returns400WithoutIssuingCode() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/phone/request-code")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new RequestPhoneCodeRequest("not-a-phone"))))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(loginCodeService, phoneVerificationProvider);
+    }
+
+    @Test
+    void verifyPhoneCode_correctCode_issuesTokensAndCreatesPhoneIdentity() throws Exception {
+        UUID userId = UUID.randomUUID();
+        var dto = new UserDto(userId, null, null, null);
+        when(loginCodeService.verifyCode(IdentityProvider.PHONE, "+79991234567", "1234")).thenReturn(true);
+        when(userService.findOrCreateByIdentity(eq(IdentityProvider.PHONE), eq("+79991234567"), any(UserProfile.class)))
+                .thenReturn(dto);
+        when(jwtService.issueAccessToken(eq(userId), any())).thenReturn("access-token");
+        when(refreshTokenService.issue(userId)).thenReturn("refresh-token");
+
+        mockMvc.perform(post("/api/v1/auth/phone/verify")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new VerifyPhoneCodeRequest("+79991234567", "1234"))))
+                .andExpect(status().isOk());
+
+        verify(userService).findOrCreateByIdentity(eq(IdentityProvider.PHONE), eq("+79991234567"), any(UserProfile.class));
+    }
+
+    @Test
+    void verifyPhoneCode_wrongCode_returns401WithoutCreatingIdentity() throws Exception {
+        when(loginCodeService.verifyCode(IdentityProvider.PHONE, "+79991234567", "1234")).thenReturn(false);
+
+        mockMvc.perform(post("/api/v1/auth/phone/verify")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new VerifyPhoneCodeRequest("+79991234567", "1234"))))
+                .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(userService);
+    }
+
+    @Test
     void methods_countryIsNotRussia_telegramAllowed() throws Exception {
         when(countryResolver.resolveCountryIso(any())).thenReturn(Optional.of("DE"));
 
@@ -215,5 +276,25 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value(true))
                 .andExpect(jsonPath("$.telegram").value(false));
+    }
+
+    @Test
+    void methods_phoneProviderAvailable_phoneAllowed() throws Exception {
+        when(countryResolver.resolveCountryIso(any())).thenReturn(Optional.empty());
+        when(phoneVerificationProvider.isAvailable()).thenReturn(true);
+
+        mockMvc.perform(get("/api/v1/auth/methods"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.phone").value(true));
+    }
+
+    @Test
+    void methods_phoneProviderUnavailable_phoneHidden() throws Exception {
+        when(countryResolver.resolveCountryIso(any())).thenReturn(Optional.empty());
+        when(phoneVerificationProvider.isAvailable()).thenReturn(false);
+
+        mockMvc.perform(get("/api/v1/auth/methods"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.phone").value(false));
     }
 }

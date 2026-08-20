@@ -25,7 +25,10 @@ import ru.taskflow.user.api.UserService;
 import ru.taskflow.user.api.dto.IdentityDto;
 import ru.taskflow.user.application.EmailSender;
 import ru.taskflow.user.application.LoginCodeService;
+import ru.taskflow.user.application.PhoneVerificationProvider;
+import ru.taskflow.user.infrastructure.web.dto.RequestPhoneCodeRequest;
 import ru.taskflow.user.infrastructure.web.dto.VerifyCodeRequest;
+import ru.taskflow.user.infrastructure.web.dto.VerifyPhoneCodeRequest;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -59,6 +62,8 @@ class IdentityControllerTest {
     @Mock
     private EmailSender emailSender;
     @Mock
+    private PhoneVerificationProvider phoneVerificationProvider;
+    @Mock
     private TelegramLoginWidgetValidator loginWidgetValidator;
     @Mock
     private AccountTransferService accountTransferService;
@@ -73,7 +78,7 @@ class IdentityControllerTest {
     @BeforeEach
     void setUp() {
         var controller = new IdentityController(userService, taskService, loginCodeService, emailSender,
-                loginWidgetValidator, accountTransferService, mergeTokenService);
+                phoneVerificationProvider, loginWidgetValidator, accountTransferService, mergeTokenService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setCustomArgumentResolvers(new AuthenticationPrincipalArgumentResolver())
                 .build();
@@ -119,6 +124,61 @@ class IdentityControllerTest {
 
         verifyNoInteractions(accountTransferService);
         verify(userService, never()).bindIdentity(any(), any(), anyString());
+    }
+
+    @Test
+    void requestPhoneCode_validPhone_normalizesAndConfirmsIssued() throws Exception {
+        when(loginCodeService.issueCode(IdentityProvider.PHONE, "+79991234567")).thenReturn("1234");
+
+        mockMvc.perform(post("/api/v1/identities/phone/request-code")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new RequestPhoneCodeRequest("8 (999) 123-45-67"))))
+                .andExpect(status().isOk());
+
+        verify(phoneVerificationProvider).sendCode("+79991234567", "1234");
+        verify(loginCodeService).confirmIssued(IdentityProvider.PHONE, "+79991234567", "1234");
+    }
+
+    @Test
+    void confirmPhone_noConflict_bindsImmediatelyWithoutToken() throws Exception {
+        when(loginCodeService.verifyCode(IdentityProvider.PHONE, "+79991234567", "1234")).thenReturn(true);
+        when(userService.findIdentityOwner(IdentityProvider.PHONE, "+79991234567")).thenReturn(Optional.empty());
+        when(userService.bindIdentity(userId, IdentityProvider.PHONE, "+79991234567"))
+                .thenReturn(new IdentityDto(IdentityProvider.PHONE, "+79991234567", OffsetDateTime.now()));
+
+        mockMvc.perform(post("/api/v1/identities/phone/confirm")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new VerifyPhoneCodeRequest("+79991234567", "1234"))))
+                .andExpect(status().isOk());
+
+        verifyNoInteractions(accountTransferService, mergeTokenService);
+    }
+
+    @Test
+    void confirmPhone_conflict_doesNotTransferAndReturns409WithSummaryAndToken() throws Exception {
+        when(loginCodeService.verifyCode(IdentityProvider.PHONE, "+79991234567", "1234")).thenReturn(true);
+        when(userService.findIdentityOwner(IdentityProvider.PHONE, "+79991234567")).thenReturn(Optional.of(otherUserId));
+        when(taskService.countOwnership(otherUserId)).thenReturn(new TaskTransferResult(115, 12, 3));
+        when(mergeTokenService.issue(otherUserId, userId, IdentityProvider.PHONE, "+79991234567")).thenReturn("merge-token-abc");
+
+        mockMvc.perform(post("/api/v1/identities/phone/confirm")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new VerifyPhoneCodeRequest("+79991234567", "1234"))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.mergeToken").value("merge-token-abc"));
+
+        verifyNoInteractions(accountTransferService);
+        verify(userService, never()).bindIdentity(any(), any(), anyString());
+    }
+
+    @Test
+    void confirmPhone_malformedPhone_returns400() throws Exception {
+        mockMvc.perform(post("/api/v1/identities/phone/confirm")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new VerifyPhoneCodeRequest("not-a-phone", "1234"))))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(loginCodeService, userService, mergeTokenService);
     }
 
     @Test
