@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { IconArrowLeft } from '@tabler/icons-react';
-import { Button } from '@/app/components/ui/button';
+import { IconArrowLeft, IconPhone, IconCopy, IconCheck } from '@tabler/icons-react';
+import { Button, buttonVariants } from '@/app/components/ui/button';
+import { cn } from '@/lib/utils';
 
 const TOTAL_WAIT_SECONDS = 5 * 60;
 const POLL_INTERVAL_MS = 2000;
@@ -34,6 +35,7 @@ export function PhoneWaitingStep<T extends PhoneConfirmationStatus>({
   const [secondsLeft, setSecondsLeft] = useState(TOTAL_WAIT_SECONDS);
   const [expired, setExpired] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [copied, setCopied] = useState(false);
   const stoppedRef = useRef(false);
 
   useEffect(() => {
@@ -70,6 +72,16 @@ export function PhoneWaitingStep<T extends PhoneConfirmationStatus>({
     const countdown = setInterval(() => setSecondsLeft((s) => s - 1), 1000);
     return () => clearInterval(countdown);
   }, [secondsLeft, expired]);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(confirmationNumber);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Буфер обмена недоступен — номер всё равно виден и его можно выделить руками.
+    }
+  };
 
   const handleCancel = async () => {
     if (cancelling) return;
@@ -121,12 +133,31 @@ export function PhoneWaitingStep<T extends PhoneConfirmationStatus>({
         </p>
       </div>
 
-      <a
-        href={`tel:${confirmationNumber}`}
-        className="block text-center text-3xl font-mono font-semibold tracking-wide py-4 rounded-2xl bg-muted/50 hover:bg-muted transition-colors"
-      >
-        {confirmationNumber}
-      </a>
+      <div className="space-y-3">
+        <p className="text-center text-3xl font-mono font-semibold tracking-wide select-all">
+          {confirmationNumber}
+        </p>
+
+        <div className="flex items-center gap-2">
+          <a
+            href={`tel:${confirmationNumber}`}
+            className={cn(buttonVariants({ size: 'lg' }), 'flex-1')}
+          >
+            <IconPhone className="w-4 h-4" />
+            Позвонить
+          </a>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleCopy}
+            className="shrink-0"
+          >
+            {copied ? <IconCheck className="w-4 h-4" /> : <IconCopy className="w-4 h-4" />}
+            {copied ? 'Скопировано' : 'Скопировать'}
+          </Button>
+        </div>
+      </div>
 
       <p className="text-center text-xs text-muted-foreground">
         Ждём звонка — осталось {minutes}:{seconds.toString().padStart(2, '0')}
