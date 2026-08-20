@@ -10,13 +10,15 @@ import {
   getStoredToken,
   getUserFromToken,
   requestEmailCode,
-  requestPhoneCode,
+  requestPhoneConfirmation,
+  pollPhoneConfirmationStatus,
+  cancelPhoneConfirmation,
 } from '@/lib/auth';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Separator } from '@/app/components/ui/separator';
 import { EmailCodeStep } from '@/app/components/EmailCodeStep';
-import { PhoneCodeStep } from '@/app/components/PhoneCodeStep';
+import { PhoneWaitingStep } from '@/app/components/PhoneWaitingStep';
 import { MuninLogo } from '@/app/components/MuninLogo';
 import { TelegramLoginButton } from '@/app/components/TelegramLoginButton';
 import { TelegramGlyph } from '@/app/components/TelegramLogo';
@@ -32,10 +34,11 @@ const features = [
 export function AuthPage() {
   const setAuthenticated = useStore((s) => s.setAuthenticated);
   const login = useStore((s) => s.login);
-  const [step, setStep] = useState<'main' | 'email-code' | 'phone-code'>('main');
+  const [step, setStep] = useState<'main' | 'email-code' | 'phone-waiting'>('main');
   const [mode, setMode] = useState<'email' | 'phone'>('email');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [confirmationNumber, setConfirmationNumber] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { data: authMethods } = useAuthMethods();
@@ -120,10 +123,11 @@ export function AuthPage() {
     setLoading(true);
     setError(null);
     try {
-      await requestPhoneCode(phone);
-      setStep('phone-code');
+      const result = await requestPhoneConfirmation(phone);
+      setConfirmationNumber(result.confirmationNumber);
+      setStep('phone-waiting');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Не получилось позвонить, попробуйте позже';
+      const message = err instanceof Error ? err.message : 'Не получилось запросить звонок, попробуйте позже';
       setError(message);
     } finally {
       setLoading(false);
@@ -187,14 +191,17 @@ export function AuthPage() {
                 }}
                 onVerified={applyAuth}
               />
-            ) : step === 'phone-code' ? (
-              <PhoneCodeStep
+            ) : step === 'phone-waiting' ? (
+              <PhoneWaitingStep
                 phone={phone}
+                confirmationNumber={confirmationNumber}
                 onBack={() => {
                   setStep('main');
                   setError(null);
                 }}
-                onVerified={applyAuth}
+                onConfirmed={applyAuth}
+                pollStatus={pollPhoneConfirmationStatus}
+                cancel={cancelPhoneConfirmation}
               />
             ) : (
               <div className="space-y-5">

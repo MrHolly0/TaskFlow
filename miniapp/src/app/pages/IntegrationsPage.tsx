@@ -19,7 +19,7 @@ import {
 } from '@/app/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
 import { EmailCodeStep } from '@/app/components/EmailCodeStep';
-import { PhoneCodeStep } from '@/app/components/PhoneCodeStep';
+import { PhoneWaitingStep } from '@/app/components/PhoneWaitingStep';
 import { TelegramLoginButton } from '@/app/components/TelegramLoginButton';
 import { TelegramLogo } from '@/app/components/TelegramLogo';
 import { MergeConflictDialog } from '@/app/components/MergeConflictDialog';
@@ -31,8 +31,9 @@ import {
   useIdentities,
   useRequestBindEmailCode,
   useConfirmBindEmail,
-  useRequestBindPhoneCode,
-  useConfirmBindPhone,
+  useRequestBindPhoneConfirmation,
+  usePollBindPhoneConfirmation,
+  useCancelBindPhoneConfirmation,
   useBindTelegram,
   useMergeAccounts,
   useUnbindIdentity,
@@ -41,6 +42,7 @@ import {
   type IdentityBindResponse,
   type IdentityProvider,
   type MergeConflictResponse,
+  type PhoneBindConfirmationStatus,
 } from '@/lib/hooks/useIdentities';
 
 const EMPTY_TRANSFER: AccountTransferResult = {
@@ -92,7 +94,7 @@ function useMergeFlow(onMerged: (result: IdentityBindResponse) => void, onResolv
     onResolved();
   };
 
-  return { conflict, merging: mergeAccounts.isPending, catchConflict, confirm, cancel };
+  return { conflict, merging: mergeAccounts.isPending, catchConflict, presentConflict: setConflict, confirm, cancel };
 }
 
 function IntegrationsHeader() {
@@ -451,10 +453,12 @@ function PhoneSection({
   unbinding: boolean;
   available: boolean;
 }) {
-  const [step, setStep] = useState<'idle' | 'phone' | 'code'>('idle');
+  const [step, setStep] = useState<'idle' | 'phone' | 'waiting'>('idle');
   const [phone, setPhone] = useState('');
-  const requestCode = useRequestBindPhoneCode();
-  const confirmPhone = useConfirmBindPhone();
+  const [confirmationNumber, setConfirmationNumber] = useState('');
+  const requestConfirmation = useRequestBindPhoneConfirmation();
+  const pollConfirmation = usePollBindPhoneConfirmation();
+  const cancelConfirmation = useCancelBindPhoneConfirmation();
   const merge = useMergeFlow(
     (result) => toast.success(mergeToastMessage(result.mergedFrom ?? EMPTY_TRANSFER)),
     () => setStep('idle'),
@@ -462,24 +466,25 @@ function PhoneSection({
 
   const handleSubmitPhone = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (requestCode.isPending || !phone) return;
+    if (requestConfirmation.isPending || !phone) return;
     try {
-      await requestCode.mutateAsync(phone);
-      setStep('code');
+      const result = await requestConfirmation.mutateAsync(phone);
+      setConfirmationNumber(result.confirmationNumber);
+      setStep('waiting');
     } catch {
-      toast.error('Не получилось позвонить, попробуйте позже');
+      toast.error('Не получилось запросить звонок, попробуйте позже');
     }
   };
 
-  const verifyAndBind = async (bindPhone: string, code: string) => {
-    try {
-      const result = await confirmPhone.mutateAsync({ phone: bindPhone, code });
-      toast.success(mergeToastMessage(result.mergedFrom ?? EMPTY_TRANSFER));
-      return result;
-    } catch (err) {
-      if (merge.catchConflict(err)) return undefined;
-      throw err;
+  const handleConfirmed = (result: PhoneBindConfirmationStatus) => {
+    if (result.status === 'conflict' && result.tasks !== null && result.groups !== null
+        && result.tags !== null && result.mergeToken) {
+      merge.presentConflict({ tasks: result.tasks, groups: result.groups, tags: result.tags, mergeToken: result.mergeToken });
+      setStep('idle');
+      return;
     }
+    toast.success(mergeToastMessage(EMPTY_TRANSFER));
+    setStep('idle');
   };
 
   return (
@@ -532,22 +537,23 @@ function PhoneSection({
             value={phone}
             onChange={(e) => setPhone(formatPhoneInput(e.target.value))}
             placeholder="+7 (999) 123-45-67"
-            disabled={requestCode.isPending}
+            disabled={requestConfirmation.isPending}
             className="h-10"
           />
-          <Button type="submit" disabled={requestCode.isPending || !phone} className="h-10 shrink-0">
+          <Button type="submit" disabled={requestConfirmation.isPending || !phone} className="h-10 shrink-0">
             Продолжить
           </Button>
         </form>
       )}
 
-      {step === 'code' && (
-        <PhoneCodeStep
+      {step === 'waiting' && (
+        <PhoneWaitingStep
           phone={phone}
+          confirmationNumber={confirmationNumber}
           onBack={() => setStep('phone')}
-          onVerified={() => setStep('idle')}
-          requestCode={(p) => requestCode.mutateAsync(p)}
-          verifyCode={verifyAndBind}
+          onConfirmed={handleConfirmed}
+          pollStatus={(p) => pollConfirmation.mutateAsync(p)}
+          cancel={(p) => cancelConfirmation.mutateAsync(p)}
         />
       )}
 

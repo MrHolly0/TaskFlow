@@ -90,19 +90,43 @@ export const verifyEmailCode = async (email: string, code: string): Promise<Auth
   return response.data;
 };
 
-export const requestPhoneCode = async (phone: string): Promise<void> => {
-  await axios.post(`${API_BASE}/auth/phone/request-code`, { phone });
+export interface RequestPhoneConfirmationResponse {
+  confirmationNumber: string;
+}
+
+export interface PhoneLoginConfirmationStatus {
+  status: 'waiting' | 'confirmed' | 'expired';
+  token: string | null;
+  refreshToken: string | null;
+}
+
+// Подтверждение номера — звонком человека нам, не нам ему: исходящий
+// звонок на реальном номере не доходил (см. историю чата), хотя Ucaller
+// отчитывался об успехе. Кода нет вовсе — подтверждением служит сам факт
+// звонка с нужного номера.
+export const requestPhoneConfirmation = async (phone: string): Promise<RequestPhoneConfirmationResponse> => {
+  const response = await axios.post<RequestPhoneConfirmationResponse>(
+    `${API_BASE}/auth/phone/request-confirmation`, { phone },
+  );
+  return response.data;
 };
 
-export const verifyPhoneCode = async (phone: string, code: string): Promise<AuthResponse> => {
-  const response = await axios.post<AuthResponse>(`${API_BASE}/auth/phone/verify`, { phone, code });
-  const { token } = response.data;
-  setApiToken(token);
-  localStorage.setItem('auth_token', token);
-  if (response.data.refreshToken) {
-    localStorage.setItem('refresh_token', response.data.refreshToken);
+export const pollPhoneConfirmationStatus = async (phone: string): Promise<PhoneLoginConfirmationStatus> => {
+  const response = await axios.get<PhoneLoginConfirmationStatus>(
+    `${API_BASE}/auth/phone/confirmation-status`, { params: { phone } },
+  );
+  if (response.data.status === 'confirmed' && response.data.token) {
+    setApiToken(response.data.token);
+    localStorage.setItem('auth_token', response.data.token);
+    if (response.data.refreshToken) {
+      localStorage.setItem('refresh_token', response.data.refreshToken);
+    }
   }
   return response.data;
+};
+
+export const cancelPhoneConfirmation = async (phone: string): Promise<void> => {
+  await axios.post(`${API_BASE}/auth/phone/cancel-confirmation`, { phone });
 };
 
 export const authenticateViaLoginWidget = async (

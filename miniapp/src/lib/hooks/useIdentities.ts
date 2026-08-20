@@ -82,25 +82,53 @@ export const useConfirmBindEmail = () => {
   });
 };
 
-export const useRequestBindPhoneCode = () => {
+export interface RequestPhoneConfirmationResponse {
+  confirmationNumber: string;
+}
+
+export interface PhoneBindConfirmationStatus {
+  status: 'waiting' | 'confirmed' | 'conflict' | 'expired';
+  identity: Identity | null;
+  tasks: number | null;
+  groups: number | null;
+  tags: number | null;
+  mergeToken: string | null;
+}
+
+export const useRequestBindPhoneConfirmation = () => {
   return useMutation({
     mutationFn: async (phone: string) => {
-      await getClient().post('/identities/phone/request-code', { phone });
+      const response = await getClient().post<RequestPhoneConfirmationResponse>(
+        '/identities/phone/request-confirmation', { phone },
+      );
+      return response.data;
     },
   });
 };
 
-export const useConfirmBindPhone = () => {
+export const usePollBindPhoneConfirmation = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ phone, code }: { phone: string; code: string }) => {
-      const response = await getClient().post<IdentityBindResponse>('/identities/phone/confirm', { phone, code });
+    mutationFn: async (phone: string) => {
+      const response = await getClient().get<PhoneBindConfirmationStatus>(
+        '/identities/phone/confirmation-status', { params: { phone } },
+      );
       return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['identities'] });
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['groups'] });
+    onSuccess: (data) => {
+      if (data.status === 'confirmed') {
+        queryClient.invalidateQueries({ queryKey: ['identities'] });
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        queryClient.invalidateQueries({ queryKey: ['groups'] });
+      }
+    },
+  });
+};
+
+export const useCancelBindPhoneConfirmation = () => {
+  return useMutation({
+    mutationFn: async (phone: string) => {
+      await getClient().post('/identities/phone/cancel-confirmation', { phone });
     },
   });
 };
