@@ -28,7 +28,7 @@ import {
   AlertDialogTrigger,
 } from '@/app/components/ui/alert-dialog';
 import { useStore } from '@/lib/store';
-import { useSettings, useUpdateSettings, useClearCompleted, VoiceInputMode } from '@/lib/hooks/useSettings';
+import { useSettings, useUpdateSettings, useClearCompleted, useDisplayName, VoiceInputMode } from '@/lib/hooks/useSettings';
 import { useIdentities } from '@/lib/hooks/useIdentities';
 import { useInstallPrompt } from '@/lib/hooks/useInstallPrompt';
 import { usePushSubscription } from '@/lib/hooks/usePushSubscription';
@@ -69,8 +69,8 @@ const VOICE_MODE_MOBILE_OPTIONS: { value: VoiceInputMode; label: string }[] = [
 export function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const user = useStore((s) => s.user);
-  const login = useStore((s) => s.login);
   const logout = useStore((s) => s.logout);
+  const profileDisplayName = useDisplayName();
 
   const [reminderTime, setReminderTime] = useSetting('settings.reminderTime', '1h');
   const [urgentExtra, setUrgentExtra] = useBoolSetting('settings.urgentExtra', true);
@@ -153,14 +153,10 @@ export function SettingsPage() {
       return;
     }
     setDisplayNameError(null);
-    updateSettings.mutate(
-      { displayName: trimmedDisplayName },
-      {
-        onSuccess: () => {
-          if (user) login({ ...user, name: trimmedDisplayName, username: trimmedDisplayName });
-        },
-      },
-    );
+    // Zustand-синхронизацию сюда больше не добавляем: displayName теперь
+    // читается с сервера (useDisplayName), а setQueryData внутри
+    // useUpdateSettings уже обновил кэш настроек — этого достаточно.
+    updateSettings.mutate({ displayName: trimmedDisplayName });
   };
 
   const touchDevice = isTouchDevice();
@@ -191,11 +187,11 @@ export function SettingsPage() {
           {user ? (
             <div className="flex items-center gap-3 p-3 rounded-xl bg-muted/50">
               <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-sm font-semibold text-primary flex-shrink-0">
-                {(user.name || user.username || '?').charAt(0).toUpperCase()}
+                {profileDisplayName.charAt(0).toUpperCase()}
               </div>
               <div className="flex flex-col gap-0.5">
-                <p className="font-medium text-sm leading-tight">{user.name || user.username}</p>
-                {user.username && user.username !== user.name && (
+                <p className="font-medium text-sm leading-tight">{profileDisplayName}</p>
+                {user.username && user.username !== profileDisplayName && (
                   <p className="text-xs text-muted-foreground leading-tight">@{user.username} · Telegram</p>
                 )}
               </div>

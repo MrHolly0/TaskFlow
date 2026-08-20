@@ -4,10 +4,11 @@ import { IconFlame, IconBolt, IconSquare, IconClock, IconArrowRight, IconPencil 
 import { motion, AnimatePresence } from 'motion/react';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { addDays } from 'date-fns';
-import { useStore, Priority } from '@/lib/store';
+import { Priority } from '@/lib/store';
 import { formatDeadline, getPriorityBgColor, cn } from '@/lib/utils';
 import { useFocusTasks, useUpcomingFocusTasks, useCompleteTask, useUpdateTask, useTasksList } from '@/lib/hooks/useTasks';
 import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
+import { useDisplayName } from '@/lib/hooks/useSettings';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
 import { TaskDetailModal } from '@/app/components/TaskDetailModal';
@@ -161,7 +162,7 @@ function FocusTaskCard({ task, index, timezone, onComplete, onSnooze, onClick }:
 }
 
 export function FocusPage() {
-  const user = useStore((state) => state.user);
+  const userName = useDisplayName();
   const { data: focusTasks = [], isLoading, error } = useFocusTasks();
   const todayDone = !isLoading && focusTasks.length === 0;
   const { data: upcomingTasks = [], isLoading: upcomingLoading } = useUpcomingFocusTasks(todayDone);
@@ -179,7 +180,6 @@ export function FocusPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
 
-  const userName = user?.name ?? 'Друг';
   const today = new Date().toLocaleDateString('ru-RU', {
     weekday: 'long',
     day: 'numeric',

@@ -17,6 +17,7 @@ import {
 import { useTheme } from 'next-themes';
 import { cn } from '@/lib/utils';
 import { useStore } from '@/lib/store';
+import { useDisplayName } from '@/lib/hooks/useSettings';
 import { Button } from '@/app/components/ui/button';
 import {
   Sheet,
@@ -58,6 +59,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [quickInputOpen, setQuickInputOpen] = useState(false);
   const user = useStore((s) => s.user);
   const logout = useStore((s) => s.logout);
+  const displayName = useDisplayName();
 
   return (
     <div className="flex h-screen bg-background">
@@ -130,12 +132,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button className="h-9 w-9 rounded-full bg-primary/15 hover:bg-primary/25 transition-colors flex items-center justify-center text-sm font-semibold text-primary flex-shrink-0 cursor-pointer">
-                    {user.name.charAt(0)}
+                    {displayName.charAt(0)}
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel className="space-y-0.5">
-                    <p className="text-sm font-medium leading-tight">{user.name}</p>
+                    <p className="text-sm font-medium leading-tight">{displayName}</p>
                     <p className="text-xs text-muted-foreground font-normal leading-tight">@{user.username}</p>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
