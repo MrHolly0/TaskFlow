@@ -77,7 +77,13 @@ public class WebPushNotificationSender implements NotificationSender {
         if (status >= 300) {
             throw new IllegalStateException("Push-служба ответила " + status);
         }
-        log.info("Sent push notification to subscription {}", destination);
+        // 2xx здесь означает «служба приняла запрос в очередь на доставку», не
+        // «показано на устройстве» — та же ловушка, что и call_status: 1 у
+        // Ucaller: успех на уровне протокола приняли за факт доставки. Кто
+        // отвечает дальше, видно по домену endpoint — сам endpoint в лог не
+        // идёт, это фактически предъявительский токен на устройство.
+        log.info("Push-служба {} приняла уведомление для подписки {} — это подтверждение приёма " +
+                "в очередь, не показа на устройстве", PushServiceIdentifier.nameFor(subscription.endpoint()), destination);
     }
 
     private record Subscription(String endpoint, String p256dh, String auth) {}
