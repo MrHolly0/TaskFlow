@@ -8,6 +8,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
+import java.util.List;
 import java.util.Locale;
 
 @Component
@@ -33,6 +34,11 @@ public class AssistantPromptBuilder {
 
             Список задач пользователя (окно контекста). Ссылаться на задачу можно только ярлыком \
             из этого списка — T1, T2 и так далее; ярлыков за пределами списка не существует.
+            %s
+
+            Группы пользователя — единственно допустимые значения параметра group у create_task. \
+            Если ни одна не подходит по смыслу реплики, оставляй задачу без группы: новых названий \
+            групп не придумывай, даже похожих.
             %s
 
             Правила:
@@ -81,6 +87,7 @@ public class AssistantPromptBuilder {
             "этого ответа — через эту кнопку чаще хотят добавить новое, чем изменить старое.";
 
     private static final String EMPTY_WINDOW_NOTE = "Сейчас активных задач нет: список пуст.";
+    private static final String NO_GROUPS_NOTE = "Групп пока нет ни одной.";
 
     private final String brandName;
 
@@ -88,11 +95,12 @@ public class AssistantPromptBuilder {
         this.brandName = brandName;
     }
 
-    public PromptParts build(TaskContextWindow window, String userText, ZoneId zone) {
-        return build(window, userText, zone, AssistantEntryPoint.CHAT);
+    public PromptParts build(TaskContextWindow window, String userText, ZoneId zone, List<String> groupNames) {
+        return build(window, userText, zone, AssistantEntryPoint.CHAT, groupNames);
     }
 
-    public PromptParts build(TaskContextWindow window, String userText, ZoneId zone, AssistantEntryPoint entryPoint) {
+    public PromptParts build(TaskContextWindow window, String userText, ZoneId zone, AssistantEntryPoint entryPoint,
+                              List<String> groupNames) {
         OffsetDateTime now = OffsetDateTime.now(zone);
         String dateTime = now.format(DATE_FORMAT);
         String weekday = now.getDayOfWeek().getDisplayName(TextStyle.FULL, Locale.of("ru"));
@@ -100,7 +108,8 @@ public class AssistantPromptBuilder {
         String entryPointNote = entryPoint == AssistantEntryPoint.QUICK_ADD ? QUICK_ADD_NOTE : "";
 
         String systemPrompt = SYSTEM_TEMPLATE.formatted(
-                brandName, dateTime, weekday, offset, renderWindow(window), entryPointNote, USER_TEXT_START, USER_TEXT_END
+                brandName, dateTime, weekday, offset, renderWindow(window), renderGroups(groupNames),
+                entryPointNote, USER_TEXT_START, USER_TEXT_END
         );
 
         String userMessage = USER_TEXT_START + "\n" + userText + "\n" + USER_TEXT_END;
@@ -110,5 +119,9 @@ public class AssistantPromptBuilder {
 
     private String renderWindow(TaskContextWindow window) {
         return window.size() == 0 ? EMPTY_WINDOW_NOTE : window.rendered();
+    }
+
+    private String renderGroups(List<String> groupNames) {
+        return groupNames == null || groupNames.isEmpty() ? NO_GROUPS_NOTE : String.join(", ", groupNames);
     }
 }

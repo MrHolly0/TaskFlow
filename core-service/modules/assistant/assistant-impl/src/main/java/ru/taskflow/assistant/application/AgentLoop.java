@@ -62,7 +62,8 @@ public class AgentLoop {
         Instant start = clock.instant();
 
         TaskContextWindow window = contextBuilder.build(userId);
-        PromptParts prompt = promptBuilder.build(window, userText, zone, entryPoint);
+        List<String> groupNames = taskService.findGroupNames(userId);
+        PromptParts prompt = promptBuilder.build(window, userText, zone, entryPoint, groupNames);
         List<Map<String, Object>> tools = toolRegistry.toolDefinitions();
 
         List<LlmMessage> historyPass1 = List.of(
