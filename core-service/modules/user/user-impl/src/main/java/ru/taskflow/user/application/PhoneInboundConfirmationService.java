@@ -1,6 +1,7 @@
 package ru.taskflow.user.application;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -24,12 +25,19 @@ import java.util.UUID;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PhoneInboundConfirmationService {
 
     private static final Duration PENDING_TTL = Duration.ofMinutes(5);
     private static final Duration RESULT_TTL = Duration.ofMinutes(2);
+    // Переживает pending нарочно: если запись погасла по TTL, ни разу не
+    // получив подтверждения, аудиту всё ещё есть что сказать в лог — иначе
+    // к моменту, когда опрос со стороны фронтенда это заметит, confirmationNumber
+    // и ucallerId уже нигде не найти.
+    private static final Duration AUDIT_TTL = Duration.ofMinutes(6);
     private static final String PENDING_PREFIX = "phone-inbound:pending:";
     private static final String RESULT_PREFIX = "phone-inbound:result:";
+    private static final String AUDIT_PREFIX = "phone-inbound:audit:";
     // Символ-разделитель из управляющего диапазона (unit separator, U+001F) —
     // тот же приём, что в MergeTokenService, и по той же причине: не
     // встретится ни в UUID, ни в токене, ни в номере телефона.
@@ -57,6 +65,7 @@ public class PhoneInboundConfirmationService {
                 ucallerId == null ? "" : ucallerId,
                 boundUserId == null ? "" : boundUserId.toString());
         redis.opsForValue().set(PENDING_PREFIX + phoneE164, value, PENDING_TTL);
+        redis.opsForValue().set(AUDIT_PREFIX + phoneE164, value, AUDIT_TTL);
     }
 
     public boolean hasPending(String phoneE164) {
@@ -65,6 +74,9 @@ public class PhoneInboundConfirmationService {
 
     public void cancelPending(String phoneE164) {
         redis.delete(PENDING_PREFIX + phoneE164);
+        // Отмена — по решению человека, не молчаливый срыв доставки: не даём
+        // logIfNaturallyExpired принять её за то же самое.
+        redis.delete(AUDIT_PREFIX + phoneE164);
     }
 
     /**
@@ -76,6 +88,9 @@ public class PhoneInboundConfirmationService {
      */
     public Optional<Pending> consumePending(String phoneE164) {
         String raw = redis.opsForValue().getAndDelete(PENDING_PREFIX + phoneE164);
+        // Дошли до нас в любом виде — уже не "тихо не дозвонился", причина
+        // отказа (если будет) залогируется отдельно вызывающей стороной.
+        redis.delete(AUDIT_PREFIX + phoneE164);
         if (raw == null) {
             return Optional.empty();
         }
@@ -126,5 +141,29 @@ public class PhoneInboundConfirmationService {
                     : Optional.empty();
             default -> Optional.empty();
         };
+    }
+
+    /**
+     * Вызывается контроллером перед ответом "истекло". Если аудит для номера
+     * ещё жив — запись протухла по TTL, ни разу не получив подтверждения, а
+     * не была нормально обработана вебхуком (тот уже погасил бы её сам в
+     * {@link #consumePending}). Раньше это расхождение проходило бесследно:
+     * "не пустило" было неотличимо от "уведомление не дошло".
+     */
+    public void logIfNaturallyExpired(String phoneE164) {
+        String raw = redis.opsForValue().getAndDelete(AUDIT_PREFIX + phoneE164);
+        if (raw == null) {
+            return;
+        }
+        String[] parts = raw.split(SEPARATOR, -1);
+        String ucallerId = parts.length > 1 && !parts[1].isEmpty() ? parts[1] : "?";
+        log.warn("Истекло ожидание входящего звонка без подтверждения (phone={}, ucallerId={})",
+                mask(phoneE164), ucallerId);
+    }
+
+    // Не светим номер целиком в логах — только последние четыре цифры, как
+    // в PhoneInboundWebhookController.
+    private String mask(String phoneE164) {
+        return phoneE164.length() > 4 ? "***" + phoneE164.substring(phoneE164.length() - 4) : phoneE164;
     }
 }

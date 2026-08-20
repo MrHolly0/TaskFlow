@@ -43,6 +43,19 @@ class PhoneInboundConfirmationServiceTest {
         verify(valueOps).set(eq("phone-inbound:pending:" + PHONE), anyString(), any());
     }
 
+    // Аудит переживает pending нарочно — на случай, если запись протухнет по
+    // TTL, не получив подтверждения: logIfNaturallyExpired должен ещё застать
+    // confirmationNumber/ucallerId, когда сам pending уже недоступен.
+    @Test
+    void createPending_alsoStoresAuditRecordForLaterExpiryLogging() {
+        when(redis.opsForValue()).thenReturn(valueOps);
+        newService();
+
+        service.createPending(PHONE, "79001000011", "103000", null);
+
+        verify(valueOps).set(eq("phone-inbound:audit:" + PHONE), anyString(), any());
+    }
+
     @Test
     void consumePending_matchingRoundTrip_returnsParsedPendingForLogin() {
         when(redis.opsForValue()).thenReturn(valueOps);
@@ -115,6 +128,53 @@ class PhoneInboundConfirmationServiceTest {
         service.cancelPending(PHONE);
 
         verify(redis).delete("phone-inbound:pending:" + PHONE);
+    }
+
+    // Отмена — по решению человека, не молчаливый срыв доставки: не должна
+    // выглядеть в логах как истечение без подтверждения.
+    @Test
+    void cancelPending_alsoDeletesAuditKey() {
+        newService();
+
+        service.cancelPending(PHONE);
+
+        verify(redis).delete("phone-inbound:audit:" + PHONE);
+    }
+
+    // Дошли до нас в любом виде — уже не "тихо не дозвонился": аудит должен
+    // погаснуть вместе с pending, иначе logIfNaturallyExpired позже ошибочно
+    // сочтёт успешно обработанный звонок молчаливым срывом доставки.
+    @Test
+    void consumePending_alsoDeletesAuditKeyRegardlessOfOutcome() {
+        when(redis.opsForValue()).thenReturn(valueOps);
+        newService();
+        when(valueOps.getAndDelete("phone-inbound:pending:" + PHONE)).thenReturn(null);
+
+        service.consumePending(PHONE);
+
+        verify(redis).delete("phone-inbound:audit:" + PHONE);
+    }
+
+    @Test
+    void logIfNaturallyExpired_auditPresent_readsAndClearsIt() {
+        when(redis.opsForValue()).thenReturn(valueOps);
+        newService();
+        service.createPending(PHONE, "79001000011", "103000", null);
+        String storedAudit = captureAuditValue();
+        when(valueOps.getAndDelete("phone-inbound:audit:" + PHONE)).thenReturn(storedAudit);
+
+        service.logIfNaturallyExpired(PHONE);
+
+        verify(valueOps).getAndDelete("phone-inbound:audit:" + PHONE);
+    }
+
+    @Test
+    void logIfNaturallyExpired_noAudit_doesNothing() {
+        when(redis.opsForValue()).thenReturn(valueOps);
+        newService();
+        when(valueOps.getAndDelete("phone-inbound:audit:" + PHONE)).thenReturn(null);
+
+        service.logIfNaturallyExpired(PHONE);
     }
 
     @Test
@@ -193,14 +253,20 @@ class PhoneInboundConfirmationServiceTest {
 
     private final org.mockito.ArgumentCaptor<String> pendingCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
     private final org.mockito.ArgumentCaptor<String> resultCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
+    private final org.mockito.ArgumentCaptor<String> auditCaptor = org.mockito.ArgumentCaptor.forClass(String.class);
 
     private String captureStoredValue() {
-        verify(valueOps).set(anyString(), pendingCaptor.capture(), any());
+        verify(valueOps).set(eq("phone-inbound:pending:" + PHONE), pendingCaptor.capture(), any());
         return pendingCaptor.getValue();
     }
 
     private String captureStoredResultValue() {
         verify(valueOps).set(anyString(), resultCaptor.capture(), any());
         return resultCaptor.getValue();
+    }
+
+    private String captureAuditValue() {
+        verify(valueOps).set(eq("phone-inbound:audit:" + PHONE), auditCaptor.capture(), any());
+        return auditCaptor.getValue();
     }
 }

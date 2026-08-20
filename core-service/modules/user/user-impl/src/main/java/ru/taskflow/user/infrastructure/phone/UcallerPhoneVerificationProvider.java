@@ -76,6 +76,10 @@ public class UcallerPhoneVerificationProvider implements PhoneVerificationProvid
         }
         String digits = phoneE164.startsWith("+") ? phoneE164.substring(1) : phoneE164;
         String callbackUrl = publicBaseUrl + CALLBACK_PATH + callbackSecret;
+        // Без этой строки протухший PUBLIC_BASE_URL после перезапуска ngrok
+        // ломает вход молча: Ucaller шлёт подтверждение по старому адресу,
+        // никто его не получает, а в логах пусто. Теперь видно, куда позвали.
+        log.info("Запрос inboundCallWaiting: callback_url={}", callbackUrl);
         UcallerInboundResponse response = restClient.get()
                 .uri(uriBuilder -> uriBuilder.path("/inboundCallWaiting")
                         .queryParam("service_id", serviceId)

@@ -144,6 +144,7 @@ public class IdentityController {
         if (phoneInboundConfirmationService.hasPending(normalizedPhone)) {
             return PhoneBindConfirmationStatusResponse.waiting();
         }
+        phoneInboundConfirmationService.logIfNaturallyExpired(normalizedPhone);
         return PhoneBindConfirmationStatusResponse.expired();
     }
 

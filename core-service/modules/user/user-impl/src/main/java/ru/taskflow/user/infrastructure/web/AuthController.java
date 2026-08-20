@@ -181,6 +181,7 @@ public class AuthController {
         if (phoneInboundConfirmationService.hasPending(normalizedPhone)) {
             return PhoneConfirmationStatusResponse.waiting();
         }
+        phoneInboundConfirmationService.logIfNaturallyExpired(normalizedPhone);
         return PhoneConfirmationStatusResponse.expired();
     }
 
