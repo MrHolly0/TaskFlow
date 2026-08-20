@@ -58,6 +58,9 @@ logs/
 # Docker
 .docker-data/
 
+# База geoip — скачивается контейнером при старте, не коммитим
+infra/geoip/
+
 # Kotlin
 .kotlin/
 

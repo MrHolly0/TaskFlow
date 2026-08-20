@@ -110,13 +110,18 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       NLP_WORKER_URL: http://nlp-worker:8081
       SERVER_PORT: 8080
-      GEOIP_DB_PATH: /data/geoip/GeoLite2-Country.mmdb
+      GEOIP_DB_PATH: /data/geoip/dbip-country-lite.mmdb
       APP_NAME: ${APP_NAME:-Мунин}
       UCALLER_SERVICE_ID: ${UCALLER_SERVICE_ID:-}
       UCALLER_SECRET_KEY: ${UCALLER_SECRET_KEY:-}
       UCALLER_CALLBACK_SECRET: ${UCALLER_CALLBACK_SECRET:-}
     volumes:
-      - ${GEOIP_DB_HOST_PATH:-./geoip/GeoLite2-Country.mmdb}:/data/geoip/GeoLite2-Country.mmdb:ro
+      # Каталог, не файл: файл внутри появляется сам при первом старте
+      # (docker-entrypoint.sh), а не ждёт ручной подготовки на хосте. Раньше
+      # монтирование на несуществующий файл давало на хосте пустой каталог
+      # вместо ошибки — тем же путём, что и файл, чтобы скачанное пережило
+      # пересоздание контейнера.
+      - ${GEOIP_DB_HOST_PATH:-./geoip}:/data/geoip
     depends_on:
       postgres:
         condition: service_healthy

@@ -19,8 +19,14 @@ RUN --mount=type=cache,target=/root/.gradle,sharing=locked \
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
+# gzip — для распаковки базы geoip, которую сам entrypoint скачивает при
+# старте, если её ещё нет (wget уже есть в busybox самого образа).
+RUN apk add --no-cache gzip
+
 # Copy JAR from builder
 COPY --from=builder /app/core-service/app/build/libs/*.jar app.jar
+COPY core-service/docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
 # Expose port
 EXPOSE 8080
@@ -30,4 +36,4 @@ HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1
 
 # Run application
-ENTRYPOINT ["java", "-Xmx512m", "-XX:+UseG1GC", "-jar", "app.jar"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

@@ -16,9 +16,12 @@ import java.net.InetAddress;
 import java.util.Optional;
 
 /**
- * Определяет страну по IP через локальную базу GeoLite2 (файл не коммитим —
- * лицензия MaxMind запрещает распространение, монтируется томом). Если базы
- * нет, путь не задан или файл не читается — резолвер недоступен, и
+ * Определяет страну по IP через локальную базу DB-IP Lite Country в формате
+ * mmdb (файл не коммитим — скачивается контейнером при старте, см.
+ * docker-entrypoint.sh). В отличие от MaxMind GeoLite2, DB-IP Lite не требует
+ * регистрации и лицензионного ключа — читающая библиотека (com.maxmind.db)
+ * от формата не зависит, кто базу собрал, ей всё равно. Если базы нет, путь
+ * не задан или файл не читается — резолвер недоступен, и
  * {@link #resolveCountryIso} отдаёт пустой результат. Вызывающая сторона
  * обязана трактовать пустой результат как «страна неизвестна», а не как
  * «точно не Россия»: цена ошибки несимметрична.
@@ -48,7 +51,7 @@ public class CountryResolver implements HealthIndicator {
         try {
             reader.close();
         } catch (IOException e) {
-            log.warn("Не удалось закрыть базу GeoLite2: {}", e.getMessage());
+            log.warn("Не удалось закрыть базу geoip: {}", e.getMessage());
         }
     }
 
@@ -61,7 +64,7 @@ public class CountryResolver implements HealthIndicator {
         File file = new File(databasePath);
         if (!file.exists()) {
             unavailableReason = "файла нет по пути " + databasePath;
-            log.error("База GeoLite2 недоступна: {} — определение страны по IP отключено", unavailableReason);
+            log.error("База geoip недоступна: {} — определение страны по IP отключено", unavailableReason);
             return null;
         }
         // Частая ловушка bind-монтирования: если на хосте по указанному пути
@@ -106,7 +109,7 @@ public class CountryResolver implements HealthIndicator {
     @Override
     public Health health() {
         return reader == null
-                ? Health.down().withDetail("reason", unavailableReason != null ? unavailableReason : "база GeoLite2 недоступна").build()
+                ? Health.down().withDetail("reason", unavailableReason != null ? unavailableReason : "база geoip недоступна").build()
                 : Health.up().build();
     }
 }
