@@ -1,7 +1,7 @@
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { toZonedTime, fromZonedTime } from 'date-fns-tz';
-import { isSameDay, addDays, format } from 'date-fns';
+import { isSameDay, addDays, format, differenceInCalendarDays } from 'date-fns';
 import { Priority } from './store';
 
 export function cn(...inputs: ClassValue[]) {
@@ -38,19 +38,34 @@ export function formatDeadline(deadline: string, timezone: string): string {
   const date = new Date(deadline);
   const now = new Date();
   const diff = date.getTime() - now.getTime();
-
   const hours = Math.floor(diff / (1000 * 60 * 60));
-  const days = Math.floor(hours / 24);
+  const dayDiff = differenceInCalendarDays(
+    toZonedTime(date, timezone),
+    toZonedTime(now, timezone)
+  );
 
-  if (hours < 0) {
-    const absHours = Math.abs(hours);
-    const absDays = Math.floor(absHours / 24);
-    if (absDays > 0) {
+  if (diff < 0) {
+    if (dayDiff < 0) {
+      const absDays = Math.abs(dayDiff);
       return `Просрочено на ${absDays} ${getDaysWord(absDays)}`;
     }
+
+    const absHours = Math.abs(hours);
     return absHours > 0
       ? `Просрочено на ${absHours} ${getHoursWord(absHours)}`
       : 'Просрочено';
+  }
+
+  if (dayDiff === 1) {
+    return 'Завтра';
+  }
+
+  if (dayDiff === 2) {
+    return 'Послезавтра';
+  }
+
+  if (dayDiff > 2 && dayDiff < 7) {
+    return `Через ${dayDiff} ${getDaysWord(dayDiff)}`;
   }
 
   if (hours < 1) {
@@ -60,14 +75,6 @@ export function formatDeadline(deadline: string, timezone: string): string {
 
   if (hours < 24) {
     return `через ${hours} ${getHoursWord(hours)}`;
-  }
-
-  if (days === 1) {
-    return 'Завтра';
-  }
-
-  if (days < 7) {
-    return `Через ${days} ${getDaysWord(days)}`;
   }
 
   return date.toLocaleDateString('ru-RU', {
@@ -108,4 +115,3 @@ export function getPriorityBgColor(priority: Priority): string {
   };
   return colors[priority];
 }
-
