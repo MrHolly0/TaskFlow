@@ -6,6 +6,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import ru.taskflow.shared.exception.RateLimitExceededException;
+import ru.taskflow.user.api.IdentityProvider;
 import ru.taskflow.user.infrastructure.persistence.LoginCodeJpaEntity;
 import ru.taskflow.user.infrastructure.persistence.LoginCodeRepository;
 
@@ -28,6 +29,7 @@ import static org.mockito.Mockito.when;
 class LoginCodeServiceTest {
 
     private static final String EMAIL = "user@example.com";
+    private static final String PHONE = "+79991234567";
     private static final Instant NOW_INSTANT = Instant.parse("2026-08-14T12:00:00Z");
 
     @Mock
@@ -41,80 +43,108 @@ class LoginCodeServiceTest {
     }
 
     @Test
-    void issueCode_noPriorCodes_returnsCodeWithoutPersisting() {
-        when(repository.findByEmailOrderByCreatedAtDesc(EMAIL)).thenReturn(List.of());
-        when(repository.countByEmailAndCreatedAtAfter(any(), any())).thenReturn(0L);
+    void issueCode_noPriorCodes_returnsSixDigitCodeForEmail() {
+        when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.EMAIL, EMAIL)).thenReturn(List.of());
+        when(repository.countByChannelAndIdentifierAndCreatedAtAfter(any(), any(), any())).thenReturn(0L);
         newService();
 
-        String code = service.issueCode(EMAIL);
+        String code = service.issueCode(IdentityProvider.EMAIL, EMAIL);
 
         assertThat(code).matches("\\d{6}");
         verify(repository, never()).save(any());
     }
 
     @Test
-    void issueCode_lowercasesEmailForRateCheck() {
-        when(repository.findByEmailOrderByCreatedAtDesc("user@example.com")).thenReturn(List.of());
-        when(repository.countByEmailAndCreatedAtAfter(any(), any())).thenReturn(0L);
+    void issueCode_noPriorCodes_returnsFourDigitCodeForPhone() {
+        // Четыре цифры — потолок самого механизма звонка (Ucaller), не выбор
+        // ради простоты; отдельно проверяем, что для телефона именно так.
+        when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.PHONE, PHONE)).thenReturn(List.of());
+        when(repository.countByChannelAndIdentifierAndCreatedAtAfter(any(), any(), any())).thenReturn(0L);
         newService();
 
-        service.issueCode("User@Example.com");
+        String code = service.issueCode(IdentityProvider.PHONE, PHONE);
 
-        verify(repository).findByEmailOrderByCreatedAtDesc("user@example.com");
+        assertThat(code).matches("\\d{4}");
+    }
+
+    @Test
+    void issueCode_lowercasesEmailForRateCheck() {
+        when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.EMAIL, "user@example.com")).thenReturn(List.of());
+        when(repository.countByChannelAndIdentifierAndCreatedAtAfter(any(), any(), any())).thenReturn(0L);
+        newService();
+
+        service.issueCode(IdentityProvider.EMAIL, "User@Example.com");
+
+        verify(repository).findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.EMAIL, "user@example.com");
+    }
+
+    @Test
+    void issueCode_doesNotChangePhoneCasing() {
+        // Телефон приходит уже нормализованным к E.164 вызывающей стороной —
+        // сервис не должен пытаться его как-то преобразовывать сам.
+        when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.PHONE, PHONE)).thenReturn(List.of());
+        when(repository.countByChannelAndIdentifierAndCreatedAtAfter(any(), any(), any())).thenReturn(0L);
+        newService();
+
+        service.issueCode(IdentityProvider.PHONE, PHONE);
+
+        verify(repository).findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.PHONE, PHONE);
     }
 
     @Test
     void issueCode_withinCooldown_throwsRateLimitException() {
-        var recent = activeCode(now().minusSeconds(30), 0);
-        when(repository.findByEmailOrderByCreatedAtDesc(EMAIL)).thenReturn(List.of(recent));
+        var recent = activeCode(IdentityProvider.EMAIL, EMAIL, now().minusSeconds(30), 0);
+        when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.EMAIL, EMAIL)).thenReturn(List.of(recent));
         newService();
 
-        assertThatThrownBy(() -> service.issueCode(EMAIL))
+        assertThatThrownBy(() -> service.issueCode(IdentityProvider.EMAIL, EMAIL))
                 .isInstanceOf(RateLimitExceededException.class);
     }
 
     @Test
     void issueCode_fiveInLastHour_throwsRateLimitException() {
-        when(repository.findByEmailOrderByCreatedAtDesc(EMAIL)).thenReturn(List.of());
-        when(repository.countByEmailAndCreatedAtAfter(EMAIL, now().minusHours(1))).thenReturn(5L);
+        when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.EMAIL, EMAIL)).thenReturn(List.of());
+        when(repository.countByChannelAndIdentifierAndCreatedAtAfter(IdentityProvider.EMAIL, EMAIL, now().minusHours(1)))
+                .thenReturn(5L);
         newService();
 
-        assertThatThrownBy(() -> service.issueCode(EMAIL))
+        assertThatThrownBy(() -> service.issueCode(IdentityProvider.EMAIL, EMAIL))
                 .isInstanceOf(RateLimitExceededException.class);
     }
 
     @Test
     void confirmIssued_noPriorCodes_savesHashedCode() {
-        when(repository.findByEmailOrderByCreatedAtDesc(EMAIL)).thenReturn(List.of());
+        when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.EMAIL, EMAIL)).thenReturn(List.of());
         newService();
         String code = "123456";
 
-        service.confirmIssued(EMAIL, code);
+        service.confirmIssued(IdentityProvider.EMAIL, EMAIL, code);
 
         ArgumentCaptor<LoginCodeJpaEntity> captor = ArgumentCaptor.forClass(LoginCodeJpaEntity.class);
         verify(repository).save(captor.capture());
-        assertThat(captor.getValue().getEmail()).isEqualTo(EMAIL);
+        assertThat(captor.getValue().getChannel()).isEqualTo(IdentityProvider.EMAIL);
+        assertThat(captor.getValue().getIdentifier()).isEqualTo(EMAIL);
         assertThat(captor.getValue().getCodeHash()).isEqualTo(sha256(code));
         assertThat(captor.getValue().getExpiresAt()).isEqualTo(now().plusMinutes(10));
     }
 
     @Test
     void confirmIssued_lowercasesEmail() {
-        when(repository.findByEmailOrderByCreatedAtDesc("user@example.com")).thenReturn(List.of());
+        when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.EMAIL, "user@example.com")).thenReturn(List.of());
         newService();
 
-        service.confirmIssued("User@Example.com", "123456");
+        service.confirmIssued(IdentityProvider.EMAIL, "User@Example.com", "123456");
 
-        verify(repository).findByEmailOrderByCreatedAtDesc("user@example.com");
+        verify(repository).findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.EMAIL, "user@example.com");
     }
 
     @Test
     void confirmIssued_invalidatesPreviousUnconsumedCode() {
-        var previous = activeCode(now().minusSeconds(90), 0);
-        when(repository.findByEmailOrderByCreatedAtDesc(EMAIL)).thenReturn(List.of(previous));
+        var previous = activeCode(IdentityProvider.EMAIL, EMAIL, now().minusSeconds(90), 0);
+        when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.EMAIL, EMAIL)).thenReturn(List.of(previous));
         newService();
 
-        service.confirmIssued(EMAIL, "123456");
+        service.confirmIssued(IdentityProvider.EMAIL, EMAIL, "123456");
 
         assertThat(previous.getConsumedAt()).isEqualTo(now());
         verify(repository).save(previous);
@@ -123,12 +153,12 @@ class LoginCodeServiceTest {
     @Test
     void verifyCode_correctCode_succeedsAndConsumesCode() {
         String rawCode = "123456";
-        var entity = activeCode(now(), 0);
+        var entity = activeCode(IdentityProvider.EMAIL, EMAIL, now(), 0);
         entity.setCodeHash(sha256(rawCode));
-        when(repository.findByEmailOrderByCreatedAtDesc(EMAIL)).thenReturn(List.of(entity));
+        when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.EMAIL, EMAIL)).thenReturn(List.of(entity));
         newService();
 
-        boolean result = service.verifyCode(EMAIL, rawCode);
+        boolean result = service.verifyCode(IdentityProvider.EMAIL, EMAIL, rawCode);
 
         assertThat(result).isTrue();
         assertThat(entity.getConsumedAt()).isEqualTo(now());
@@ -136,12 +166,12 @@ class LoginCodeServiceTest {
 
     @Test
     void verifyCode_wrongCode_incrementsAttemptsAndFails() {
-        var entity = activeCode(now(), 0);
+        var entity = activeCode(IdentityProvider.EMAIL, EMAIL, now(), 0);
         entity.setCodeHash(sha256("123456"));
-        when(repository.findByEmailOrderByCreatedAtDesc(EMAIL)).thenReturn(List.of(entity));
+        when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.EMAIL, EMAIL)).thenReturn(List.of(entity));
         newService();
 
-        boolean result = service.verifyCode(EMAIL, "000000");
+        boolean result = service.verifyCode(IdentityProvider.EMAIL, EMAIL, "000000");
 
         assertThat(result).isFalse();
         assertThat(entity.getAttempts()).isEqualTo(1);
@@ -151,30 +181,59 @@ class LoginCodeServiceTest {
     @Test
     void verifyCode_sixthAttempt_rejectedEvenWithCorrectCode() {
         String rawCode = "123456";
-        var entity = activeCode(now(), 5);
+        var entity = activeCode(IdentityProvider.EMAIL, EMAIL, now(), 5);
         entity.setCodeHash(sha256(rawCode));
-        when(repository.findByEmailOrderByCreatedAtDesc(EMAIL)).thenReturn(List.of(entity));
+        when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.EMAIL, EMAIL)).thenReturn(List.of(entity));
         newService();
 
-        boolean result = service.verifyCode(EMAIL, rawCode);
+        boolean result = service.verifyCode(IdentityProvider.EMAIL, EMAIL, rawCode);
 
         assertThat(result).isFalse();
         assertThat(entity.getConsumedAt()).isNull();
     }
 
     @Test
+    void verifyCode_phoneChannel_rejectedOnThirdAttemptNotFifth() {
+        // Телефон — три попытки, не пять: код в сто раз слабее (4 цифры
+        // против 6), и лимит частоты один на всех каналов этого не компенсирует.
+        String rawCode = "1234";
+        var entity = activeCode(IdentityProvider.PHONE, PHONE, now(), 3);
+        entity.setCodeHash(sha256(rawCode));
+        when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.PHONE, PHONE)).thenReturn(List.of(entity));
+        newService();
+
+        boolean result = service.verifyCode(IdentityProvider.PHONE, PHONE, rawCode);
+
+        assertThat(result).isFalse();
+    }
+
+    @Test
+    void verifyCode_phoneChannel_secondAttemptStillAllowed() {
+        String rawCode = "1234";
+        var entity = activeCode(IdentityProvider.PHONE, PHONE, now(), 2);
+        entity.setCodeHash(sha256(rawCode));
+        when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.PHONE, PHONE)).thenReturn(List.of(entity));
+        newService();
+
+        boolean result = service.verifyCode(IdentityProvider.PHONE, PHONE, rawCode);
+
+        assertThat(result).isTrue();
+    }
+
+    @Test
     void verifyCode_expiredCode_fails() {
         String rawCode = "123456";
         var entity = new LoginCodeJpaEntity();
-        entity.setEmail(EMAIL);
+        entity.setChannel(IdentityProvider.EMAIL);
+        entity.setIdentifier(EMAIL);
         entity.setCodeHash(sha256(rawCode));
         entity.setAttempts(0);
         entity.setExpiresAt(now().minusSeconds(1));
         entity.setCreatedAt(now().minusMinutes(11));
-        when(repository.findByEmailOrderByCreatedAtDesc(EMAIL)).thenReturn(List.of(entity));
+        when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.EMAIL, EMAIL)).thenReturn(List.of(entity));
         newService();
 
-        boolean result = service.verifyCode(EMAIL, rawCode);
+        boolean result = service.verifyCode(IdentityProvider.EMAIL, EMAIL, rawCode);
 
         assertThat(result).isFalse();
     }
@@ -182,30 +241,31 @@ class LoginCodeServiceTest {
     @Test
     void verifyCode_alreadyConsumedCode_fails() {
         String rawCode = "123456";
-        var entity = activeCode(now(), 0);
+        var entity = activeCode(IdentityProvider.EMAIL, EMAIL, now(), 0);
         entity.setCodeHash(sha256(rawCode));
         entity.setConsumedAt(now());
-        when(repository.findByEmailOrderByCreatedAtDesc(EMAIL)).thenReturn(List.of(entity));
+        when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.EMAIL, EMAIL)).thenReturn(List.of(entity));
         newService();
 
-        boolean result = service.verifyCode(EMAIL, rawCode);
+        boolean result = service.verifyCode(IdentityProvider.EMAIL, EMAIL, rawCode);
 
         assertThat(result).isFalse();
     }
 
     @Test
-    void verifyCode_noCodeForEmail_fails() {
-        when(repository.findByEmailOrderByCreatedAtDesc(EMAIL)).thenReturn(List.of());
+    void verifyCode_noCodeForIdentifier_fails() {
+        when(repository.findByChannelAndIdentifierOrderByCreatedAtDesc(IdentityProvider.EMAIL, EMAIL)).thenReturn(List.of());
         newService();
 
-        boolean result = service.verifyCode(EMAIL, "123456");
+        boolean result = service.verifyCode(IdentityProvider.EMAIL, EMAIL, "123456");
 
         assertThat(result).isFalse();
     }
 
-    private LoginCodeJpaEntity activeCode(OffsetDateTime createdAt, int attempts) {
+    private LoginCodeJpaEntity activeCode(IdentityProvider channel, String identifier, OffsetDateTime createdAt, int attempts) {
         var entity = new LoginCodeJpaEntity();
-        entity.setEmail(EMAIL);
+        entity.setChannel(channel);
+        entity.setIdentifier(identifier);
         entity.setCodeHash(sha256("999999"));
         entity.setAttempts(attempts);
         entity.setCreatedAt(createdAt);

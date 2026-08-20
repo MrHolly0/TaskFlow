@@ -45,3 +45,5 @@ databaseChangeLog:
       file: db/changelog/022-push-toggle.yaml
   - include:
       file: db/changelog/023-free-channels-by-default.yaml
+  - include:
+      file: db/changelog/024-login-codes-channel.yaml

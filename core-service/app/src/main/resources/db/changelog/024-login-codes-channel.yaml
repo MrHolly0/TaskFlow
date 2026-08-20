@@ -1,0 +1,67 @@
+databaseChangeLog:
+  - changeSet:
+      id: 024-login-codes-channel-columns
+      author: taskflow
+      changes:
+        - addColumn:
+            tableName: login_codes
+            columns:
+              - column:
+                  name: identifier
+                  type: VARCHAR(320)
+              - column:
+                  name: channel
+                  type: VARCHAR(16)
+
+  - changeSet:
+      id: 024-backfill-login-codes-channel
+      author: taskflow
+      changes:
+        - sql:
+            sql: "UPDATE login_codes SET channel = 'EMAIL', identifier = email WHERE channel IS NULL;"
+
+  - changeSet:
+      id: 024-login-codes-channel-constraints
+      author: taskflow
+      changes:
+        - addNotNullConstraint:
+            tableName: login_codes
+            columnName: identifier
+            columnDataType: VARCHAR(320)
+        - addNotNullConstraint:
+            tableName: login_codes
+            columnName: channel
+            columnDataType: VARCHAR(16)
+        - sql:
+            # Только EMAIL и PHONE — коды входа существуют для проверки владения
+            # адресом/номером. Telegram входит подписью Login Widget, коды ему
+            # не нужны, поэтому его в этом списке нет — в отличие от
+            # IdentityProvider, где Telegram есть.
+            sql: "ALTER TABLE login_codes ADD CONSTRAINT chk_login_codes_channel CHECK (channel IN ('EMAIL','PHONE'));"
+
+  - changeSet:
+      id: 024-drop-login-codes-email-column
+      author: taskflow
+      changes:
+        - dropIndex:
+            tableName: login_codes
+            indexName: idx_login_codes_email_created
+        - dropColumn:
+            tableName: login_codes
+            columnName: email
+        - createIndex:
+            tableName: login_codes
+            indexName: idx_login_codes_channel_identifier_created
+            columns:
+              - column:
+                  name: channel
+              - column:
+                  name: identifier
+              - column:
+                  name: created_at
+                  descending: true
+
+# Таблица живёт коротко (коды протухают за 10 минут), переносить почти
+# нечего, но столбец email отдельным набором изменений, а не в одном
+# addColumn — на случай если на какой-то среде окажутся живые строки
+# в момент миграции.

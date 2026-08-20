@@ -4,6 +4,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.taskflow.shared.exception.RateLimitExceededException;
+import ru.taskflow.user.api.IdentityProvider;
 import ru.taskflow.user.infrastructure.persistence.LoginCodeJpaEntity;
 import ru.taskflow.user.infrastructure.persistence.LoginCodeRepository;
 
@@ -18,9 +19,15 @@ import java.util.HexFormat;
 import java.util.Locale;
 
 /**
- * Шесть цифр — миллион вариантов, поэтому лимиты частоты здесь не про бюджет,
- * а про то, чтобы их не кончилось перебором: не чаще одного кода в 60 секунд
- * на адрес, не больше пяти в час, не больше пяти попыток ввода на код.
+ * Общая для почты и телефона выдача одноразовых кодов входа.
+ *
+ * Длина и число попыток зависят от канала: почта — шесть цифр, миллион
+ * вариантов; телефон — четыре, потолок самого механизма звонка (провайдер
+ * передаёт код последними цифрами номера, из которого звонит, а такой номер
+ * не бывает длиннее). Четыре цифры — это в сто раз слабее шести, поэтому для
+ * телефона попыток на код меньше: 3 вместо 5 — тот же лимит в час и на
+ * повторный запрос не спасает сам по себе при таком узком пространстве
+ * вариантов.
  *
  * Код хранится хэшем (SHA-256), не текстом — это учётные данные, и доступ
  * к базе на чтение не должен превращаться в возможность войти чужой учёткой.
@@ -29,14 +36,21 @@ import java.util.Locale;
  * и генерирует код, ничего не пишет в базу; confirmIssued() пишет —
  * гасит прежние коды и сохраняет новый. Вызывающая сторона обязана звать
  * confirmIssued() только после того, как код реально отправлен: иначе
- * неудачная отправка письма расходовала бы лимит частоты впустую.
+ * неудачная отправка расходовала бы лимит частоты впустую.
+ *
+ * Нормализация идентификатора (E.164 для телефона) — забота вызывающей
+ * стороны: сюда должен приходить уже приведённый к единому виду identifier,
+ * этот сервис для телефона его не трогает, а для почты по-прежнему
+ * приводит к нижнему регистру на всякий случай (двойная нормализация
+ * почты безвредна).
  */
 @Service
 @RequiredArgsConstructor
 public class LoginCodeService {
 
     private static final Duration CODE_TTL = Duration.ofMinutes(10);
-    private static final int MAX_ATTEMPTS = 5;
+    private static final int MAX_ATTEMPTS_EMAIL = 5;
+    private static final int MAX_ATTEMPTS_PHONE = 3;
     private static final Duration COOLDOWN = Duration.ofSeconds(60);
     private static final int MAX_PER_HOUR = 5;
     private static final Duration RATE_WINDOW = Duration.ofHours(1);
@@ -47,28 +61,29 @@ public class LoginCodeService {
     private final SecureRandom random = new SecureRandom();
 
     @Transactional(readOnly = true)
-    public String issueCode(String email) {
-        String normalizedEmail = normalize(email);
+    public String issueCode(IdentityProvider channel, String identifier) {
+        String normalized = normalize(channel, identifier);
         OffsetDateTime now = OffsetDateTime.now(clock);
 
-        var existing = repository.findByEmailOrderByCreatedAtDesc(normalizedEmail);
+        var existing = repository.findByChannelAndIdentifierOrderByCreatedAtDesc(channel, normalized);
         if (!existing.isEmpty() && existing.get(0).getCreatedAt().isAfter(now.minus(COOLDOWN))) {
             throw new RateLimitExceededException("Код уже запрошен, попробуйте через минуту");
         }
-        long countLastHour = repository.countByEmailAndCreatedAtAfter(normalizedEmail, now.minus(RATE_WINDOW));
+        long countLastHour = repository.countByChannelAndIdentifierAndCreatedAtAfter(
+                channel, normalized, now.minus(RATE_WINDOW));
         if (countLastHour >= MAX_PER_HOUR) {
             throw new RateLimitExceededException("Слишком много запросов кода за последний час");
         }
 
-        return generateCode();
+        return generateCode(channel);
     }
 
     @Transactional
-    public void confirmIssued(String email, String code) {
-        String normalizedEmail = normalize(email);
+    public void confirmIssued(IdentityProvider channel, String identifier, String code) {
+        String normalized = normalize(channel, identifier);
         OffsetDateTime now = OffsetDateTime.now(clock);
 
-        for (var prior : repository.findByEmailOrderByCreatedAtDesc(normalizedEmail)) {
+        for (var prior : repository.findByChannelAndIdentifierOrderByCreatedAtDesc(channel, normalized)) {
             if (prior.getConsumedAt() == null) {
                 prior.setConsumedAt(now);
                 repository.save(prior);
@@ -76,18 +91,19 @@ public class LoginCodeService {
         }
 
         var entity = new LoginCodeJpaEntity();
-        entity.setEmail(normalizedEmail);
+        entity.setChannel(channel);
+        entity.setIdentifier(normalized);
         entity.setCodeHash(hash(code));
         entity.setExpiresAt(now.plus(CODE_TTL));
         repository.save(entity);
     }
 
     @Transactional
-    public boolean verifyCode(String email, String code) {
-        String normalizedEmail = normalize(email);
+    public boolean verifyCode(IdentityProvider channel, String identifier, String code) {
+        String normalized = normalize(channel, identifier);
         OffsetDateTime now = OffsetDateTime.now(clock);
 
-        var active = repository.findByEmailOrderByCreatedAtDesc(normalizedEmail).stream()
+        var active = repository.findByChannelAndIdentifierOrderByCreatedAtDesc(channel, normalized).stream()
                 .filter(c -> c.getConsumedAt() == null)
                 .findFirst();
         if (active.isEmpty()) {
@@ -98,7 +114,7 @@ public class LoginCodeService {
         if (entity.getExpiresAt().isBefore(now)) {
             return false;
         }
-        if (entity.getAttempts() >= MAX_ATTEMPTS) {
+        if (entity.getAttempts() >= maxAttempts(channel)) {
             return false;
         }
 
@@ -117,12 +133,18 @@ public class LoginCodeService {
         return true;
     }
 
-    private String normalize(String email) {
-        return email.toLowerCase(Locale.ROOT);
+    private int maxAttempts(IdentityProvider channel) {
+        return channel == IdentityProvider.PHONE ? MAX_ATTEMPTS_PHONE : MAX_ATTEMPTS_EMAIL;
     }
 
-    private String generateCode() {
-        return String.format("%06d", random.nextInt(1_000_000));
+    private String normalize(IdentityProvider channel, String identifier) {
+        return channel == IdentityProvider.EMAIL ? identifier.toLowerCase(Locale.ROOT) : identifier;
+    }
+
+    private String generateCode(IdentityProvider channel) {
+        return channel == IdentityProvider.PHONE
+                ? String.format("%04d", random.nextInt(10_000))
+                : String.format("%06d", random.nextInt(1_000_000));
     }
 
     private String hash(String code) {

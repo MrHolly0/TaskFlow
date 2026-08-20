@@ -109,7 +109,7 @@ class AuthControllerTest {
 
     @Test
     void requestCode_sendSucceeds_confirmsIssuedAndReturns200() throws Exception {
-        when(loginCodeService.issueCode(EMAIL)).thenReturn(CODE);
+        when(loginCodeService.issueCode(IdentityProvider.EMAIL, EMAIL)).thenReturn(CODE);
 
         mockMvc.perform(post("/api/v1/auth/email/request-code")
                         .contentType("application/json")
@@ -117,13 +117,13 @@ class AuthControllerTest {
                 .andExpect(status().isOk());
 
         verify(emailSender).sendLoginCode(EMAIL, CODE);
-        verify(loginCodeService).confirmIssued(EMAIL, CODE);
+        verify(loginCodeService).confirmIssued(IdentityProvider.EMAIL, EMAIL, CODE);
         verifyNoInteractions(userService);
     }
 
     @Test
     void requestCode_sendFails_doesNotConfirmIssuedButStillReturns200() throws Exception {
-        when(loginCodeService.issueCode(EMAIL)).thenReturn(CODE);
+        when(loginCodeService.issueCode(IdentityProvider.EMAIL, EMAIL)).thenReturn(CODE);
         doThrow(new org.springframework.mail.MailSendException("smtp down"))
                 .when(emailSender).sendLoginCode(EMAIL, CODE);
 
@@ -132,7 +132,7 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(new RequestCodeRequest(EMAIL))))
                 .andExpect(status().isOk());
 
-        verify(loginCodeService, never()).confirmIssued(anyString(), anyString());
+        verify(loginCodeService, never()).confirmIssued(any(), anyString(), anyString());
     }
 
     @Test
@@ -142,12 +142,12 @@ class AuthControllerTest {
                         .content(objectMapper.writeValueAsString(new RequestCodeRequest("not-an-email"))))
                 .andExpect(status().isBadRequest());
 
-        verify(loginCodeService, never()).issueCode(anyString());
+        verify(loginCodeService, never()).issueCode(any(), anyString());
     }
 
     @Test
     void requestCode_rateLimited_propagatesExceptionRatherThanSucceeding() {
-        when(loginCodeService.issueCode(EMAIL)).thenThrow(new RateLimitExceededException("too fast"));
+        when(loginCodeService.issueCode(IdentityProvider.EMAIL, EMAIL)).thenThrow(new RateLimitExceededException("too fast"));
         HttpServletRequest httpRequest = new MockHttpServletRequest();
 
         assertThatThrownBy(() -> controller.requestCode(new RequestCodeRequest(EMAIL), httpRequest))
@@ -160,7 +160,7 @@ class AuthControllerTest {
     void verifyCode_correctCode_issuesTokensAndCreatesEmailIdentity() throws Exception {
         UUID userId = UUID.randomUUID();
         var dto = new UserDto(userId, "user", null, null);
-        when(loginCodeService.verifyCode(EMAIL, CODE)).thenReturn(true);
+        when(loginCodeService.verifyCode(IdentityProvider.EMAIL, EMAIL, CODE)).thenReturn(true);
         when(userService.findOrCreateByIdentity(eq(IdentityProvider.EMAIL), eq(NORMALIZED_EMAIL), any(UserProfile.class)))
                 .thenReturn(dto);
         when(jwtService.issueAccessToken(userId, "user")).thenReturn("access-token");
@@ -177,7 +177,7 @@ class AuthControllerTest {
 
     @Test
     void verifyCode_wrongCode_returns401WithoutCreatingIdentity() throws Exception {
-        when(loginCodeService.verifyCode(EMAIL, CODE)).thenReturn(false);
+        when(loginCodeService.verifyCode(IdentityProvider.EMAIL, EMAIL, CODE)).thenReturn(false);
 
         mockMvc.perform(post("/api/v1/auth/email/verify")
                         .contentType("application/json")

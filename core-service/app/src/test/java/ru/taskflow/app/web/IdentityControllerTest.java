@@ -88,7 +88,7 @@ class IdentityControllerTest {
 
     @Test
     void confirmEmail_noConflict_bindsImmediatelyWithoutToken() throws Exception {
-        when(loginCodeService.verifyCode(EMAIL, CODE)).thenReturn(true);
+        when(loginCodeService.verifyCode(IdentityProvider.EMAIL, EMAIL, CODE)).thenReturn(true);
         when(userService.findIdentityOwner(IdentityProvider.EMAIL, EMAIL)).thenReturn(Optional.empty());
         when(userService.bindIdentity(userId, IdentityProvider.EMAIL, EMAIL))
                 .thenReturn(new IdentityDto(IdentityProvider.EMAIL, EMAIL, OffsetDateTime.now()));
@@ -103,7 +103,7 @@ class IdentityControllerTest {
 
     @Test
     void confirmEmail_conflict_doesNotTransferAndReturns409WithSummaryAndToken() throws Exception {
-        when(loginCodeService.verifyCode(EMAIL, CODE)).thenReturn(true);
+        when(loginCodeService.verifyCode(IdentityProvider.EMAIL, EMAIL, CODE)).thenReturn(true);
         when(userService.findIdentityOwner(IdentityProvider.EMAIL, EMAIL)).thenReturn(Optional.of(otherUserId));
         when(taskService.countOwnership(otherUserId)).thenReturn(new TaskTransferResult(115, 12, 3));
         when(mergeTokenService.issue(otherUserId, userId, IdentityProvider.EMAIL, EMAIL)).thenReturn("merge-token-abc");

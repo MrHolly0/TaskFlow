@@ -107,10 +107,10 @@ public class AuthController {
             description = "Отвечает одинаково независимо от того, известен адрес или дошло ли письмо")
     public void requestCode(@Valid @RequestBody RequestCodeRequest request, HttpServletRequest httpRequest) {
         requireWithinRateLimit(httpRequest);
-        String code = loginCodeService.issueCode(request.email());
+        String code = loginCodeService.issueCode(IdentityProvider.EMAIL, request.email());
         try {
             emailSender.sendLoginCode(request.email(), code);
-            loginCodeService.confirmIssued(request.email(), code);
+            loginCodeService.confirmIssued(IdentityProvider.EMAIL, request.email(), code);
         } catch (RuntimeException e) {
             log.warn("Не удалось отправить код входа: {}", e.getMessage());
         }
@@ -125,7 +125,7 @@ public class AuthController {
             throw new org.springframework.web.server.ResponseStatusException(
                     HttpStatus.TOO_MANY_REQUESTS, "слишком много попыток, попробуйте позже");
         }
-        if (!loginCodeService.verifyCode(request.email(), request.code())) {
+        if (!loginCodeService.verifyCode(IdentityProvider.EMAIL, request.email(), request.code())) {
             throw new org.springframework.web.server.ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid code");
         }
         String normalizedEmail = request.email().toLowerCase(Locale.ROOT);

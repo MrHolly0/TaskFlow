@@ -3,6 +3,7 @@ package ru.taskflow.user.infrastructure.persistence;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
+import ru.taskflow.user.api.IdentityProvider;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -17,8 +18,12 @@ public class LoginCodeJpaEntity {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 16)
+    private IdentityProvider channel;
+
     @Column(nullable = false, length = 320)
-    private String email;
+    private String identifier;
 
     @Column(name = "code_hash", nullable = false, length = 128)
     private String codeHash;

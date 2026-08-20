@@ -73,10 +73,10 @@ public class IdentityController {
     @Operation(summary = "Запросить код для привязки почты",
             description = "Отвечает одинаково независимо от того, дошло ли письмо")
     public void requestEmailCode(@Valid @RequestBody RequestCodeRequest request) {
-        String code = loginCodeService.issueCode(request.email());
+        String code = loginCodeService.issueCode(IdentityProvider.EMAIL, request.email());
         try {
             emailSender.sendLoginCode(request.email(), code);
-            loginCodeService.confirmIssued(request.email(), code);
+            loginCodeService.confirmIssued(IdentityProvider.EMAIL, request.email(), code);
         } catch (RuntimeException e) {
             log.warn("Не удалось отправить код привязки: {}", e.getMessage());
         }
@@ -87,7 +87,7 @@ public class IdentityController {
             description = "Привязывает почту к текущей учётке; 409, если почта уже принадлежит другой — с токеном для /merge")
     public ResponseEntity<?> confirmEmail(@Valid @RequestBody VerifyCodeRequest request,
                                            @AuthenticationPrincipal AuthenticatedUser user) {
-        if (!loginCodeService.verifyCode(request.email(), request.code())) {
+        if (!loginCodeService.verifyCode(IdentityProvider.EMAIL, request.email(), request.code())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid code");
         }
         String normalizedEmail = request.email().toLowerCase(Locale.ROOT);

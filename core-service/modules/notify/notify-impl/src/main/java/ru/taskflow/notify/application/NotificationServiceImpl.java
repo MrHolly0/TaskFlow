@@ -105,6 +105,8 @@ public class NotificationServiceImpl implements NotificationService {
         return switch (channel) {
             case TELEGRAM -> settings.notifyTelegram();
             case EMAIL -> settings.notifyEmail();
+            // Телефон — только вход, не канал уведомлений: на номер ничего не шлём.
+            case PHONE -> false;
         };
     }
 
