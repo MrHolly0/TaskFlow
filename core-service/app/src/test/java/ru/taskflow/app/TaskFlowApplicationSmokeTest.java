@@ -17,9 +17,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * у ProposalMapper из части 2а. Полный контекст, реальные миграции
  * Liquibase на Testcontainers Postgres — без Redis и Telegram-токена
  * тест всё равно проходит: Redis-соединение у Spring Data Redis
- * ленивое (не открывается при поднятии контекста), а регистрация
- * Telegram-бота в TelegramBotConfig сама себя отключает при пустом
- * app.telegram.bot-token (значение по умолчанию в тестах).
+ * ленивое (не открывается при поднятии контекста), а установка кнопки
+ * меню бота в TelegramMenuButtonInitializer сама себя отключает при
+ * пустом app.telegram.bot-token (значение по умолчанию в тестах) и к тому
+ * же не сработает раньше ApplicationReadyEvent, до которого этот тест
+ * не доходит.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Testcontainers
