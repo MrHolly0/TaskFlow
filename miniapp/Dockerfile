@@ -38,5 +38,7 @@ EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3000/ || exit 1
 
-# Serve the built files
-CMD ["serve", "-s", "dist", "-l", "3000"]
+# -s/--single подменяет ЛЮБОЙ ненайденный путь на index.html с 200, включая
+# /api/* — честный 404 задаётся явными rewrites в dist/serve.json (копия
+# miniapp/public/serve.json) вместо этого флага.
+CMD ["serve", "dist", "-l", "3000"]

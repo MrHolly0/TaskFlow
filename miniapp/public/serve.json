@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    { "source": "/", "destination": "/index.html" },
+    { "source": "/assistant", "destination": "/index.html" },
+    { "source": "/all", "destination": "/index.html" },
+    { "source": "/board", "destination": "/index.html" },
+    { "source": "/groups", "destination": "/index.html" },
+    { "source": "/stats", "destination": "/index.html" },
+    { "source": "/settings", "destination": "/index.html" },
+    { "source": "/integrations", "destination": "/index.html" }
+  ]
+}
