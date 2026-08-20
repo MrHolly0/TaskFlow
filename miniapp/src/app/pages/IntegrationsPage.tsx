@@ -25,6 +25,7 @@ import { TelegramLogo } from '@/app/components/TelegramLogo';
 import { MergeConflictDialog } from '@/app/components/MergeConflictDialog';
 import { isTelegramWebApp } from '@/lib/auth';
 import { plural } from '@/lib/plural';
+import { useAuthMethods } from '@/lib/hooks/useAuthMethods';
 import {
   useIdentities,
   useRequestBindEmailCode,
@@ -128,6 +129,7 @@ function SectionSkeleton() {
 
 export function IntegrationsPage() {
   const { data: identities, isLoading, isError, refetch } = useIdentities();
+  const { data: authMethods } = useAuthMethods();
   const unbind = useUnbindIdentity();
 
   // Элементы управления, меняющие состояние учётки, не рисуются, пока
@@ -165,6 +167,12 @@ export function IntegrationsPage() {
   const email = identities.find((i) => i.provider === 'EMAIL');
   const phone = identities.find((i) => i.provider === 'PHONE');
   const canUnbind = identities.length > 1;
+  // Пока ответ не пришёл, data === undefined — раздел телефона остаётся
+  // скрытым, как и на AuthPage: неизвестное состояние не рисуем как
+  // разрешающее. Уже привязанный номер показываем всегда — провайдер мог
+  // стать недоступен позже, отвязать способ входа это не должно мешать.
+  const phoneAvailable = authMethods?.phone === true;
+  const showPhoneSection = phoneAvailable || Boolean(phone);
 
   const handleUnbind = (provider: IdentityProvider) => {
     unbind.mutate(provider, {
@@ -205,15 +213,20 @@ export function IntegrationsPage() {
           unbinding={unbind.isPending && unbind.variables === 'EMAIL'}
         />
 
-        <Separator />
+        {showPhoneSection && (
+          <>
+            <Separator />
 
-        <PhoneSection
-          connected={Boolean(phone)}
-          externalId={phone?.externalId}
-          canUnbind={canUnbind}
-          onUnbind={() => handleUnbind('PHONE')}
-          unbinding={unbind.isPending && unbind.variables === 'PHONE'}
-        />
+            <PhoneSection
+              connected={Boolean(phone)}
+              externalId={phone?.externalId}
+              canUnbind={canUnbind}
+              onUnbind={() => handleUnbind('PHONE')}
+              unbinding={unbind.isPending && unbind.variables === 'PHONE'}
+              available={phoneAvailable}
+            />
+          </>
+        )}
       </Card>
     </div>
   );
@@ -428,12 +441,14 @@ function PhoneSection({
   canUnbind,
   onUnbind,
   unbinding,
+  available,
 }: {
   connected: boolean;
   externalId?: string;
   canUnbind: boolean;
   onUnbind: () => void;
   unbinding: boolean;
+  available: boolean;
 }) {
   const [step, setStep] = useState<'idle' | 'phone' | 'code'>('idle');
   const [phone, setPhone] = useState('');
@@ -501,12 +516,12 @@ function PhoneSection({
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-        ) : step === 'idle' ? (
+        ) : step === 'idle' && available ? (
           <Button size="sm" onClick={() => setStep('phone')}>Подключить</Button>
         ) : null}
       </div>
 
-      {step === 'phone' && (
+      {step === 'phone' && available && (
         <form onSubmit={handleSubmitPhone} className="flex gap-2">
           <Input
             type="tel"
