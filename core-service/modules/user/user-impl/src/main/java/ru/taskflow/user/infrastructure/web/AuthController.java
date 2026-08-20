@@ -150,8 +150,12 @@ public class AuthController {
                         HttpStatus.BAD_REQUEST, "Invalid phone"));
         String code = loginCodeService.issueCode(IdentityProvider.PHONE, normalizedPhone);
         try {
-            phoneVerificationProvider.sendCode(normalizedPhone, code);
-            loginCodeService.confirmIssued(IdentityProvider.PHONE, normalizedPhone, code);
+            // Сохраняем код, который вернул провайдер, а не тот, что передали
+            // ему: пул номеров для передачи кода последними цифрами конечен,
+            // и даже документированная гарантия «использует наш code» не
+            // повод доверять ей без проверки.
+            String actualCode = phoneVerificationProvider.sendCode(normalizedPhone, code);
+            loginCodeService.confirmIssued(IdentityProvider.PHONE, normalizedPhone, actualCode);
         } catch (RuntimeException e) {
             log.warn("Не удалось позвонить с кодом входа: {}", e.getMessage());
         }

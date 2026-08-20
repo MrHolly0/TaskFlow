@@ -198,6 +198,7 @@ class AuthControllerTest {
     @Test
     void requestPhoneCode_validPhone_normalizesAndConfirmsIssued() throws Exception {
         when(loginCodeService.issueCode(IdentityProvider.PHONE, "+79991234567")).thenReturn("1234");
+        when(phoneVerificationProvider.sendCode("+79991234567", "1234")).thenReturn("1234");
 
         mockMvc.perform(post("/api/v1/auth/phone/request-code")
                         .contentType("application/json")
@@ -206,6 +207,23 @@ class AuthControllerTest {
 
         verify(phoneVerificationProvider).sendCode("+79991234567", "1234");
         verify(loginCodeService).confirmIssued(IdentityProvider.PHONE, "+79991234567", "1234");
+    }
+
+    // Провайдер может подтвердить звонок другим кодом, чем мы передали (пул
+    // номеров для передачи кода конечен) — сохранить обязаны код из ответа
+    // провайдера, а не тот, что сами сгенерировали.
+    @Test
+    void requestPhoneCode_providerReturnsDifferentCode_confirmsIssuedWithProviderCode() throws Exception {
+        when(loginCodeService.issueCode(IdentityProvider.PHONE, "+79991234567")).thenReturn("1234");
+        when(phoneVerificationProvider.sendCode("+79991234567", "1234")).thenReturn("9081");
+
+        mockMvc.perform(post("/api/v1/auth/phone/request-code")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new RequestPhoneCodeRequest("8 (999) 123-45-67"))))
+                .andExpect(status().isOk());
+
+        verify(loginCodeService).confirmIssued(IdentityProvider.PHONE, "+79991234567", "9081");
+        verify(loginCodeService, never()).confirmIssued(IdentityProvider.PHONE, "+79991234567", "1234");
     }
 
     @Test

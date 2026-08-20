@@ -129,6 +129,7 @@ class IdentityControllerTest {
     @Test
     void requestPhoneCode_validPhone_normalizesAndConfirmsIssued() throws Exception {
         when(loginCodeService.issueCode(IdentityProvider.PHONE, "+79991234567")).thenReturn("1234");
+        when(phoneVerificationProvider.sendCode("+79991234567", "1234")).thenReturn("1234");
 
         mockMvc.perform(post("/api/v1/identities/phone/request-code")
                         .contentType("application/json")
@@ -137,6 +138,20 @@ class IdentityControllerTest {
 
         verify(phoneVerificationProvider).sendCode("+79991234567", "1234");
         verify(loginCodeService).confirmIssued(IdentityProvider.PHONE, "+79991234567", "1234");
+    }
+
+    @Test
+    void requestPhoneCode_providerReturnsDifferentCode_confirmsIssuedWithProviderCode() throws Exception {
+        when(loginCodeService.issueCode(IdentityProvider.PHONE, "+79991234567")).thenReturn("1234");
+        when(phoneVerificationProvider.sendCode("+79991234567", "1234")).thenReturn("9081");
+
+        mockMvc.perform(post("/api/v1/identities/phone/request-code")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new RequestPhoneCodeRequest("8 (999) 123-45-67"))))
+                .andExpect(status().isOk());
+
+        verify(loginCodeService).confirmIssued(IdentityProvider.PHONE, "+79991234567", "9081");
+        verify(loginCodeService, never()).confirmIssued(IdentityProvider.PHONE, "+79991234567", "1234");
     }
 
     @Test

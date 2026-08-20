@@ -76,7 +76,7 @@ class UcallerPhoneVerificationProviderTest {
     }
 
     @Test
-    void sendCode_success_callsInitCallWithNormalizedPhoneAndCode() {
+    void sendCode_responseCodeMatchesOurs_returnsThatCode() {
         MockRestServiceServer[] serverOut = new MockRestServiceServer[1];
         var provider = providerWithKeys("service-1", "secret-1", serverOut);
 
@@ -88,9 +88,52 @@ class UcallerPhoneVerificationProviderTest {
                         "{\"status\":true,\"ucaller_id\":103000,\"phone\":\"7999***4567\",\"code\":\"1234\"}",
                         MediaType.APPLICATION_JSON));
 
-        provider.sendCode(PHONE, CODE);
+        String actualCode = provider.sendCode(PHONE, CODE);
 
+        assertThat(actualCode).isEqualTo("1234");
         serverOut[0].verify();
+    }
+
+    // Код звонком — последние цифры номера, с которого звонят, а пул таких
+    // номеров у Ucaller конечен: наш code — пожелание, не гарантия. Если
+    // взяли не наш, это ещё не ошибка — доверяем ответу, а не входу.
+    @Test
+    void sendCode_responseCodeDiffersFromOurs_returnsProviderCodeNotOurs() {
+        MockRestServiceServer[] serverOut = new MockRestServiceServer[1];
+        var provider = providerWithKeys("service-1", "secret-1", serverOut);
+
+        serverOut[0].expect(requestToUriTemplate(
+                        "https://api.ucaller.ru/v1.0/initCall?service_id={sid}&key={key}&phone={phone}&code={code}",
+                        "service-1", "secret-1", "79991234567", "1234"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(
+                        "{\"status\":true,\"ucaller_id\":103000,\"phone\":\"7999***4567\",\"code\":\"9081\"}",
+                        MediaType.APPLICATION_JSON));
+
+        String actualCode = provider.sendCode(PHONE, CODE);
+
+        assertThat(actualCode).isEqualTo("9081");
+    }
+
+    // Отсутствие code в ответе — не повод падать: провайдер мог не вернуть
+    // поле, а звонок при этом состоялся. Возвращаем свой код осознанно
+    // (с предупреждением в лог), а не тихо теряем результат.
+    @Test
+    void sendCode_responseWithoutCode_fallsBackToOurCode() {
+        MockRestServiceServer[] serverOut = new MockRestServiceServer[1];
+        var provider = providerWithKeys("service-1", "secret-1", serverOut);
+
+        serverOut[0].expect(requestToUriTemplate(
+                        "https://api.ucaller.ru/v1.0/initCall?service_id={sid}&key={key}&phone={phone}&code={code}",
+                        "service-1", "secret-1", "79991234567", "1234"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(
+                        "{\"status\":true,\"ucaller_id\":103000,\"phone\":\"7999***4567\"}",
+                        MediaType.APPLICATION_JSON));
+
+        String actualCode = provider.sendCode(PHONE, CODE);
+
+        assertThat(actualCode).isEqualTo(CODE);
     }
 
     @Test

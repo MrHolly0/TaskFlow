@@ -1,5 +1,6 @@
 package ru.taskflow.user.infrastructure.phone;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -13,7 +14,9 @@ import ru.taskflow.user.application.PhoneVerificationProvider;
 /**
  * Звонок с кодом в последних цифрах номера через Ucaller. Код передаём
  * готовым (см. LoginCodeService) — initCall умеет генерировать свой, но нам
- * нужен единый механизм хранения/проверки для почты и телефона.
+ * нужен единый механизм хранения/проверки для почты и телефона. Наш code —
+ * пожелание, а не гарантия: {@link #sendCode} возвращает код из ответа
+ * Ucaller, и хранить нужно именно его (см. {@link PhoneVerificationProvider}).
  *
  * Как и CountryResolver для GeoLite2: без ключей провайдер не роняет
  * приложение при старте, просто логирует ошибку и остаётся недоступным —
@@ -50,7 +53,7 @@ public class UcallerPhoneVerificationProvider implements PhoneVerificationProvid
     }
 
     @Override
-    public void sendCode(String phoneE164, String code) {
+    public String sendCode(String phoneE164, String code) {
         if (!isAvailable()) {
             throw new IllegalStateException("Ucaller не настроен");
         }
@@ -68,6 +71,21 @@ public class UcallerPhoneVerificationProvider implements PhoneVerificationProvid
             String reason = response != null && response.error() != null ? response.error() : "пустой ответ";
             throw new IllegalStateException("Ucaller отклонил звонок: " + reason);
         }
+        // Код передаётся последними цифрами номера звонящего, а пул таких
+        // номеров у Ucaller конечен — даже если по документации наш code
+        // обязаны использовать как есть, доверяем только ответу. Иначе при
+        // расхождении с реальным поведением все входы по телефону будут
+        // молча отваливаться как «пользователь ошибся с кодом».
+        if (response.code() == null || response.code().isBlank()) {
+            log.warn("Ucaller не вернул код звонка (ucaller_id={}) — используем переданный без подтверждения",
+                    response.ucallerId());
+            return code;
+        }
+        if (!response.code().equals(code)) {
+            log.warn("Ucaller использовал другой код, чем передан (ucaller_id={}): передали={}, фактически={}",
+                    response.ucallerId(), code, response.code());
+        }
+        return response.code();
     }
 
     @Override
@@ -77,5 +95,10 @@ public class UcallerPhoneVerificationProvider implements PhoneVerificationProvid
                 : Health.down().withDetail("reason", "Ucaller не настроен").build();
     }
 
-    private record UcallerResponse(boolean status, String error) {}
+    private record UcallerResponse(
+            boolean status,
+            String code,
+            @JsonProperty("ucaller_id") Long ucallerId,
+            String error
+    ) {}
 }

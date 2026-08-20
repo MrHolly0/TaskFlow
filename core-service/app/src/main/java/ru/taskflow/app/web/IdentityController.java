@@ -108,8 +108,10 @@ public class IdentityController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid phone"));
         String code = loginCodeService.issueCode(IdentityProvider.PHONE, normalizedPhone);
         try {
-            phoneVerificationProvider.sendCode(normalizedPhone, code);
-            loginCodeService.confirmIssued(IdentityProvider.PHONE, normalizedPhone, code);
+            // Сохраняем код, который вернул провайдер, а не тот, что передали
+            // ему — см. UcallerPhoneVerificationProvider.sendCode.
+            String actualCode = phoneVerificationProvider.sendCode(normalizedPhone, code);
+            loginCodeService.confirmIssued(IdentityProvider.PHONE, normalizedPhone, actualCode);
         } catch (RuntimeException e) {
             log.warn("Не удалось отправить код привязки телефона: {}", e.getMessage());
         }
