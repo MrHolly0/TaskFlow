@@ -154,6 +154,23 @@ class IdentityControllerTest {
         verify(loginCodeService, never()).confirmIssued(IdentityProvider.PHONE, "+79991234567", "1234");
     }
 
+    // В отличие от входа, привязка ничего не скрывает — учётка уже известна
+    // из токена. Отказ звонка обязан вернуться ошибкой, а не 200: иначе
+    // фронтенд покажет экран ввода кода, которого никогда не будет.
+    @Test
+    void requestPhoneCode_providerFails_returns503WithoutConfirmingIssued() throws Exception {
+        when(loginCodeService.issueCode(IdentityProvider.PHONE, "+79991234567")).thenReturn("1234");
+        when(phoneVerificationProvider.sendCode("+79991234567", "1234"))
+                .thenThrow(new IllegalStateException("Ucaller отклонил звонок: insufficient balance"));
+
+        mockMvc.perform(post("/api/v1/identities/phone/request-code")
+                        .contentType("application/json")
+                        .content(objectMapper.writeValueAsString(new RequestPhoneCodeRequest("8 (999) 123-45-67"))))
+                .andExpect(status().isServiceUnavailable());
+
+        verify(loginCodeService, never()).confirmIssued(any(), anyString(), anyString());
+    }
+
     @Test
     void confirmPhone_noConflict_bindsImmediatelyWithoutToken() throws Exception {
         when(loginCodeService.verifyCode(IdentityProvider.PHONE, "+79991234567", "1234")).thenReturn(true);

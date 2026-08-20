@@ -102,19 +102,27 @@ public class IdentityController {
     @PostMapping("/phone/request-code")
     @ResponseStatus(HttpStatus.OK)
     @Operation(summary = "Запросить код для привязки телефона",
-            description = "Отвечает одинаково независимо от того, дошёл ли звонок")
+            description = "Учётка уже известна из токена — скрывать нечего; отказ звонка возвращается ошибкой, "
+                    + "а не проглатывается, как на /auth/phone/request-code")
     public void requestPhoneCode(@Valid @RequestBody RequestPhoneCodeRequest request) {
         String normalizedPhone = PhoneNumberNormalizer.normalize(request.phone())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid phone"));
         String code = loginCodeService.issueCode(IdentityProvider.PHONE, normalizedPhone);
+        // В отличие от /auth/phone/request-code (вход) здесь нечего скрывать —
+        // учётка уже известна из токена, а не выясняется по номеру. Поэтому
+        // отказ звонка не проглатываем: иначе фронтенд не отличит «звонок не
+        // состоялся» от «код действительно отправлен» и покажет экран ввода,
+        // которого ждать бессмысленно.
+        String actualCode;
         try {
             // Сохраняем код, который вернул провайдер, а не тот, что передали
             // ему — см. UcallerPhoneVerificationProvider.sendCode.
-            String actualCode = phoneVerificationProvider.sendCode(normalizedPhone, code);
-            loginCodeService.confirmIssued(IdentityProvider.PHONE, normalizedPhone, actualCode);
+            actualCode = phoneVerificationProvider.sendCode(normalizedPhone, code);
         } catch (RuntimeException e) {
             log.warn("Не удалось отправить код привязки телефона: {}", e.getMessage());
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Не удалось позвонить, попробуйте позже");
         }
+        loginCodeService.confirmIssued(IdentityProvider.PHONE, normalizedPhone, actualCode);
     }
 
     @PostMapping("/phone/confirm")
