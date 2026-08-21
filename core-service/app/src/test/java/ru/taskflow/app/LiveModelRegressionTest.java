@@ -168,6 +168,116 @@ class LiveModelRegressionTest {
                 .isEmpty();
     }
 
+    // Живой дефект: разбор нескольких задач из одной реплики не работал —
+    // модель устойчиво возвращала один вызов инструмента на ответ, вне
+    // зависимости от parallel_tool_calls и прямых инструкций «вызови
+    // отдельно для каждой задачи». create_tasks принимает список вместо
+    // одной задачи — отрабатывает с первой попытки.
+
+    // Несколько попыток здесь компенсируют в первую очередь не саму модель,
+    // а нижний ярус free-tier Groq: TPM 8000 на организацию — при системном
+    // промпте в 1.5-3 тысячи токенов на запрос это 3-4 вызова в минуту,
+    // и пустой ответ (nlp-worker: "All tool-call providers exhausted") в
+    // таком окне означает исчерпанный лимит, а не то, что модель не
+    // справилась. Пауза между попытками — чтобы следующая не попала в то
+    // же исчерпанное окно.
+    @Test
+    void handleText_createsSeparateActionForEachTaskWhenReplyMentionsTwo() throws InterruptedException {
+        UUID userId = newUser();
+
+        List<String> observations = new ArrayList<>();
+        boolean succeeded = false;
+        for (int attempt = 1; attempt <= 3 && !succeeded; attempt++) {
+            if (attempt > 1) {
+                Thread.sleep(20_000);
+            }
+            Proposal proposal = handleText(userId, "купить молоко и позвонить маме");
+            List<ProposedAction> creates = proposal.actions().stream()
+                    .filter(a -> a.type() == AssistantActionType.CREATE)
+                    .toList();
+            observations.add("попытка %d: actions=%s".formatted(attempt, proposal.actions()));
+            succeeded = creates.size() == 2;
+        }
+
+        assertThat(succeeded)
+                .overridingErrorMessage("Реплика с двумя задачами ни разу не дала два действия за %d попытки: %s",
+                        observations.size(), observations)
+                .isTrue();
+    }
+
+    // Та же причина ретраев, что и у предыдущего теста: free-tier TPM Groq
+    // легко исчерпывается на этом же объёме промпта, и пустой ответ чаще
+    // означает исчерпанный лимит, чем то, что модель не справилась с
+    // четырьмя временами в одной реплике.
+    @Test
+    void handleText_createsFourActionsWithMatchingHoursForFourTasksWithTimes() throws InterruptedException {
+        UUID userId = newUser();
+        String text = "в 18 забрать детей, завтра в 12 конференция, в 16 банкет, в пятницу отчёт";
+
+        List<String> observations = new ArrayList<>();
+        boolean succeeded = false;
+        for (int attempt = 1; attempt <= 3 && !succeeded; attempt++) {
+            if (attempt > 1) {
+                Thread.sleep(20_000);
+            }
+            Proposal proposal = handleText(userId, text);
+            List<ProposedAction> creates = proposal.actions().stream()
+                    .filter(a -> a.type() == AssistantActionType.CREATE)
+                    .toList();
+            observations.add("попытка %d: actions=%s".formatted(attempt, proposal.actions()));
+
+            succeeded = creates.size() == 4
+                    && Integer.valueOf(18).equals(hourOf(creates, "дет"))
+                    && Integer.valueOf(12).equals(hourOf(creates, "конф"))
+                    && Integer.valueOf(16).equals(hourOf(creates, "банкет"))
+                    && creates.stream().anyMatch(a -> titleOf(a).toLowerCase(java.util.Locale.ROOT).contains("отчёт")
+                            && a.payload().get("deadline") != null);
+        }
+
+        // Час — структурная проверка, что срок каждой задачи разобрался
+        // именно из её части реплики, а не потерялся/слился с соседним.
+        // День здесь намеренно не проверяем: наследование времени суток
+        // между частями реплики — известное, отдельно зафиксированное
+        // несовершенство разбора, не то, что чинит эта задача.
+        assertThat(succeeded)
+                .overridingErrorMessage(
+                        "Реплика с четырьмя задачами и временами не разобралась верно ни разу за %d попытки: %s",
+                        observations.size(), observations)
+                .isTrue();
+    }
+
+    @Test
+    void handleText_singleTaskStillProducesExactlyOneNonEmptyAction() {
+        UUID userId = newUser();
+
+        Proposal proposal = handleText(userId, "купить корм коту");
+
+        List<ProposedAction> creates = proposal.actions().stream()
+                .filter(a -> a.type() == AssistantActionType.CREATE)
+                .toList();
+        assertThat(creates)
+                .overridingErrorMessage("Одна задача в реплике дала не одно действие: %s", proposal.actions())
+                .hasSize(1);
+        assertThat(creates.getFirst().payload().get("title"))
+                .overridingErrorMessage("Единственное действие осталось без title: %s", proposal.actions())
+                .isNotNull();
+    }
+
+    @Test
+    void handleText_rejectsDuplicateTaskMentionedTwiceInSameReply() {
+        UUID userId = newUser();
+
+        Proposal proposal = handleText(userId, "купить хлеб и купить хлеб");
+
+        List<ProposedAction> creates = proposal.actions().stream()
+                .filter(a -> a.type() == AssistantActionType.CREATE)
+                .toList();
+        assertThat(creates)
+                .overridingErrorMessage("Дубль внутри одной реплики не был схлопнут в одно действие: %s",
+                        proposal.actions())
+                .hasSize(1);
+    }
+
     @Test
     void handleText_relativeDeadlineForNewTaskIsInFuture() {
         UUID userId = newUser();
@@ -542,6 +652,20 @@ class LiveModelRegressionTest {
 
     private Optional<ProposedAction> createAction(Proposal proposal) {
         return proposal.actions().stream().filter(a -> a.type() == AssistantActionType.CREATE).findFirst();
+    }
+
+    private String titleOf(ProposedAction action) {
+        return String.valueOf(action.payload().get("title"));
+    }
+
+    private Integer hourOf(List<ProposedAction> actions, String titleKeyword) {
+        return actions.stream()
+                .filter(a -> titleOf(a).toLowerCase(java.util.Locale.ROOT).contains(titleKeyword))
+                .findFirst()
+                .map(a -> a.payload().get("deadline"))
+                .filter(java.util.Objects::nonNull)
+                .map(d -> OffsetDateTime.parse(String.valueOf(d)).getHour())
+                .orElse(null);
     }
 
     private OffsetDateTime createDeadline(Proposal proposal) {
