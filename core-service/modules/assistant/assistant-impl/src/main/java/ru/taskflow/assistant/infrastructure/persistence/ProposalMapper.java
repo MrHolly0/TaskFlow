@@ -36,8 +36,21 @@ public class ProposalMapper {
                 entity.getCreatedAt(),
                 entity.getExpiresAt(),
                 entity.isExclusive(),
-                entity.getAmbiguityReason()
+                entity.getAmbiguityReason(),
+                readRejections(entity.getRejections())
         );
+    }
+
+    private List<String> readRejections(String json) {
+        if (json == null || json.isBlank()) {
+            return List.of();
+        }
+        try {
+            return objectMapper.readValue(json, new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+        } catch (Exception e) {
+            log.warn("Не удалось разобрать rejections предложения, вернём пустой список: {}", json);
+            return List.of();
+        }
     }
 
     private List<ProposedAction> toActions(ProposalJpaEntity entity) {

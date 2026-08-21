@@ -46,6 +46,7 @@ export interface Proposal {
   expiresAt: string;
   exclusive: boolean;
   ambiguityReason?: string;
+  rejections: string[];
 }
 
 export interface ActionOutcome {

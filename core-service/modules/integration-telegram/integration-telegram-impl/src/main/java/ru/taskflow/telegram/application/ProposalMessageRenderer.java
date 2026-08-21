@@ -23,11 +23,30 @@ public class ProposalMessageRenderer {
             return proposal.clarification();
         }
         if (!proposal.hasActions()) {
+            if (proposal.hasRejections()) {
+                return "Не нашёл, что предложить по вашему сообщению.\n\n" + renderRejections(proposal);
+            }
             return "Не нашёл, что предложить по вашему сообщению.";
         }
         StringBuilder sb = new StringBuilder("Предлагаю:\n\n");
         for (ProposedAction action : proposal.actions()) {
             sb.append(action.accepted() ? '☑' : '☐').append(' ').append(action.summary()).append('\n');
+        }
+        if (proposal.hasRejections()) {
+            sb.append('\n').append(renderRejections(proposal));
+        }
+        return sb.toString().stripTrailing();
+    }
+
+    /**
+     * Спокойный тон намеренно: это не сбой системы, а объяснение, почему
+     * часть сказанного не превратилась в действие — человек и так видит,
+     * что действий меньше, чем говорил, без единого слова причины было бы хуже.
+     */
+    private String renderRejections(Proposal proposal) {
+        StringBuilder sb = new StringBuilder("Не учтено:\n");
+        for (String rejection : proposal.rejections()) {
+            sb.append("· ").append(rejection).append('\n');
         }
         return sb.toString().stripTrailing();
     }

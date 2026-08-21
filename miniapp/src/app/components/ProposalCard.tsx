@@ -4,6 +4,24 @@ import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
 import { cn } from '@/lib/utils';
 
+// Спокойный тон намеренно: это не сбой, а объяснение, почему часть сказанного
+// не стала действием — без единого слова причины было бы хуже, чем сейчас.
+function RejectionsNote({ rejections }: { rejections: string[] }) {
+  if (!rejections.length) return null;
+  return (
+    <div className="space-y-1 pt-2 mt-1 border-t border-border">
+      <p className="text-xs text-muted-foreground">Не учтено:</p>
+      <ul className="space-y-0.5">
+        {rejections.map((reason, i) => (
+          <li key={i} className="text-xs text-muted-foreground break-words">
+            · {reason}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function ProposalCard({
   proposal,
   onToggle,
@@ -47,6 +65,7 @@ export function ProposalCard({
     return (
       <Card className={cn('px-4 py-3 text-sm text-muted-foreground', className)}>
         Не нашел, что предложить по этому сообщению.
+        <RejectionsNote rejections={proposal.rejections} />
       </Card>
     );
   }
@@ -87,6 +106,7 @@ export function ProposalCard({
             Отклонить
           </Button>
         </div>
+        <RejectionsNote rejections={proposal.rejections} />
       </Card>
     );
   }
@@ -122,6 +142,7 @@ export function ProposalCard({
           Отклонить
         </Button>
       </div>
+      <RejectionsNote rejections={proposal.rejections} />
     </Card>
   );
 }

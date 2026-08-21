@@ -95,6 +95,35 @@ class ProposalMapperTest {
         assertThat(dto.ambiguityReason()).isNull();
     }
 
+    @Test
+    void toDto_parsesRejectionsJson() {
+        var entity = entity();
+        entity.setRejections("[\"смена названия отклонена: текущее название задачи не упомянуто в реплике (Сдать отчёт)\"]");
+
+        var dto = mapper.toDto(entity);
+
+        assertThat(dto.rejections()).containsExactly(
+                "смена названия отклонена: текущее название задачи не упомянуто в реплике (Сдать отчёт)");
+    }
+
+    @Test
+    void toDto_defaultsRejectionsToEmptyList() {
+        var dto = mapper.toDto(entity());
+
+        assertThat(dto.rejections()).isEmpty();
+        assertThat(dto.hasRejections()).isFalse();
+    }
+
+    @Test
+    void toDto_toleratesBrokenRejectionsJson() {
+        var entity = entity();
+        entity.setRejections("{это не json");
+
+        var dto = mapper.toDto(entity);
+
+        assertThat(dto.rejections()).isEmpty();
+    }
+
     private ProposalJpaEntity entity() {
         var p = new ProposalJpaEntity();
         p.setId(UUID.randomUUID());

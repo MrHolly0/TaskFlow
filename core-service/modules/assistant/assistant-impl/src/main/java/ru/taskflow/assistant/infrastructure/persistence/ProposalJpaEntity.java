@@ -52,6 +52,10 @@ public class ProposalJpaEntity {
     @Column(name = "ambiguity_reason", columnDefinition = "TEXT")
     private String ambiguityReason;
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private String rejections;
+
     @Column(name = "llm_passes")
     private int llmPasses;
 

@@ -38,6 +38,43 @@ class ProposalMessageRendererTest {
     }
 
     @Test
+    void render_showsRejectionsBelowActionsInCalmTone() {
+        var action = new ProposedAction(1, AssistantActionType.COMPLETE, UUID.randomUUID(), Map.of(), "закрыть «купить молоко»", true);
+        Proposal proposal = new Proposal(UUID.randomUUID(), "ABCDEFGH", userId, ProposalStatus.PENDING,
+                "текст", null, List.of(action), now, now.plusHours(24), false, null,
+                List.of("смена названия отклонена: текущее название задачи не упомянуто в реплике (Сдать отчёт)"));
+
+        String rendered = renderer.render(proposal);
+
+        assertThat(rendered).contains("закрыть «купить молоко»");
+        assertThat(rendered).contains("Не учтено:");
+        assertThat(rendered).contains("текущее название задачи не упомянуто в реплике (Сдать отчёт)");
+    }
+
+    @Test
+    void render_showsRejectionsWhenNoActionsProposed() {
+        Proposal proposal = new Proposal(UUID.randomUUID(), "ABCDEFGH", userId, ProposalStatus.PENDING,
+                "текст", null, List.of(), now, now.plusHours(24), false, null,
+                List.of("создание отклонено: похожая задача уже есть в списке (T1 — купить молоко)"));
+
+        String rendered = renderer.render(proposal);
+
+        assertThat(rendered).contains("Не нашёл, что предложить");
+        assertThat(rendered).contains("похожая задача уже есть в списке");
+    }
+
+    @Test
+    void render_omitsRejectionsBlockWhenThereAreNone() {
+        var action = new ProposedAction(1, AssistantActionType.COMPLETE, UUID.randomUUID(), Map.of(), "закрыть «купить молоко»", true);
+        Proposal proposal = new Proposal(UUID.randomUUID(), "ABCDEFGH", userId, ProposalStatus.PENDING,
+                "текст", null, List.of(action), now, now.plusHours(24));
+
+        String rendered = renderer.render(proposal);
+
+        assertThat(rendered).doesNotContain("Не учтено:");
+    }
+
+    @Test
     void render_showsClarificationText() {
         Proposal proposal = new Proposal(UUID.randomUUID(), "ABCDEFGH", userId, ProposalStatus.PENDING,
                 "текст", "Какую встречу перенести?", List.of(), now, now.plusHours(24));

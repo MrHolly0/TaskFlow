@@ -127,4 +127,26 @@ class ProposalFactoryTest {
         assertThat(entity.isExclusive()).isFalse();
         assertThat(entity.getAmbiguityReason()).isNull();
     }
+
+    @Test
+    void from_serializesRejections() throws Exception {
+        List<String> rejections = List.of(
+                "смена названия отклонена: текущее название задачи не упомянуто в реплике (Сдать отчёт)");
+        AgentOutcome withRejections = new AgentOutcome(List.of(), rejections, null, List.of(), null,
+                window(Map.of()), 1, false);
+
+        ProposalJpaEntity entity = factory.from(userId, "текст", AssistantChannel.TELEGRAM, "TEXT", withRejections);
+
+        List<String> restored = objectMapper.readValue(entity.getRejections(), new TypeReference<List<String>>() {});
+        assertThat(restored).isEqualTo(rejections);
+    }
+
+    @Test
+    void from_serializesEmptyRejectionsList() throws Exception {
+        ProposalJpaEntity entity = factory.from(userId, "текст", AssistantChannel.TELEGRAM, "TEXT",
+                outcome(List.of(), null, Map.of()));
+
+        List<String> restored = objectMapper.readValue(entity.getRejections(), new TypeReference<List<String>>() {});
+        assertThat(restored).isEmpty();
+    }
 }

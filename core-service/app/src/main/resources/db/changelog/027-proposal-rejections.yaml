@@ -1,0 +1,16 @@
+databaseChangeLog:
+  - changeSet:
+      id: 027-proposal-rejections
+      author: taskflow
+      changes:
+        - addColumn:
+            tableName: assistant_proposals
+            columns:
+              - column:
+                  name: rejections
+                  type: JSONB
+
+# Отказы (ActionValidator, DuplicateGuard, TitleChangeGuard) и раньше
+# вычислялись с внятной причиной каждый, но никуда не сохранялись — до
+# пользователя не доходило ни слова о том, что часть сказанного не стала
+# действием. Столбец хранит список причин тем же приёмом, что task_refs.
