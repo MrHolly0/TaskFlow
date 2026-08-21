@@ -9,7 +9,7 @@ import java.util.Map;
 @Component
 public class ToolRegistry {
 
-    public static final String CREATE_TASK = "create_task";
+    public static final String CREATE_TASKS = "create_tasks";
     public static final String COMPLETE_TASK = "complete_task";
     public static final String RESCHEDULE_TASK = "reschedule_task";
     public static final String UPDATE_TASK = "update_task";
@@ -18,8 +18,10 @@ public class ToolRegistry {
     public static final String ASK_USER = "ask_user";
     public static final String MARK_AMBIGUOUS = "mark_ambiguous";
 
+    // CREATE_TASKS сюда не входит: один вызов разворачивается в несколько
+    // действий, а не в одно — ToolCallParser обрабатывает его отдельной
+    // веткой (isBatchCreate), не через эту карту.
     private static final Map<String, AssistantActionType> ACTION_TYPES = Map.of(
-            CREATE_TASK, AssistantActionType.CREATE,
             COMPLETE_TASK, AssistantActionType.COMPLETE,
             RESCHEDULE_TASK, AssistantActionType.RESCHEDULE,
             UPDATE_TASK, AssistantActionType.UPDATE,
@@ -28,6 +30,10 @@ public class ToolRegistry {
 
     public AssistantActionType actionTypeOf(String toolName) {
         return ACTION_TYPES.get(toolName);
+    }
+
+    public boolean isBatchCreate(String toolName) {
+        return CREATE_TASKS.equals(toolName);
     }
 
     public boolean isRetrieval(String toolName) {
@@ -44,14 +50,27 @@ public class ToolRegistry {
 
     public List<Map<String, Object>> toolDefinitions() {
         return List.of(
-                tool(CREATE_TASK, "Создать новую задачу", Map.of(
-                        "title", stringParam("Короткое название задачи"),
-                        "description", stringParam("Подробности, если есть"),
-                        "priority", enumParam("Приоритет", List.of("LOW", "MEDIUM", "HIGH", "URGENT")),
-                        "deadline", stringParam("Срок в формате ISO-8601 со смещением, например 2026-08-12T18:00:00+03:00"),
-                        "group", stringParam("Название группы одним-двумя словами на русском"),
-                        "tags", arrayParam("Метки")
-                ), List.of("title")),
+                tool(CREATE_TASKS, "Создать одну или несколько новых задач. Вызывается один раз на ответ: "
+                        + "все задачи, упомянутые в реплике, перечисляются элементами списка tasks, а не "
+                        + "отдельными вызовами — даже если задача всего одна, она всё равно единственный "
+                        + "элемент списка.", Map.of(
+                        "tasks", Map.of(
+                                "type", "array",
+                                "description", "Задачи для создания, по одному объекту на каждую",
+                                "items", Map.of(
+                                        "type", "object",
+                                        "properties", Map.of(
+                                                "title", stringParam("Короткое название задачи"),
+                                                "description", stringParam("Подробности, если есть"),
+                                                "priority", enumParam("Приоритет", List.of("LOW", "MEDIUM", "HIGH", "URGENT")),
+                                                "deadline", stringParam("Срок в формате ISO-8601 со смещением, например 2026-08-12T18:00:00+03:00"),
+                                                "group", stringParam("Название группы одним-двумя словами на русском"),
+                                                "tags", arrayParam("Метки")
+                                        ),
+                                        "required", List.of("title")
+                                )
+                        )
+                ), List.of("tasks")),
 
                 tool(COMPLETE_TASK, "Отметить существующую задачу выполненной", Map.of(
                         "task_ref", stringParam("Ярлык задачи из списка, например T3"),

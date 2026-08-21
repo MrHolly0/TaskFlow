@@ -35,7 +35,7 @@ public class DuplicateGuard {
      * alreadyProposed — действия, уже принятые в предыдущем проходе того же обращения.
      * История второго прохода несёт модели только эхо search_tasks (иначе провайдер
      * отвергнет вызовы tool без ответа) — модель не видит, что уже предложила
-     * create_task, и может предложить его снова. Здесь этот случай отлавливается
+     * create_tasks, и может предложить его снова. Здесь этот случай отлавливается
      * тем же правилом сравнения, что и для окна.
      */
     public GuardResult filter(List<ProposedAction> actions, TaskContextWindow window,
@@ -47,6 +47,12 @@ public class DuplicateGuard {
 
         List<ProposedAction> kept = new ArrayList<>();
         List<String> rejections = new ArrayList<>();
+        // Свои для этого же прохода — отдельно от alreadyProposedTitles:
+        // create_tasks разворачивает один вызов в несколько CREATE-действий
+        // одного и того же списка actions, и реплика может честно повторить
+        // одну и ту же задачу дважды. Первое вхождение остаётся, второе —
+        // дубль внутри пакета, не только против окна/прошлого прохода.
+        List<String> keptCreateTitles = new ArrayList<>();
 
         for (ProposedAction action : actions) {
             if (action.type() != AssistantActionType.CREATE) {
@@ -68,6 +74,13 @@ public class DuplicateGuard {
                 continue;
             }
 
+            String withinBatchMatch = findMatchAmongTitles(title, keptCreateTitles);
+            if (withinBatchMatch != null) {
+                rejections.add("создание отклонено: та же задача уже в этом списке (" + withinBatchMatch + ")");
+                continue;
+            }
+
+            keptCreateTitles.add(title);
             kept.add(action);
         }
 

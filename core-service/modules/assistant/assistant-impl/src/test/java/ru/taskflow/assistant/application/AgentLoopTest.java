@@ -80,7 +80,7 @@ class AgentLoopTest {
     }
 
     private LlmToolCall createTaskCall(String title) {
-        return new LlmToolCall("call-create", "create_task", "{\"title\":\"" + title + "\"}");
+        return new LlmToolCall("call-create", "create_tasks", "{\"tasks\":[{\"title\":\"" + title + "\"}]}");
     }
 
     private LlmToolCall searchCall(String query) {

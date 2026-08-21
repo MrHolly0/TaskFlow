@@ -80,7 +80,7 @@ class AssistantPromptBuilderTest {
     void build_requiresDuplicateCheckBeforeCreate() {
         var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());
 
-        assertThat(parts.systemPrompt()).contains("create_task");
+        assertThat(parts.systemPrompt()).contains("create_tasks");
         assertThat(parts.systemPrompt())
                 .contains("сверься со списком выше: если там уже есть задача с тем же смыслом");
         assertThat(parts.systemPrompt())
@@ -108,7 +108,7 @@ class AssistantPromptBuilderTest {
         var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());
 
         assertThat(parts.systemPrompt())
-                .contains("Заполняй description у create_task, только если в реплике есть подробности сверх");
+                .contains("Заполняй description у элемента tasks, только если в реплике есть подробности сверх");
         assertThat(parts.systemPrompt())
                 .contains("оставляй description пустым");
     }
@@ -170,7 +170,7 @@ class AssistantPromptBuilderTest {
 
         assertThat(chat.systemPrompt()).doesNotContain("быстрого добавления");
         assertThat(quickAdd.systemPrompt()).contains("быстрого добавления");
-        assertThat(quickAdd.systemPrompt()).contains("create_task первым");
+        assertThat(quickAdd.systemPrompt()).contains("create_tasks первым");
     }
 
     @Test
@@ -192,7 +192,7 @@ class AssistantPromptBuilderTest {
         assertThat(parts.systemPrompt()).doesNotContain("быстрого добавления");
     }
 
-    // Живой дефект: create_task описывал group как «название группы», не
+    // Живой дефект: create_tasks описывал group как «название группы», не
     // сообщая модели, какие группы вообще существуют — задача про кино не
     // попадала в существующую «Личное», потому что модель о ней не знала.
     @Test
@@ -209,7 +209,7 @@ class AssistantPromptBuilderTest {
         var parts = builder.build(emptyWindow(), "любой текст", ZONE, List.of("Личное"));
 
         assertThat(parts.systemPrompt())
-                .contains("единственно допустимые значения параметра group у create_task");
+                .contains("единственно допустимые значения параметра group у create_tasks");
         assertThat(parts.systemPrompt())
                 .contains("новых названий групп не придумывай");
     }

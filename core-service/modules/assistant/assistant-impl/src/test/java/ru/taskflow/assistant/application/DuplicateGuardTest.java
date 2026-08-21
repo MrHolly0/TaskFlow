@@ -140,6 +140,36 @@ class DuplicateGuardTest {
         assertThat(result.rejections()).isEmpty();
     }
 
+    // Живой дефект (пакетное создание): create_tasks разворачивает один
+    // вызов в несколько CREATE-действий одного списка actions — реплика
+    // может честно повторить одну и ту же задачу дважды внутри одного
+    // пакета, не только относительно окна или прошлого прохода.
+    @Test
+    void filter_dropsDuplicateWithinSameBatch() {
+        var first = createAction(1, "купить молоко");
+        var duplicate = createAction(2, "Купить молоко!");
+        var emptyWindow = new TaskContextWindow("Сейчас активных задач нет", Map.of(), Map.of());
+
+        var result = guard.filter(List.of(first, duplicate), emptyWindow);
+
+        assertThat(result.actions()).hasSize(1);
+        assertThat(result.actions().getFirst().payload()).isEqualTo(first.payload());
+        assertThat(result.rejections()).hasSize(1);
+        assertThat(result.rejections().getFirst()).contains("уже в этом списке");
+    }
+
+    @Test
+    void filter_keepsDifferentTasksWithinSameBatch() {
+        var first = createAction(1, "купить молоко");
+        var second = createAction(2, "записаться к стоматологу");
+        var emptyWindow = new TaskContextWindow("Сейчас активных задач нет", Map.of(), Map.of());
+
+        var result = guard.filter(List.of(first, second), emptyWindow);
+
+        assertThat(result.actions()).hasSize(2);
+        assertThat(result.rejections()).isEmpty();
+    }
+
     @Test
     void filter_dropsActionRepeatedFromEarlierPass() {
         var alreadyProposed = List.of(createAction(1, "Купить корм коту"));

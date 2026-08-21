@@ -84,6 +84,36 @@ public class ToolCallParser {
                 continue;
             }
 
+            if (toolRegistry.isBatchCreate(call.name())) {
+                List<Map<String, Object>> tasks = listOfMapsArg(args, "tasks");
+                if (tasks.isEmpty()) {
+                    rejections.add(call.name() + ": пустой список tasks");
+                    continue;
+                }
+                for (Map<String, Object> rawTaskArgs : tasks) {
+                    Map<String, Object> taskArgs = normalize(rawTaskArgs);
+                    var validation = actionValidator.validate(AssistantActionType.CREATE, taskArgs, window);
+                    if (!validation.valid()) {
+                        rejections.add(call.name() + ": " + validation.error());
+                        continue;
+                    }
+                    if (actions.size() >= MAX_ACTIONS) {
+                        rejections.add("превышен лимит действий: " + call.name());
+                        continue;
+                    }
+                    String summary = summaryRenderer.render(AssistantActionType.CREATE, null, taskArgs);
+                    actions.add(new ProposedAction(
+                            actions.size() + 1,
+                            AssistantActionType.CREATE,
+                            null,
+                            taskArgs,
+                            summary,
+                            true
+                    ));
+                }
+                continue;
+            }
+
             if (toolRegistry.isRetrieval(call.name())) {
                 if (searchQuery != null) {
                     rejections.add("повторный поиск отклонён: " + call.name());
@@ -164,6 +194,21 @@ public class ToolCallParser {
         }
         String trimmed = s.trim();
         return trimmed.isEmpty() || trimmed.equalsIgnoreCase("null");
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> listOfMapsArg(Map<String, Object> args, String key) {
+        Object value = args.get(key);
+        if (!(value instanceof List<?> list)) {
+            return List.of();
+        }
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> map) {
+                result.add((Map<String, Object>) map);
+            }
+        }
+        return result;
     }
 
     private List<String> listArg(Map<String, Object> args, String key) {
