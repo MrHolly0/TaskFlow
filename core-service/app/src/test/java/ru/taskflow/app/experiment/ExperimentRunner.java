@@ -92,8 +92,8 @@ class ExperimentRunner {
 
     @Test
     void runExperiment() throws InterruptedException {
-        Path datasetPath = Path.of(configValue("experiment.dataset", "EXPERIMENT_DATASET",
-                "docs/vkr/эксперимент/датасет.json"));
+        Path datasetPath = RepoPaths.resolveFromRepoRoot(
+                configValue("experiment.dataset", "EXPERIMENT_DATASET", "docs/vkr/dataset/nlp-dataset.json"));
         int repeats = Integer.parseInt(configValue("experiment.repeats", "EXPERIMENT_REPEATS", "3"));
 
         List<DatasetRow> dataset = DatasetReader.read(datasetPath);
@@ -112,8 +112,8 @@ class ExperimentRunner {
             }
         }
 
-        Path outDir = Path.of(configValue("experiment.outputDir", "EXPERIMENT_OUTPUT_DIR",
-                "docs/vkr/эксперимент/результаты"));
+        Path outDir = RepoPaths.resolveFromRepoRoot(
+                configValue("experiment.outputDir", "EXPERIMENT_OUTPUT_DIR", "docs/vkr/dataset/результаты"));
         String stamp = OffsetDateTime.now(ZONE).format(STAMP);
         ExperimentOutputWriter.writeCsv(results, outDir.resolve("run-" + stamp + ".csv"));
         ExperimentOutputWriter.writeJson(results, outDir.resolve("run-" + stamp + ".json"));
