@@ -16,6 +16,7 @@ import ru.taskflow.assistant.api.AssistantEntryPoint;
 import ru.taskflow.assistant.api.AssistantService;
 import ru.taskflow.assistant.api.ProposalStatus;
 import ru.taskflow.assistant.api.AssistantActionType;
+import ru.taskflow.assistant.api.dto.ApplyResult;
 import ru.taskflow.assistant.api.dto.Proposal;
 import ru.taskflow.assistant.api.dto.ProposedAction;
 import ru.taskflow.task.api.TaskPriority;
@@ -25,7 +26,10 @@ import ru.taskflow.task.api.dto.CreateTaskRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
 import ru.taskflow.user.api.UserService;
 
+import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -50,6 +54,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Testcontainers
 @Tag("live")
 class LiveModelRegressionTest {
+
+    // Дефолтный часовой пояс нового пользователя (см. UserServiceImpl.DEFAULT_TIMEZONE) —
+    // относительные сроки в live-тестах сверяются в нём же, а не в системном поясе машины.
+    private static final ZoneId MOSCOW = ZoneId.of("Europe/Moscow");
 
     @Container
     static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
@@ -171,8 +179,8 @@ class LiveModelRegressionTest {
     // Живой дефект: разбор нескольких задач из одной реплики не работал —
     // модель устойчиво возвращала один вызов инструмента на ответ, вне
     // зависимости от parallel_tool_calls и прямых инструкций «вызови
-    // отдельно для каждой задачи». create_tasks принимает список вместо
-    // одной задачи — отрабатывает с первой попытки.
+    // отдельно для каждой задачи». propose_actions принимает список
+    // разнородных действий вместо одного — отрабатывает с первой попытки.
 
     // Несколько попыток здесь компенсируют в первую очередь не саму модель,
     // а нижний ярус free-tier Groq: TPM 8000 на организацию — при системном
@@ -205,14 +213,75 @@ class LiveModelRegressionTest {
                 .isTrue();
     }
 
-    // Та же причина ретраев, что и у предыдущего теста: free-tier TPM Groq
-    // легко исчерпывается на этом же объёме промпта, и пустой ответ чаще
-    // означает исчерпанный лимит, чем то, что модель не справилась с
-    // четырьмя временами в одной реплике.
+    /**
+     * ЗАДОКУМЕНТИРОВАННАЯ ГРАНИЦА ПРИМЕНИМОСТИ, не дефект для доработки в
+     * этом заходе. Воспроизведено 3 из 3 живых прогонов, дословно один и тот
+     * же результат: часть без своего слова даты, идущая сразу после смены
+     * дня в предыдущей части («завтра в 12 конференция, в 16 банкет» —
+     * у банкета нет своего «завтра»), наследует не тот день — остаётся на
+     * сегодня вместо завтра. Час при этом разбирается верно всегда, ломается
+     * только дата.
+     * <p>
+     * Более ранняя пометка «наследование даты работает, чинить нечего»
+     * опиралась на другую проверку (см.
+     * handleText_createsFiveActionsWithMixedRelativeDatesInOneReply), где
+     * КАЖДАЯ часть реплики называет своё слово даты явно — там наследовать
+     * действительно нечего, и проверка была честной, просто про другой
+     * случай. Эта проверка — про часть без слова даты вообще, ровно тот
+     * случай, что был в исходной жалобе.
+     * <p>
+     * Промпт под это сознательно не подкручивался — квота Groq и отдача от
+     * дальнейших итераций формулировки к этому моменту не оправдывали ещё
+     * один заход. Если тест ниже когда-нибудь упадёт сам — граница исчезла
+     * и наследование починилось само, тест нужно переписать на проверку
+     * верного поведения и вынести из категории «известное ограничение».
+     */
     @Test
-    void handleText_createsFourActionsWithMatchingHoursForFourTasksWithTimes() throws InterruptedException {
+    void handleText_documentsDateNotInheritedWhenTrailingClauseOmitsDateWord() {
         UUID userId = newUser();
         String text = "в 18 забрать детей, завтра в 12 конференция, в 16 банкет, в пятницу отчёт";
+        LocalDate today = LocalDate.now(MOSCOW);
+        LocalDate tomorrow = today.plusDays(1);
+
+        Proposal proposal = handleText(userId, text);
+        List<ProposedAction> creates = proposal.actions().stream()
+                .filter(a -> a.type() == AssistantActionType.CREATE)
+                .toList();
+
+        assertThat(creates)
+                .overridingErrorMessage("Ожидались четыре создания: %s", proposal.actions())
+                .hasSize(4);
+        assertThat(hourOf(creates, "дет")).isEqualTo(18);
+        assertThat(dateOf(creates, "дет")).isEqualTo(today);
+        assertThat(hourOf(creates, "конф")).isEqualTo(12);
+        assertThat(dateOf(creates, "конф")).isEqualTo(tomorrow);
+        assertThat(hourOf(creates, "банкет")).isEqualTo(16);
+        assertThat(dateOf(creates, "банкет"))
+                .overridingErrorMessage("Банкет получил дату %s вместо задокументированной границы «сегодня» "
+                        + "(%s) — см. комментарий к тесту, actions=%s",
+                        dateOf(creates, "банкет"), today, proposal.actions())
+                .isEqualTo(today);
+        assertThat(dateOf(creates, "отчёт"))
+                .overridingErrorMessage("Отчёт остался без срока: %s", proposal.actions())
+                .isNotNull();
+    }
+
+    /**
+     * Пять задач, три разных относительных дня вперемешку — сегодня и
+     * послезавтра не идут по порядку следования реплики, а «сегодня же» в
+     * четвёртом пункте проверяет, что дата не просто монотонно наследуется
+     * от предыдущего пункта (там было «послезавтра»), а разбирается заново
+     * из явного слова в каждой части. Подтверждено экспериментально
+     * владельцем проекта 21.08.2026 — тест фиксирует находку.
+     */
+    @Test
+    void handleText_createsFiveActionsWithMixedRelativeDatesInOneReply() throws InterruptedException {
+        UUID userId = newUser();
+        String text = "завтра в 10 созвон с командой, сегодня в 19 ужин с родителями, послезавтра в 12 к врачу, "
+                + "сегодня же в 21 доделать отчёт, а в понедельник в 9 планёрка";
+        LocalDate today = LocalDate.now(MOSCOW);
+        LocalDate tomorrow = today.plusDays(1);
+        LocalDate dayAfterTomorrow = today.plusDays(2);
 
         List<String> observations = new ArrayList<>();
         boolean succeeded = false;
@@ -226,23 +295,110 @@ class LiveModelRegressionTest {
                     .toList();
             observations.add("попытка %d: actions=%s".formatted(attempt, proposal.actions()));
 
-            succeeded = creates.size() == 4
-                    && Integer.valueOf(18).equals(hourOf(creates, "дет"))
-                    && Integer.valueOf(12).equals(hourOf(creates, "конф"))
-                    && Integer.valueOf(16).equals(hourOf(creates, "банкет"))
-                    && creates.stream().anyMatch(a -> titleOf(a).toLowerCase(java.util.Locale.ROOT).contains("отчёт")
-                            && a.payload().get("deadline") != null);
+            succeeded = creates.size() == 5
+                    && Integer.valueOf(10).equals(hourOf(creates, "созвон"))
+                    && tomorrow.equals(dateOf(creates, "созвон"))
+                    && Integer.valueOf(19).equals(hourOf(creates, "ужин"))
+                    && today.equals(dateOf(creates, "ужин"))
+                    && Integer.valueOf(12).equals(hourOf(creates, "врач"))
+                    && dayAfterTomorrow.equals(dateOf(creates, "врач"))
+                    && Integer.valueOf(21).equals(hourOf(creates, "отчёт"))
+                    && today.equals(dateOf(creates, "отчёт"))
+                    && Integer.valueOf(9).equals(hourOf(creates, "план"))
+                    && dateOf(creates, "план") != null
+                    && dateOf(creates, "план").getDayOfWeek() == DayOfWeek.MONDAY;
         }
 
-        // Час — структурная проверка, что срок каждой задачи разобрался
-        // именно из её части реплики, а не потерялся/слился с соседним.
-        // День здесь намеренно не проверяем: наследование времени суток
-        // между частями реплики — известное, отдельно зафиксированное
-        // несовершенство разбора, не то, что чинит эта задача.
         assertThat(succeeded)
                 .overridingErrorMessage(
-                        "Реплика с четырьмя задачами и временами не разобралась верно ни разу за %d попытки: %s",
+                        "Реплика с пятью задачами и вперемешку идущими датами не разобралась верно ни разу за %d попытки: %s",
                         observations.size(), observations)
+                .isTrue();
+    }
+
+    /**
+     * Контрольный пример диплома (зафиксировано владельцем проекта
+     * 21.08.2026). Первая реплика — пакетное создание четырёх задач с
+     * разными сроками, вторая, той же сессией по применённым задачам, —
+     * закрытие, отмена/закрытие и перенос одной репликой плюс попытка
+     * переименовать четвёртую. Смешанный пакет стал возможен только после
+     * того, как create_tasks, complete_task, reschedule_task, update_task и
+     * cancel_task схлопнулись в один инструмент propose_actions: модель
+     * делает ровно один вызов инструмента на ответ, и до объединения такой
+     * пакет физически не мог дойти до нас — ни один состав из отдельных по
+     * типу инструментов не позволял вызвать несколько разных видов действия
+     * одной репликой.
+     * <p>
+     * Четвёртая часть реплики («а отчёт назови квартальным») не даёт
+     * действия — и это правильное поведение, не провал примера.
+     * TitleChangeGuard требует точного вхождения ПОЛНОГО текущего названия
+     * задачи в реплику («Сдать отчёт»), а реплика называет только «отчёт» —
+     * защита от переименования не той задачи сработала и объяснила отказ.
+     * Раньше это было тихим и невидимым для пользователя: отказ вычислялся,
+     * но никуда не сохранялся. Proposal.rejections (см. эту же задачу)
+     * закрывает именно этот разрыв — отказ теперь виден.
+     */
+    @Test
+    void handleText_ownerControlScenario_createsFourThenMixesAllFourActionKinds() throws InterruptedException {
+        UUID userId = newUser();
+        String firstReplyText = "мне надо в 18 забрать детей из сада, завтра в 12 конференция, "
+                + "а в 16 банкет, и в пятницу сдать отчёт";
+        String secondReplyText = "детей забрал, конференцию отменили, банкет перенеси на 18, "
+                + "а отчёт назови квартальным";
+
+        List<String> firstObservations = new ArrayList<>();
+        boolean firstSucceeded = false;
+        Proposal firstProposal = null;
+        for (int attempt = 1; attempt <= 3 && !firstSucceeded; attempt++) {
+            if (attempt > 1) {
+                Thread.sleep(20_000);
+            }
+            firstProposal = handleText(userId, firstReplyText);
+            List<ProposedAction> creates = firstProposal.actions().stream()
+                    .filter(a -> a.type() == AssistantActionType.CREATE)
+                    .toList();
+            firstObservations.add("попытка %d: actions=%s".formatted(attempt, firstProposal.actions()));
+            firstSucceeded = creates.size() == 4;
+        }
+        firstObservations.forEach(System.out::println);
+        assertThat(firstSucceeded)
+                .overridingErrorMessage(
+                        "Первая реплика контрольного примера не дала четыре создания за %d попытки: %s",
+                        firstObservations.size(), firstObservations)
+                .isTrue();
+
+        ApplyResult applyResult = assistantService.apply(userId, firstProposal.id());
+        assertThat(applyResult.appliedCount())
+                .overridingErrorMessage("Не удалось применить все четыре созданные задачи первой реплики: %s",
+                        applyResult)
+                .isEqualTo(4);
+
+        List<String> secondObservations = new ArrayList<>();
+        boolean secondSucceeded = false;
+        Proposal secondProposal = null;
+        for (int attempt = 1; attempt <= 3 && !secondSucceeded; attempt++) {
+            if (attempt > 1) {
+                Thread.sleep(20_000);
+            }
+            secondProposal = handleText(userId, secondReplyText);
+            secondObservations.add("попытка %d: actions=%s, rejections=%s".formatted(
+                    attempt, secondProposal.actions(), secondProposal.rejections()));
+            // Не требуем ровно complete+cancel+reschedule+update: конференцию
+            // модель называет то cancel, то complete (оба прочтения «отменили»
+            // правдоподобны) — фиксируем то, что действительно должно сойтись
+            // всегда: перенос банкета состоялся, переименования отчёта нет, и
+            // отказ по нему явно объяснён причиной с полным названием задачи.
+            secondSucceeded = secondProposal.actions().stream().anyMatch(a -> a.type() == AssistantActionType.RESCHEDULE)
+                    && secondProposal.actions().stream().noneMatch(a -> a.type() == AssistantActionType.UPDATE)
+                    && secondProposal.rejections().stream().anyMatch(r -> r.contains("Сдать отчёт"));
+        }
+
+        secondObservations.forEach(System.out::println);
+        assertThat(secondSucceeded)
+                .overridingErrorMessage(
+                        "Вторая реплика контрольного примера не дала перенос банкета и явный отказ по "
+                                + "переименованию отчёта ни разу за %d попытки: %s",
+                        secondObservations.size(), secondObservations)
                 .isTrue();
     }
 
@@ -370,15 +526,16 @@ class LiveModelRegressionTest {
 
     /**
      * Двоякость определяет AgentLoop разбором (структура реплики + сходство с
-     * задачей, на которую модель уже указала), не только вызовом mark_ambiguous
-     * моделью — тот остаётся дополнительным сигналом и на gpt-oss-120b ни разу
-     * не сработал за все прогоны; это ожидаемо, не признак ненадёжности модели.
+     * задачей, на которую модель уже указала), не только сигналом ambiguous_reason
+     * от самой модели — тот остаётся дополнительным источником и на gpt-oss-120b
+     * ни разу не сработал за все прогоны; это ожидаемо, не признак ненадёжности модели.
      * <p>
      * Несколько попыток здесь компенсируют не сетевой шум, а узкий спусковой
      * крючок ветки в AgentLoop: она предлагает альтернативу только когда
      * actions.getFirst().targetTaskId() != null, то есть только если модель в
-     * этой конкретной попытке сослалась на T1 (update_task/complete_task), а
-     * не когда она вернула голый create_task без ссылки. На gpt-oss-120b это
+     * этой конкретной попытке сослалась на T1 (действие с type=update или
+     * type=complete внутри propose_actions), а не когда она вернула голый
+     * create без ссылки. На gpt-oss-120b это
      * сработало в 2 из 8 живых попыток — то же самое отложенное ограничение,
      * что описано в quick_createsNewTaskInsteadOfSilentlyActingOnExistingTask
      * («закрыть кино»), просто проявившееся на второй фразе: обычная мера
@@ -423,7 +580,7 @@ class LiveModelRegressionTest {
      * Тот же пробел проявляется и в handleText_marksAmbiguousOnGenuinelyAmbiguousChatPhrase
      * («изменить планы на кино», через chat): ветка альтернатив в AgentLoop
      * срабатывает, только если actions.getFirst().targetTaskId() != null, а
-     * модель не всегда ссылается на T1 — иногда сразу зовёт голый create_task.
+     * модель не всегда ссылается на T1 — иногда сразу предлагает голое создание.
      * На gpt-oss-120b это дало 2 успеха из 8 живых попыток. Это не признак
      * ненадёжности модели, а тот же узкий спусковой крючок: без взвешивания
      * по редкости слова ветка не может опознать двоякость сама, ей нужно,
@@ -577,9 +734,9 @@ class LiveModelRegressionTest {
      * похожую на название реплику и синтезировал второй вариант — «создать
      * сходил в кино», из быстрого добавления ещё и выбранный по умолчанию.
      * «Закрыть X» и «создать X» не были и не стали двумя правдоподобными
-     * прочтениями — это починено на уровне AgentLoop (complete_task больше
-     * не участвует в синтезе альтернативы), здесь — проверка результата на
-     * живой модели: ровно одно действие, без выбора.
+     * прочтениями — это починено на уровне AgentLoop (действие с type=complete
+     * больше не участвует в синтезе альтернативы), здесь — проверка результата
+     * на живой модели: ровно одно действие, без выбора.
      */
     @Test
     void handleText_pastTenseClosesMatchingActiveTaskInsteadOfCreatingNew() {
@@ -588,7 +745,7 @@ class LiveModelRegressionTest {
 
         // Несколько попыток компенсируют не сетевой шум, а то, что правило про
         // прошедшее время — текст промпта, не гарантия: модель иногда всё
-        // равно уходит прямиком в create_task, минуя complete_task.
+        // равно предлагает голое создание вместо закрытия.
         List<String> observations = new ArrayList<>();
         boolean closedExclusively = false;
         for (int attempt = 1; attempt <= 3 && !closedExclusively; attempt++) {
@@ -665,6 +822,16 @@ class LiveModelRegressionTest {
                 .map(a -> a.payload().get("deadline"))
                 .filter(java.util.Objects::nonNull)
                 .map(d -> OffsetDateTime.parse(String.valueOf(d)).getHour())
+                .orElse(null);
+    }
+
+    private LocalDate dateOf(List<ProposedAction> actions, String titleKeyword) {
+        return actions.stream()
+                .filter(a -> titleOf(a).toLowerCase(java.util.Locale.ROOT).contains(titleKeyword))
+                .findFirst()
+                .map(a -> a.payload().get("deadline"))
+                .filter(java.util.Objects::nonNull)
+                .map(d -> OffsetDateTime.parse(String.valueOf(d)).atZoneSameInstant(MOSCOW).toLocalDate())
                 .orElse(null);
     }
 

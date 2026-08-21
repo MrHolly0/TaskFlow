@@ -63,4 +63,5 @@ tasks.register<Test>("liveTest") {
     }
     testClassesDirs = sourceSets["test"].output.classesDirs
     classpath = sourceSets["test"].runtimeClasspath
+    testLogging.showStandardStreams = true
 }
