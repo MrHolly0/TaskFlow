@@ -24,6 +24,14 @@ public class ProposalMapper {
 
     private final ObjectMapper objectMapper;
 
+    /**
+     * firstPassLatencyMs/secondPassLatencyMs здесь всегда 0: в сущности нет
+     * для них столбцов (только общий latency_ms), их некуда прочитать при
+     * повторном обращении к сохранённому предложению. Сразу после
+     * AgentLoop.run() эти значения ещё живы в AgentOutcome — AssistantServiceImpl
+     * накладывает их поверх результата toDto() ровно один раз, для ответа на
+     * тот же вызов; из findById/findByShortCode они не восстановятся.
+     */
     public Proposal toDto(ProposalJpaEntity entity) {
         return new Proposal(
                 entity.getId(),
@@ -39,7 +47,11 @@ public class ProposalMapper {
                 entity.getAmbiguityReason(),
                 readRejections(entity.getRejections()),
                 entity.getInputTokens(),
-                entity.getOutputTokens()
+                entity.getOutputTokens(),
+                entity.getLatencyMs(),
+                0,
+                0,
+                entity.getLlmPasses()
         );
     }
 

@@ -70,8 +70,17 @@ public class AgentLoop {
                 LlmMessage.system(prompt.systemPrompt()),
                 LlmMessage.user(prompt.userMessage())
         );
+        Instant pass1Start = clock.instant();
         LlmToolResponse response1 = nlpGatewayService.callWithTools(new LlmToolRequest(historyPass1, tools));
+        long firstPassLatencyMs = Duration.between(pass1Start, clock.instant()).toMillis();
 
+        AgentOutcome outcome = runFirstPass(userId, userText, historyPass1, tools, response1, window, start);
+        return withLatencies(outcome, Duration.between(start, clock.instant()).toMillis(), firstPassLatencyMs);
+    }
+
+    private AgentOutcome runFirstPass(UUID userId, String userText, List<LlmMessage> historyPass1,
+                                       List<Map<String, Object>> tools, LlmToolResponse response1,
+                                       TaskContextWindow window, Instant start) {
         // разомкнутый автомат / исчерпаны попытки — ничего не спасаем из этого вызова,
         // реплику сохранит вызывающая сторона отдельным путём деградации (часть 2в)
         if (response1.failed()) {
@@ -113,16 +122,19 @@ public class AgentLoop {
         historyPass2.add(LlmMessage.toolResult(
                 searchCall.id(), ToolRegistry.SEARCH_TASKS, serializeFoundTasks(extended.newRefs(), found)));
 
+        Instant pass2Start = clock.instant();
         LlmToolResponse response2 = nlpGatewayService.callWithTools(new LlmToolRequest(historyPass2, tools));
+        long secondPassLatencyMs = Duration.between(pass2Start, clock.instant()).toMillis();
 
         // модель уже вернула проверенные действия первого прохода — провал ОБОГАЩАЮЩЕГО
         // второго вызова не должен стирать то, что уже честно получено (принцип
         // «сказанное не теряется» из спеки); llmFailed=false, потому что первый вызов
         // реально удался, отказал только необязательный довесок
         if (response2.failed()) {
-            return new AgentOutcome(pass1Actions, rejections, null, null,
+            AgentOutcome outcome = new AgentOutcome(pass1Actions, rejections, null, null,
                     response1.text(), extended.window(), 2, false, false, null,
                     response1.inputTokens(), response1.outputTokens());
+            return withSecondPassLatency(outcome, secondPassLatencyMs);
         }
 
         ParsedToolCalls parsed2 = toolCallParser.parse(toDomainCalls(response2.toolCalls()), extended.window());
@@ -143,14 +155,38 @@ public class AgentLoop {
         int outputTokens = response1.outputTokens() + response2.outputTokens();
 
         if (clarification != null || parsed2.ambiguous()) {
-            return new AgentOutcome(combined, rejections, clarification, clarificationOptions,
+            AgentOutcome outcome = new AgentOutcome(combined, rejections, clarification, clarificationOptions,
                     assistantText, extended.window(), 2, false, parsed2.ambiguous(), parsed2.ambiguityReason(),
                     inputTokens, outputTokens);
+            return withSecondPassLatency(outcome, secondPassLatencyMs);
         }
 
         UUID rejectedTarget = parsed2.rejectedTarget() != null ? parsed2.rejectedTarget() : parsed1.rejectedTarget();
-        return finishWithFallback(userText, combined, rejections, assistantText, extended.window(), 2,
+        AgentOutcome outcome = finishWithFallback(userText, combined, rejections, assistantText, extended.window(), 2,
                 rejectedTarget, inputTokens, outputTokens);
+        return withSecondPassLatency(outcome, secondPassLatencyMs);
+    }
+
+    /**
+     * Задержки проставляются поверх результата, а не протаскиваются параметрами через
+     * finishWithFallback/runSecondPass — тех и так уже девять параметров ради токенов,
+     * ещё одна пара сделала бы сигнатуры нечитаемыми. totalLatencyMs выставляет только
+     * run() (это время всего вызова), firstPassLatencyMs — тоже только run() (второй
+     * проход не знает, сколько длился первый); secondPassLatencyMs выставляет только
+     * runSecondPass(), потому что только он видит длительность своего вызова модели.
+     */
+    private AgentOutcome withLatencies(AgentOutcome outcome, long totalLatencyMs, long firstPassLatencyMs) {
+        return new AgentOutcome(outcome.actions(), outcome.rejections(), outcome.clarification(),
+                outcome.clarificationOptions(), outcome.assistantText(), outcome.window(), outcome.passes(),
+                outcome.llmFailed(), outcome.ambiguous(), outcome.ambiguityReason(), outcome.inputTokens(),
+                outcome.outputTokens(), totalLatencyMs, firstPassLatencyMs, outcome.secondPassLatencyMs());
+    }
+
+    private AgentOutcome withSecondPassLatency(AgentOutcome outcome, long secondPassLatencyMs) {
+        return new AgentOutcome(outcome.actions(), outcome.rejections(), outcome.clarification(),
+                outcome.clarificationOptions(), outcome.assistantText(), outcome.window(), outcome.passes(),
+                outcome.llmFailed(), outcome.ambiguous(), outcome.ambiguityReason(), outcome.inputTokens(),
+                outcome.outputTokens(), outcome.totalLatencyMs(), outcome.firstPassLatencyMs(), secondPassLatencyMs);
     }
 
     /**

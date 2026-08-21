@@ -20,6 +20,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -151,6 +152,60 @@ class AgentLoopTest {
 
         assertThat(outcome.inputTokens()).isZero();
         assertThat(outcome.outputTokens()).isZero();
+    }
+
+    // Clock.fixed() в loopWithFixedClock() никогда не тикает — задержки на нём
+    // всегда были бы нулём, что не отличило бы «посчитано» от «не посчитано».
+    // Здесь часы монотонно продвигаются на каждый вызов instant().
+    private Clock advancingClock() {
+        Clock clock = mock(Clock.class);
+        AtomicInteger tick = new AtomicInteger();
+        when(clock.instant()).thenAnswer(invocation -> now.plusMillis(tick.getAndIncrement() * 100L));
+        return clock;
+    }
+
+    // Живой дефект: задержки по этапам (первый/второй проход, полное время)
+    // нужны для стенда эксперимента (ВКР), но AgentLoop их не измерял вовсе.
+    @Test
+    void run_capturesPositiveFirstPassAndTotalLatencyOnSinglePass() {
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(completeTaskCall()), null));
+
+        var outcome = loop(advancingClock()).run(userId, "закрой", zone);
+
+        assertThat(outcome.firstPassLatencyMs()).isPositive();
+        assertThat(outcome.totalLatencyMs()).isPositive();
+        assertThat(outcome.secondPassLatencyMs()).isZero();
+    }
+
+    @Test
+    void run_capturesPositiveSecondPassLatencyAndTotalCoversBothPasses() {
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(
+                toolResponse(List.of(searchCall("аптека")), null),
+                toolResponse(List.of(), "готово"));
+        when(taskService.search(userId, "аптека", false, 20))
+                .thenReturn(List.of(taskResponse(foundTaskId, "Купить лекарство в аптеке")));
+
+        var outcome = loop(advancingClock()).run(userId, "найди задачу про аптеку", zone);
+
+        assertThat(outcome.firstPassLatencyMs()).isPositive();
+        assertThat(outcome.secondPassLatencyMs()).isPositive();
+        assertThat(outcome.totalLatencyMs())
+                .isGreaterThanOrEqualTo(outcome.firstPassLatencyMs() + outcome.secondPassLatencyMs());
+    }
+
+    @Test
+    void run_reportsZeroLatencyWhenLlmFailed() {
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(LlmToolResponse.unavailable());
+
+        var outcome = loopWithFixedClock().run(userId, "закрой молоко", zone);
+
+        assertThat(outcome.firstPassLatencyMs()).isZero();
+        assertThat(outcome.secondPassLatencyMs()).isZero();
+        // totalLatencyMs остаётся 0 у Clock.fixed(): часы не тикают, а не потому
+        // что withLatencies его не проставил — это покрыто позитивными тестами выше.
     }
 
     private TaskResponse taskResponse(UUID id, String title) {

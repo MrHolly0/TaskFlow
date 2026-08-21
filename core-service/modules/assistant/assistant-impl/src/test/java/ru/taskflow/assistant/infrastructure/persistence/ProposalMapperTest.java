@@ -127,6 +127,30 @@ class ProposalMapperTest {
     }
 
     @Test
+    void toDto_copiesTotalLatencyButNotPerStage() {
+        var entity = entity();
+        entity.setLatencyMs(4200);
+
+        var dto = mapper.toDto(entity);
+
+        assertThat(dto.totalLatencyMs()).isEqualTo(4200);
+        // По проходам — не столбцы, а живут только в AgentOutcome сразу после
+        // run(); AssistantServiceImpl накладывает их поверх этого dto отдельно.
+        assertThat(dto.firstPassLatencyMs()).isZero();
+        assertThat(dto.secondPassLatencyMs()).isZero();
+    }
+
+    @Test
+    void toDto_copiesModelPasses() {
+        var entity = entity();
+        entity.setLlmPasses(2);
+
+        var dto = mapper.toDto(entity);
+
+        assertThat(dto.modelPasses()).isEqualTo(2);
+    }
+
+    @Test
     void toDto_toleratesBrokenRejectionsJson() {
         var entity = entity();
         entity.setRejections("{это не json");

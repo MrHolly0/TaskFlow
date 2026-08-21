@@ -47,6 +47,8 @@ public class ProposalFactory {
         entity.setRejections(writeJson(outcome.rejections()));
         entity.setInputTokens(outcome.inputTokens());
         entity.setOutputTokens(outcome.outputTokens());
+        entity.setLlmPasses(outcome.passes());
+        entity.setLatencyMs((int) outcome.totalLatencyMs());
         entity.setCreatedAt(now);
         entity.setExpiresAt(now.plusHours(24));
 

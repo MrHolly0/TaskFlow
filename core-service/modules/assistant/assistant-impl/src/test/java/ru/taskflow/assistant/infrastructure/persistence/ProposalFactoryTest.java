@@ -165,6 +165,20 @@ class ProposalFactoryTest {
         assertThat(entity.getOutputTokens()).isZero();
     }
 
+    // Тот же класс дефекта, что и с токенами: llm_passes и latency_ms — существующие
+    // столбцы с данными, уже доступными в AgentOutcome (passes, totalLatencyMs), но
+    // ничем не заполняемые.
+    @Test
+    void from_storesLlmPassesAndTotalLatency() {
+        AgentOutcome withLatency = new AgentOutcome(List.of(), List.of(), null, List.of(), null,
+                window(Map.of()), 2, false, false, null, 0, 0, 4200, 3000, 1200);
+
+        ProposalJpaEntity entity = factory.from(userId, "текст", AssistantChannel.TELEGRAM, "TEXT", withLatency);
+
+        assertThat(entity.getLlmPasses()).isEqualTo(2);
+        assertThat(entity.getLatencyMs()).isEqualTo(4200);
+    }
+
     @Test
     void from_serializesEmptyRejectionsList() throws Exception {
         ProposalJpaEntity entity = factory.from(userId, "текст", AssistantChannel.TELEGRAM, "TEXT",

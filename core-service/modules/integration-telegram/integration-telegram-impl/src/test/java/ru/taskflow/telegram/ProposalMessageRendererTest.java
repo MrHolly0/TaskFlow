@@ -43,7 +43,7 @@ class ProposalMessageRendererTest {
         Proposal proposal = new Proposal(UUID.randomUUID(), "ABCDEFGH", userId, ProposalStatus.PENDING,
                 "текст", null, List.of(action), now, now.plusHours(24), false, null,
                 List.of("смена названия отклонена: текущее название задачи не упомянуто в реплике (Сдать отчёт)"),
-                0, 0);
+                0, 0, 0, 0, 0, 1);
 
         String rendered = renderer.render(proposal);
 
@@ -57,7 +57,7 @@ class ProposalMessageRendererTest {
         Proposal proposal = new Proposal(UUID.randomUUID(), "ABCDEFGH", userId, ProposalStatus.PENDING,
                 "текст", null, List.of(), now, now.plusHours(24), false, null,
                 List.of("создание отклонено: похожая задача уже есть в списке (T1 — купить молоко)"),
-                0, 0);
+                0, 0, 0, 0, 0, 1);
 
         String rendered = renderer.render(proposal);
 

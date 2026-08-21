@@ -4,6 +4,13 @@ import ru.taskflow.assistant.api.dto.ProposedAction;
 
 import java.util.List;
 
+/**
+ * totalLatencyMs/firstPassLatencyMs/secondPassLatencyMs — время всего run(), первого и
+ * второго прохода модели соответственно; secondPassLatencyMs остаётся 0, если второго
+ * прохода не было. Оба выставляются один раз, в AgentLoop.run(), поверх результата
+ * внутренних веток — см. withLatencies/withSecondPassLatency: остальной код outcome не
+ * знает и знать не должен, RTT замеряется снаружи по месту вызова модели.
+ */
 public record AgentOutcome(
         List<ProposedAction> actions,
         List<String> rejections,
@@ -16,16 +23,30 @@ public record AgentOutcome(
         boolean ambiguous,
         String ambiguityReason,
         int inputTokens,
-        int outputTokens
+        int outputTokens,
+        long totalLatencyMs,
+        long firstPassLatencyMs,
+        long secondPassLatencyMs
 ) {
     // Совместимость со старыми вызовами: до mark_ambiguous двоякой трактовки не было,
-    // до починки учёта токенов (см. LlmToolResponse.inputTokens/outputTokens) — полей
-    // расхода тоже не было. Используется только там, где обращение к модели не
-    // состоялось (llmFailed) — расход в этом случае и должен быть нулевым.
+    // до починки учёта токенов и задержек по этапам — этих полей тоже не было.
+    // Используется только там, где обращение к модели не состоялось (llmFailed) —
+    // расход и задержки в этом случае и должны быть нулевыми на момент создания;
+    // totalLatencyMs всё равно проставляется поверх в run().
     public AgentOutcome(List<ProposedAction> actions, List<String> rejections, String clarification,
                          List<String> clarificationOptions, String assistantText, TaskContextWindow window,
                          int passes, boolean llmFailed) {
         this(actions, rejections, clarification, clarificationOptions, assistantText, window, passes, llmFailed,
-                false, null, 0, 0);
+                false, null, 0, 0, 0, 0, 0);
+    }
+
+    // Промежуточная совместимость: расход токенов уже известен веткой AgentLoop,
+    // задержки — ещё нет, их проставляет withLatencies/withSecondPassLatency поверх.
+    public AgentOutcome(List<ProposedAction> actions, List<String> rejections, String clarification,
+                         List<String> clarificationOptions, String assistantText, TaskContextWindow window,
+                         int passes, boolean llmFailed, boolean ambiguous, String ambiguityReason,
+                         int inputTokens, int outputTokens) {
+        this(actions, rejections, clarification, clarificationOptions, assistantText, window, passes, llmFailed,
+                ambiguous, ambiguityReason, inputTokens, outputTokens, 0, 0, 0);
     }
 }

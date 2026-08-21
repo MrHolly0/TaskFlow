@@ -89,7 +89,21 @@ public class AssistantServiceImpl implements AssistantService {
 
         ProposalJpaEntity entity = proposalFactory.from(userId, text, channel, inputKind, outcome);
         ProposalJpaEntity saved = proposalRepository.save(entity);
-        return proposalMapper.toDto(saved);
+        return withStageLatencies(proposalMapper.toDto(saved), outcome);
+    }
+
+    /**
+     * Задержки по проходам модели не персистятся (в сущности нет для них
+     * столбцов — только общий latencyMs, см. ProposalMapper), поэтому их
+     * негде взять при повторном обращении к сохранённому предложению. Здесь,
+     * сразу после AgentLoop.run(), они ещё живы в outcome — накладываем их
+     * поверх результата маппинга один раз, для ответа на этот же вызов.
+     */
+    private Proposal withStageLatencies(Proposal dto, AgentOutcome outcome) {
+        return new Proposal(dto.id(), dto.shortCode(), dto.userId(), dto.status(), dto.sourceText(),
+                dto.clarification(), dto.actions(), dto.createdAt(), dto.expiresAt(), dto.exclusive(),
+                dto.ambiguityReason(), dto.rejections(), dto.inputTokens(), dto.outputTokens(),
+                dto.totalLatencyMs(), outcome.firstPassLatencyMs(), outcome.secondPassLatencyMs(), dto.modelPasses());
     }
 
     @Override
