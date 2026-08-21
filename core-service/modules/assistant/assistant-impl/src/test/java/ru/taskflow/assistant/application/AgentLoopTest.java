@@ -113,6 +113,46 @@ class AgentLoopTest {
         return new LlmToolResponse(calls, text, 10, 5, false);
     }
 
+    // Живой дефект: колонки input_tokens/output_tokens существуют, но между
+    // LlmToolResponse и AgentOutcome не было связи — расход считался, но
+    // терялся на выходе из AgentLoop.
+    @Test
+    void run_carriesTokenUsageFromSinglePass() {
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(completeTaskCall()), null));
+
+        var outcome = loopWithFixedClock().run(userId, "закрой", zone);
+
+        assertThat(outcome.inputTokens()).isEqualTo(10);
+        assertThat(outcome.outputTokens()).isEqualTo(5);
+    }
+
+    @Test
+    void run_sumsTokenUsageAcrossBothPasses() {
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(
+                toolResponse(List.of(searchCall("аптека")), null),
+                toolResponse(List.of(), "готово"));
+        when(taskService.search(userId, "аптека", false, 20))
+                .thenReturn(List.of(taskResponse(foundTaskId, "Купить лекарство в аптеке")));
+
+        var outcome = loopWithFixedClock().run(userId, "найди задачу про аптеку", zone);
+
+        assertThat(outcome.inputTokens()).isEqualTo(20);
+        assertThat(outcome.outputTokens()).isEqualTo(10);
+    }
+
+    @Test
+    void run_reportsZeroTokensWhenLlmFailed() {
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(LlmToolResponse.unavailable());
+
+        var outcome = loopWithFixedClock().run(userId, "закрой молоко", zone);
+
+        assertThat(outcome.inputTokens()).isZero();
+        assertThat(outcome.outputTokens()).isZero();
+    }
+
     private TaskResponse taskResponse(UUID id, String title) {
         return new TaskResponse(id, title, null, TaskPriority.MEDIUM, TaskStatus.TODO,
                 null, null, TaskSource.MANUAL, null, null, List.of(),
@@ -271,6 +311,8 @@ class AgentLoopTest {
         // Причина собирается из названия задачи, не из готовой сводки с
         // глаголом (была бы «...означать «Изменить — кино с настей»...»).
         assertThat(outcome.ambiguityReason()).isEqualTo("реплика могла означать «кино с настей», а могла — новую задачу");
+        assertThat(outcome.inputTokens()).isEqualTo(10);
+        assertThat(outcome.outputTokens()).isEqualTo(5);
     }
 
     @Test

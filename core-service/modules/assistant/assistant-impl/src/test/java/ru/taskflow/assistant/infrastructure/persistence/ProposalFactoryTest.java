@@ -111,7 +111,7 @@ class ProposalFactoryTest {
     @Test
     void from_storesAmbiguityFlagAndReason() {
         AgentOutcome ambiguous = new AgentOutcome(List.of(), List.of(), null, List.of(), null,
-                window(Map.of()), 1, false, true, "не понял, про какое кино речь");
+                window(Map.of()), 1, false, true, "не понял, про какое кино речь", 0, 0);
 
         ProposalJpaEntity entity = factory.from(userId, "текст", AssistantChannel.TELEGRAM, "TEXT", ambiguous);
 
@@ -139,6 +139,30 @@ class ProposalFactoryTest {
 
         List<String> restored = objectMapper.readValue(entity.getRejections(), new TypeReference<List<String>>() {});
         assertThat(restored).isEqualTo(rejections);
+    }
+
+    // Живой дефект: колонки input_tokens/output_tokens существуют, значения
+    // приходят от nlp-worker в LlmToolResponse, но между ними не было связи —
+    // AgentOutcome не нёс токены, ProposalFactory их не выставлял, в базу
+    // всегда писался 0. Без этого измерение стоимости обращений невозможно.
+    @Test
+    void from_storesTokenUsage() {
+        AgentOutcome withTokens = new AgentOutcome(List.of(), List.of(), null, List.of(), null,
+                window(Map.of()), 1, false, false, null, 1234, 567);
+
+        ProposalJpaEntity entity = factory.from(userId, "текст", AssistantChannel.TELEGRAM, "TEXT", withTokens);
+
+        assertThat(entity.getInputTokens()).isEqualTo(1234);
+        assertThat(entity.getOutputTokens()).isEqualTo(567);
+    }
+
+    @Test
+    void from_defaultsTokenUsageToZero() {
+        ProposalJpaEntity entity = factory.from(userId, "текст", AssistantChannel.TELEGRAM, "TEXT",
+                outcome(List.of(), null, Map.of()));
+
+        assertThat(entity.getInputTokens()).isZero();
+        assertThat(entity.getOutputTokens()).isZero();
     }
 
     @Test

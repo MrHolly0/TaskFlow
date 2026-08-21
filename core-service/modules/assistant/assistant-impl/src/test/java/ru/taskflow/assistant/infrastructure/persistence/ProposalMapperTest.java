@@ -115,6 +115,18 @@ class ProposalMapperTest {
     }
 
     @Test
+    void toDto_copiesTokenUsage() {
+        var entity = entity();
+        entity.setInputTokens(1234);
+        entity.setOutputTokens(567);
+
+        var dto = mapper.toDto(entity);
+
+        assertThat(dto.inputTokens()).isEqualTo(1234);
+        assertThat(dto.outputTokens()).isEqualTo(567);
+    }
+
+    @Test
     void toDto_toleratesBrokenRejectionsJson() {
         var entity = entity();
         entity.setRejections("{это не json");

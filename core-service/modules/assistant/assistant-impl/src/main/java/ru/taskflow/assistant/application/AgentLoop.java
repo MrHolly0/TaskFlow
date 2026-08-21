@@ -89,12 +89,12 @@ public class AgentLoop {
         if (parsed1.isClarification() || parsed1.ambiguous()) {
             return new AgentOutcome(titled1.actions(), rejections, parsed1.clarification(),
                     parsed1.clarificationOptions(), response1.text(), window, 1, false,
-                    parsed1.ambiguous(), parsed1.ambiguityReason());
+                    parsed1.ambiguous(), parsed1.ambiguityReason(), response1.inputTokens(), response1.outputTokens());
         }
 
         if (!parsed1.needsSecondPass() || budgetExceeded(start)) {
             return finishWithFallback(userText, titled1.actions(), rejections, response1.text(), window, 1,
-                    parsed1.rejectedTarget());
+                    parsed1.rejectedTarget(), response1.inputTokens(), response1.outputTokens());
         }
 
         return runSecondPass(userId, userText, historyPass1, tools, response1, parsed1, titled1.actions(), window, rejections);
@@ -121,7 +121,8 @@ public class AgentLoop {
         // реально удался, отказал только необязательный довесок
         if (response2.failed()) {
             return new AgentOutcome(pass1Actions, rejections, null, null,
-                    response1.text(), extended.window(), 2, false);
+                    response1.text(), extended.window(), 2, false, false, null,
+                    response1.inputTokens(), response1.outputTokens());
         }
 
         ParsedToolCalls parsed2 = toolCallParser.parse(toDomainCalls(response2.toolCalls()), extended.window());
@@ -138,14 +139,18 @@ public class AgentLoop {
         List<String> clarificationOptions = parsed2.isClarification() ? parsed2.clarificationOptions() : null;
         String assistantText = isBlank(response2.text()) ? response1.text() : response2.text();
 
+        int inputTokens = response1.inputTokens() + response2.inputTokens();
+        int outputTokens = response1.outputTokens() + response2.outputTokens();
+
         if (clarification != null || parsed2.ambiguous()) {
             return new AgentOutcome(combined, rejections, clarification, clarificationOptions,
-                    assistantText, extended.window(), 2, false, parsed2.ambiguous(), parsed2.ambiguityReason());
+                    assistantText, extended.window(), 2, false, parsed2.ambiguous(), parsed2.ambiguityReason(),
+                    inputTokens, outputTokens);
         }
 
         UUID rejectedTarget = parsed2.rejectedTarget() != null ? parsed2.rejectedTarget() : parsed1.rejectedTarget();
         return finishWithFallback(userText, combined, rejections, assistantText, extended.window(), 2,
-                rejectedTarget);
+                rejectedTarget, inputTokens, outputTokens);
     }
 
     /**
@@ -157,7 +162,7 @@ public class AgentLoop {
      */
     private AgentOutcome finishWithFallback(String userText, List<ProposedAction> actions, List<String> rejections,
                                             String assistantText, TaskContextWindow window, int passes,
-                                            UUID rejectedTarget) {
+                                            UUID rejectedTarget, int inputTokens, int outputTokens) {
         // Пустой actions() бывает по четырём причинам: модель ничего не
         // предложила, предложила — но фильтры отбросили (Task 0 части 3б,
         // чужое решение не подменяем), ярлык разрешился, а дальше
@@ -177,7 +182,8 @@ public class AgentLoop {
             DuplicateGuard.GuardResult guarded = duplicateGuard.filter(List.of(fallbackCreateAction(userText)), window);
             List<String> allRejections = new ArrayList<>(rejections);
             allRejections.addAll(guarded.rejections());
-            return new AgentOutcome(guarded.actions(), allRejections, null, null, assistantText, window, passes, false);
+            return new AgentOutcome(guarded.actions(), allRejections, null, null, assistantText, window, passes, false,
+                    false, null, inputTokens, outputTokens);
         }
 
         // complete_task сюда не попадает: «закрыть X» и «создать X» — не два
@@ -196,11 +202,12 @@ public class AgentLoop {
                 List<ProposedAction> alternatives = orderAlternatives(existing, fallbackCreateAction(userText));
                 String reason = "реплика могла означать «" + targetTitle + "», а могла — новую задачу";
                 return new AgentOutcome(alternatives, rejections, null, null, assistantText, window, passes, false,
-                        true, reason);
+                        true, reason, inputTokens, outputTokens);
             }
         }
 
-        return new AgentOutcome(actions, rejections, null, null, assistantText, window, passes, false);
+        return new AgentOutcome(actions, rejections, null, null, assistantText, window, passes, false,
+                false, null, inputTokens, outputTokens);
     }
 
     /**

@@ -37,7 +37,9 @@ public class ProposalMapper {
                 entity.getExpiresAt(),
                 entity.isExclusive(),
                 entity.getAmbiguityReason(),
-                readRejections(entity.getRejections())
+                readRejections(entity.getRejections()),
+                entity.getInputTokens(),
+                entity.getOutputTokens()
         );
     }
 

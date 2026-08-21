@@ -42,7 +42,8 @@ class ProposalMessageRendererTest {
         var action = new ProposedAction(1, AssistantActionType.COMPLETE, UUID.randomUUID(), Map.of(), "закрыть «купить молоко»", true);
         Proposal proposal = new Proposal(UUID.randomUUID(), "ABCDEFGH", userId, ProposalStatus.PENDING,
                 "текст", null, List.of(action), now, now.plusHours(24), false, null,
-                List.of("смена названия отклонена: текущее название задачи не упомянуто в реплике (Сдать отчёт)"));
+                List.of("смена названия отклонена: текущее название задачи не упомянуто в реплике (Сдать отчёт)"),
+                0, 0);
 
         String rendered = renderer.render(proposal);
 
@@ -55,7 +56,8 @@ class ProposalMessageRendererTest {
     void render_showsRejectionsWhenNoActionsProposed() {
         Proposal proposal = new Proposal(UUID.randomUUID(), "ABCDEFGH", userId, ProposalStatus.PENDING,
                 "текст", null, List.of(), now, now.plusHours(24), false, null,
-                List.of("создание отклонено: похожая задача уже есть в списке (T1 — купить молоко)"));
+                List.of("создание отклонено: похожая задача уже есть в списке (T1 — купить молоко)"),
+                0, 0);
 
         String rendered = renderer.render(proposal);
 

@@ -45,6 +45,8 @@ public class ProposalFactory {
         entity.setExclusive(outcome.ambiguous());
         entity.setAmbiguityReason(outcome.ambiguityReason());
         entity.setRejections(writeJson(outcome.rejections()));
+        entity.setInputTokens(outcome.inputTokens());
+        entity.setOutputTokens(outcome.outputTokens());
         entity.setCreatedAt(now);
         entity.setExpiresAt(now.plusHours(24));
 
