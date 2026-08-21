@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -55,61 +56,58 @@ public class ToolCallParser {
                 continue;
             }
 
-            AssistantActionType type = toolRegistry.actionTypeOf(call.name());
-            if (type != null) {
-                var validation = actionValidator.validate(type, args, window);
-                if (!validation.valid()) {
-                    rejections.add(call.name() + ": " + validation.error());
-                    if (rejectedTarget == null && validation.targetTaskId() != null) {
-                        rejectedTarget = validation.targetTaskId();
+            if (toolRegistry.isProposeActions(call.name())) {
+                List<Map<String, Object>> items = listOfMapsArg(args, "actions");
+                if (items.isEmpty()) {
+                    rejections.add(call.name() + ": пустой список actions");
+                    continue;
+                }
+                for (Map<String, Object> rawItemArgs : items) {
+                    Map<String, Object> itemArgs = normalize(rawItemArgs);
+                    AssistantActionType itemType = parseActionType(itemArgs.get("type"));
+                    if (itemType == null) {
+                        rejections.add(call.name() + ": неизвестный тип действия: " + itemArgs.get("type"));
+                        continue;
                     }
-                    continue;
-                }
-                if (actions.size() >= MAX_ACTIONS) {
-                    rejections.add("превышен лимит действий: " + call.name());
-                    continue;
-                }
-                String taskTitle = REF_BEARING_TYPES.contains(type)
-                        ? window.title(refOf(args))
-                        : null;
-                String summary = summaryRenderer.render(type, taskTitle, args);
-                actions.add(new ProposedAction(
-                        actions.size() + 1,
-                        type,
-                        validation.targetTaskId(),
-                        args,
-                        summary,
-                        true
-                ));
-                continue;
-            }
 
-            if (toolRegistry.isBatchCreate(call.name())) {
-                List<Map<String, Object>> tasks = listOfMapsArg(args, "tasks");
-                if (tasks.isEmpty()) {
-                    rejections.add(call.name() + ": пустой список tasks");
-                    continue;
-                }
-                for (Map<String, Object> rawTaskArgs : tasks) {
-                    Map<String, Object> taskArgs = normalize(rawTaskArgs);
-                    var validation = actionValidator.validate(AssistantActionType.CREATE, taskArgs, window);
+                    var validation = actionValidator.validate(itemType, itemArgs, window);
                     if (!validation.valid()) {
                         rejections.add(call.name() + ": " + validation.error());
+                        if (rejectedTarget == null && validation.targetTaskId() != null) {
+                            rejectedTarget = validation.targetTaskId();
+                        }
                         continue;
                     }
                     if (actions.size() >= MAX_ACTIONS) {
                         rejections.add("превышен лимит действий: " + call.name());
                         continue;
                     }
-                    String summary = summaryRenderer.render(AssistantActionType.CREATE, null, taskArgs);
+
+                    String taskTitle = REF_BEARING_TYPES.contains(itemType)
+                            ? window.title(refOf(itemArgs))
+                            : null;
+                    String summary = summaryRenderer.render(itemType, taskTitle, itemArgs);
                     actions.add(new ProposedAction(
                             actions.size() + 1,
-                            AssistantActionType.CREATE,
-                            null,
-                            taskArgs,
+                            itemType,
+                            validation.targetTaskId(),
+                            itemArgs,
                             summary,
                             true
                     ));
+
+                    // Признак двоякости — поле того же элемента списка actions, а не
+                    // отдельный инструмент: только так модель может сообщить о ней
+                    // вместе с самими действиями, за один вызов (mark_ambiguous не
+                    // мог сработать вместе с действием по той же причине, по которой
+                    // не работал пакет — модель не делает два вызова инструмента).
+                    String itemAmbiguousReason = stringArg(itemArgs, "ambiguous_reason");
+                    if (itemAmbiguousReason != null && !itemAmbiguousReason.isBlank()) {
+                        ambiguous = true;
+                        if (ambiguityReason == null) {
+                            ambiguityReason = itemAmbiguousReason;
+                        }
+                    }
                 }
                 continue;
             }
@@ -133,16 +131,6 @@ public class ToolCallParser {
                 continue;
             }
 
-            if (toolRegistry.isAmbiguityMarker(call.name())) {
-                if (ambiguous) {
-                    rejections.add("повторная пометка неоднозначности отклонена: " + call.name());
-                    continue;
-                }
-                ambiguous = true;
-                ambiguityReason = stringArg(args, "reason");
-                continue;
-            }
-
             rejections.add("неизвестный инструмент: " + call.name());
         }
 
@@ -163,6 +151,17 @@ public class ToolCallParser {
             adjusted.add(new ProposedAction(a.ordinal(), a.type(), a.targetTaskId(), a.payload(), a.summary(), i == 0));
         }
         return adjusted;
+    }
+
+    private AssistantActionType parseActionType(Object raw) {
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return AssistantActionType.valueOf(raw.toString().trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     private String refOf(Map<String, Object> args) {

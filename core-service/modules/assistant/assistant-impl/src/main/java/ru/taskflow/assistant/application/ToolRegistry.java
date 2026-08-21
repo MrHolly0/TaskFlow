@@ -1,7 +1,6 @@
 package ru.taskflow.assistant.application;
 
 import org.springframework.stereotype.Component;
-import ru.taskflow.assistant.api.AssistantActionType;
 
 import java.util.List;
 import java.util.Map;
@@ -9,31 +8,12 @@ import java.util.Map;
 @Component
 public class ToolRegistry {
 
-    public static final String CREATE_TASKS = "create_tasks";
-    public static final String COMPLETE_TASK = "complete_task";
-    public static final String RESCHEDULE_TASK = "reschedule_task";
-    public static final String UPDATE_TASK = "update_task";
-    public static final String CANCEL_TASK = "cancel_task";
+    public static final String PROPOSE_ACTIONS = "propose_actions";
     public static final String SEARCH_TASKS = "search_tasks";
     public static final String ASK_USER = "ask_user";
-    public static final String MARK_AMBIGUOUS = "mark_ambiguous";
 
-    // CREATE_TASKS сюда не входит: один вызов разворачивается в несколько
-    // действий, а не в одно — ToolCallParser обрабатывает его отдельной
-    // веткой (isBatchCreate), не через эту карту.
-    private static final Map<String, AssistantActionType> ACTION_TYPES = Map.of(
-            COMPLETE_TASK, AssistantActionType.COMPLETE,
-            RESCHEDULE_TASK, AssistantActionType.RESCHEDULE,
-            UPDATE_TASK, AssistantActionType.UPDATE,
-            CANCEL_TASK, AssistantActionType.CANCEL
-    );
-
-    public AssistantActionType actionTypeOf(String toolName) {
-        return ACTION_TYPES.get(toolName);
-    }
-
-    public boolean isBatchCreate(String toolName) {
-        return CREATE_TASKS.equals(toolName);
+    public boolean isProposeActions(String toolName) {
+        return PROPOSE_ACTIONS.equals(toolName);
     }
 
     public boolean isRetrieval(String toolName) {
@@ -44,69 +24,60 @@ public class ToolRegistry {
         return ASK_USER.equals(toolName);
     }
 
-    public boolean isAmbiguityMarker(String toolName) {
-        return MARK_AMBIGUOUS.equals(toolName);
-    }
-
     public List<Map<String, Object>> toolDefinitions() {
         return List.of(
-                tool(CREATE_TASKS, "Создать одну или несколько новых задач. Вызывается один раз на ответ: "
-                        + "все задачи, упомянутые в реплике, перечисляются элементами списка tasks, а не "
-                        + "отдельными вызовами — даже если задача всего одна, она всё равно единственный "
-                        + "элемент списка.", Map.of(
-                        "tasks", Map.of(
+                tool(PROPOSE_ACTIONS, "Единственный инструмент для предложения действий над задачами. "
+                        + "Вызывается один раз на ответ: все действия, которые следуют из реплики — "
+                        + "новые задачи, закрытия, переносы срока, изменения полей, отмены — "
+                        + "перечисляются элементами списка actions, а не отдельными вызовами, даже если "
+                        + "действие всего одно — оно всё равно единственный элемент списка.", Map.of(
+                        "actions", Map.of(
                                 "type", "array",
-                                "description", "Задачи для создания, по одному объекту на каждую",
+                                "description", "Действия, по одному объекту на каждое",
                                 "items", Map.of(
                                         "type", "object",
-                                        "properties", Map.of(
-                                                "title", stringParam("Короткое название задачи"),
-                                                "description", stringParam("Подробности, если есть"),
-                                                "priority", enumParam("Приоритет", List.of("LOW", "MEDIUM", "HIGH", "URGENT")),
-                                                "deadline", stringParam("Срок в формате ISO-8601 со смещением, например 2026-08-12T18:00:00+03:00"),
-                                                "group", stringParam("Название группы одним-двумя словами на русском"),
-                                                "tags", arrayParam("Метки")
+                                        "properties", Map.ofEntries(
+                                                Map.entry("type", enumParam("Вид действия",
+                                                        List.of("create", "complete", "reschedule", "update", "cancel"))),
+                                                Map.entry("task_ref", stringParam(
+                                                        "Ярлык существующей задачи из списка, например T3 — "
+                                                                + "для всех видов, кроме create")),
+                                                Map.entry("title", stringParam(
+                                                        "Название задачи — обязательно для create, "
+                                                                + "новое название для update")),
+                                                Map.entry("description", stringParam(
+                                                        "Подробности — для create и update")),
+                                                Map.entry("priority", enumParam("Приоритет — для create и update",
+                                                        List.of("LOW", "MEDIUM", "HIGH", "URGENT"))),
+                                                Map.entry("deadline", stringParam(
+                                                        "Срок в формате ISO-8601 со смещением, например "
+                                                                + "2026-08-12T18:00:00+03:00 — для create")),
+                                                Map.entry("new_deadline", stringParam(
+                                                        "Новый срок в формате ISO-8601 со смещением — для reschedule")),
+                                                Map.entry("group", stringParam(
+                                                        "Название группы одним-двумя словами на русском — "
+                                                                + "для create и update")),
+                                                Map.entry("tags", arrayParam("Метки — для create")),
+                                                Map.entry("note", stringParam(
+                                                        "Короткий комментарий, если пользователь его дал — для complete")),
+                                                Map.entry("reason", stringParam(
+                                                        "Причина отмены, если пользователь её назвал — для cancel")),
+                                                Map.entry("ambiguous_reason", stringParam(
+                                                        "Заполняй, только если это действие — одно из "
+                                                                + "взаимоисключающих прочтений одной и той же фразы "
+                                                                + "вместе с другим действием из этого же списка actions: "
+                                                                + "коротко, что именно неоднозначно, для показа "
+                                                                + "пользователю"))
                                         ),
-                                        "required", List.of("title")
+                                        "required", List.of("type")
                                 )
                         )
-                ), List.of("tasks")),
-
-                tool(COMPLETE_TASK, "Отметить существующую задачу выполненной", Map.of(
-                        "task_ref", stringParam("Ярлык задачи из списка, например T3"),
-                        "note", stringParam("Короткий комментарий, если пользователь его дал")
-                ), List.of("task_ref")),
-
-                tool(RESCHEDULE_TASK, "Перенести срок существующей задачи", Map.of(
-                        "task_ref", stringParam("Ярлык задачи из списка, например T3"),
-                        "new_deadline", stringParam("Новый срок в формате ISO-8601 со смещением")
-                ), List.of("task_ref", "new_deadline")),
-
-                tool(UPDATE_TASK, "Изменить поля существующей задачи", Map.of(
-                        "task_ref", stringParam("Ярлык задачи из списка, например T3"),
-                        "title", stringParam("Новое название"),
-                        "description", stringParam("Новое описание"),
-                        "priority", enumParam("Новый приоритет", List.of("LOW", "MEDIUM", "HIGH", "URGENT")),
-                        "group", stringParam("Новая группа")
-                ), List.of("task_ref")),
-
-                tool(CANCEL_TASK, "Отменить задачу, которая больше не актуальна", Map.of(
-                        "task_ref", stringParam("Ярлык задачи из списка, например T3"),
-                        "reason", stringParam("Причина отмены, если пользователь её назвал")
-                ), List.of("task_ref")),
+                ), List.of("actions")),
 
                 tool(SEARCH_TASKS, "Найти задачи пользователя, если нужной нет в показанном списке", Map.of(
                         "query", stringParam("Поисковая фраза"),
                         "include_completed", Map.of("type", "boolean", "description", "Искать среди выполненных тоже")
-                ), List.of("query")),
-
-                tool(MARK_AMBIGUOUS, "Пометить, что все предложенные в этом ответе действия — "
-                        + "взаимоисключающие прочтения одной реплики, а не список. Вызывать вместе с "
-                        + "действиями для каждого прочтения (например create_task для одного и "
-                        + "complete_task для другого), не вместо них.", Map.of(
-                        "reason", stringParam("Одна короткая фраза о том, что именно неоднозначно, "
-                                + "для показа пользователю — например «не понял, про какое кино речь»")
-                ), List.of("reason"))
+                ), List.of("query"))
         );
     }
 

@@ -25,16 +25,29 @@ class ToolCallParserTest {
         return new ToolCall("id-1", name, args);
     }
 
-    private ToolCall createTasksCall(String... titles) {
-        String items = String.join(",", java.util.Arrays.stream(titles)
-                .map(t -> "{\"title\":\"" + t + "\"}")
-                .toArray(String[]::new));
-        return call("create_tasks", "{\"tasks\":[" + items + "]}");
+    private ToolCall proposeActions(String... items) {
+        return call("propose_actions", "{\"actions\":[" + String.join(",", items) + "]}");
+    }
+
+    private String completeItem(String taskRef) {
+        return "{\"type\":\"complete\",\"task_ref\":\"" + taskRef + "\"}";
+    }
+
+    private String createItem(String title) {
+        return "{\"type\":\"create\",\"title\":\"" + title + "\"}";
+    }
+
+    private String completeItemAmbiguous(String taskRef, String reason) {
+        return "{\"type\":\"complete\",\"task_ref\":\"" + taskRef + "\",\"ambiguous_reason\":\"" + reason + "\"}";
+    }
+
+    private String createItemAmbiguous(String title, String reason) {
+        return "{\"type\":\"create\",\"title\":\"" + title + "\",\"ambiguous_reason\":\"" + reason + "\"}";
     }
 
     @Test
-    void parse_buildsActionFromCompleteTask() {
-        var result = parser.parse(List.of(call("complete_task", "{\"task_ref\":\"T1\"}")), window);
+    void parse_buildsActionFromCompleteItem() {
+        var result = parser.parse(List.of(proposeActions(completeItem("T1"))), window);
 
         assertThat(result.actions()).hasSize(1);
         var action = result.actions().getFirst();
@@ -46,8 +59,26 @@ class ToolCallParserTest {
     }
 
     @Test
+    void parse_actionTypeIsCaseInsensitive() {
+        var result = parser.parse(List.of(call("propose_actions",
+                "{\"actions\":[{\"type\":\"COMPLETE\",\"task_ref\":\"T1\"}]}")), window);
+
+        assertThat(result.actions()).hasSize(1);
+        assertThat(result.actions().getFirst().type()).isEqualTo(AssistantActionType.COMPLETE);
+    }
+
+    @Test
+    void parse_rejectsUnknownActionType() {
+        var result = parser.parse(List.of(proposeActions("{\"type\":\"delete\",\"task_ref\":\"T1\"}")), window);
+
+        assertThat(result.actions()).isEmpty();
+        assertThat(result.rejections()).hasSize(1);
+        assertThat(result.rejections().getFirst()).contains("delete");
+    }
+
+    @Test
     void parse_buildsSingleActionFromSingleElementBatch() {
-        var result = parser.parse(List.of(createTasksCall("хлеб")), window);
+        var result = parser.parse(List.of(proposeActions(createItem("хлеб"))), window);
 
         assertThat(result.actions()).hasSize(1);
         var action = result.actions().getFirst();
@@ -59,11 +90,11 @@ class ToolCallParserTest {
 
     // Живой дефект: реплика с несколькими задачами устойчиво давала одно
     // действие — модель отвечает одним вызовом инструмента вне зависимости
-    // от параллельных вызовов и явных инструкций. create_tasks разворачивает
+    // от параллельных вызовов и явных инструкций. propose_actions разворачивает
     // один вызов с несколькими элементами в столько же отдельных действий.
     @Test
     void parse_buildsSeparateActionForEachTaskInBatch() {
-        var result = parser.parse(List.of(createTasksCall("хлеб", "молоко")), window);
+        var result = parser.parse(List.of(proposeActions(createItem("хлеб"), createItem("молоко"))), window);
 
         assertThat(result.actions()).hasSize(2);
         assertThat(result.actions()).extracting("ordinal").containsExactly(1, 2);
@@ -73,20 +104,34 @@ class ToolCallParserTest {
         assertThat(result.actions()).allSatisfy(a -> assertThat(a.accepted()).isTrue());
     }
 
+    // Смешанный пакет — разные виды действий одним вызовом, ровно то, что
+    // отдельные инструменты по типу действия делать не могли (одна модель —
+    // один вызов инструмента за ответ).
+    @Test
+    void parse_buildsMixedActionsFromOneCall() {
+        var result = parser.parse(List.of(proposeActions(completeItem("T1"), createItem("молоко"))), window);
+
+        assertThat(result.actions()).hasSize(2);
+        assertThat(result.actions().get(0).type()).isEqualTo(AssistantActionType.COMPLETE);
+        assertThat(result.actions().get(1).type()).isEqualTo(AssistantActionType.CREATE);
+    }
+
     @Test
     void parse_eachBatchElementGetsItsOwnSummary() {
-        var result = parser.parse(List.of(createTasksCall("хлеб", "молоко")), window);
+        var result = parser.parse(List.of(proposeActions(createItem("хлеб"), createItem("молоко"))), window);
 
         assertThat(result.actions().get(0).summary()).isEqualTo("Создать — хлеб");
         assertThat(result.actions().get(1).summary()).isEqualTo("Создать — молоко");
     }
 
-    // Отказ на одном элементе не роняет остальные: третий элемент без title
-    // отклоняется, первые два остаются предложенными.
+    // Отказ на одном элементе не роняет остальные: второй элемент без title
+    // отклоняется, первые и третий остаются предложенными.
     @Test
     void parse_rejectsInvalidBatchElementButKeepsOthers() {
-        var result = parser.parse(List.of(call("create_tasks",
-                "{\"tasks\":[{\"title\":\"хлеб\"},{\"priority\":\"URGENT\"},{\"title\":\"молоко\"}]}")), window);
+        var result = parser.parse(List.of(proposeActions(
+                createItem("хлеб"),
+                "{\"type\":\"create\",\"priority\":\"URGENT\"}",
+                createItem("молоко"))), window);
 
         assertThat(result.actions()).hasSize(2);
         assertThat(result.actions().get(0).payload()).containsEntry("title", "хлеб");
@@ -96,8 +141,8 @@ class ToolCallParserTest {
     }
 
     @Test
-    void parse_rejectsEmptyTasksList() {
-        var result = parser.parse(List.of(call("create_tasks", "{\"tasks\":[]}")), window);
+    void parse_rejectsEmptyActionsList() {
+        var result = parser.parse(List.of(call("propose_actions", "{\"actions\":[]}")), window);
 
         assertThat(result.actions()).isEmpty();
         assertThat(result.rejections()).hasSize(1);
@@ -105,8 +150,8 @@ class ToolCallParserTest {
 
     @Test
     void parse_normalisesNullStringToAbsentValueWithinBatchElement() {
-        var result = parser.parse(List.of(
-                call("create_tasks", "{\"tasks\":[{\"title\":\"хлеб\",\"deadline\":\"null\"}]}")), window);
+        var result = parser.parse(List.of(proposeActions(
+                "{\"type\":\"create\",\"title\":\"хлеб\",\"deadline\":\"null\"}")), window);
 
         assertThat(result.actions()).hasSize(1);
         assertThat(result.actions().getFirst().payload()).doesNotContainKey("deadline");
@@ -115,17 +160,16 @@ class ToolCallParserTest {
 
     @Test
     void parse_normalisesEmptyStringToAbsentValueWithinBatchElement() {
-        var result = parser.parse(List.of(
-                call("create_tasks", "{\"tasks\":[{\"title\":\"хлеб\",\"description\":\"\"}]}")), window);
+        var result = parser.parse(List.of(proposeActions(
+                "{\"type\":\"create\",\"title\":\"хлеб\",\"description\":\"\"}")), window);
 
         assertThat(result.actions().getFirst().payload()).doesNotContainKey("description");
     }
 
     @Test
     void parse_rejectsInvalidActionButKeepsOthers() {
-        var result = parser.parse(List.of(
-                call("complete_task", "{\"task_ref\":\"T99\"}"),
-                call("complete_task", "{\"task_ref\":\"T1\"}")), window);
+        var result = parser.parse(List.of(proposeActions(
+                completeItem("T99"), completeItem("T1"))), window);
 
         assertThat(result.actions()).hasSize(1);
         assertThat(result.rejections()).hasSize(1);
@@ -134,19 +178,17 @@ class ToolCallParserTest {
 
     @Test
     void parse_numbersActionsFromOne() {
-        var result = parser.parse(List.of(
-                call("complete_task", "{\"task_ref\":\"T1\"}"),
-                createTasksCall("хлеб")), window);
+        var result = parser.parse(List.of(proposeActions(completeItem("T1"), createItem("хлеб"))), window);
 
         assertThat(result.actions()).extracting("ordinal").containsExactly(1, 2);
     }
 
     @Test
     void parse_capsActionsAtTwentyAcrossOneBatch() {
-        var titles = new String[25];
-        java.util.Arrays.fill(titles, "задача");
+        var items = new String[25];
+        java.util.Arrays.fill(items, createItem("задача"));
 
-        var result = parser.parse(List.of(createTasksCall(titles)), window);
+        var result = parser.parse(List.of(proposeActions(items)), window);
 
         assertThat(result.actions()).hasSize(20);
         assertThat(result.rejections()).isNotEmpty();
@@ -156,7 +198,7 @@ class ToolCallParserTest {
     void parse_capsActionsAtTwentyAcrossSeparateCalls() {
         var calls = new java.util.ArrayList<ToolCall>();
         for (int i = 0; i < 25; i++) {
-            calls.add(createTasksCall("задача" + i));
+            calls.add(proposeActions(createItem("задача" + i)));
         }
 
         var result = parser.parse(calls, window);
@@ -205,8 +247,8 @@ class ToolCallParserTest {
     @Test
     void parse_toleratesBrokenArgumentsJson() {
         var result = parser.parse(List.of(
-                call("create_tasks", "{это не json"),
-                createTasksCall("хлеб")), window);
+                call("propose_actions", "{это не json"),
+                proposeActions(createItem("хлеб"))), window);
 
         assertThat(result.actions()).hasSize(1);
         assertThat(result.rejections()).hasSize(1);
@@ -229,12 +271,15 @@ class ToolCallParserTest {
         assertThat(result.searchQuery()).isNull();
     }
 
+    // Признак двоякости — поле того же элемента списка actions, а не отдельный
+    // инструмент: модель делает ровно один вызов инструмента за ответ, так что
+    // отдельный «пометь неоднозначность» вызов вместе с действиями сработать
+    // не мог (та же причина, по которой не работал пакет создания).
     @Test
-    void parse_extractsAmbiguousMarkWithReason() {
-        var result = parser.parse(List.of(
-                call("complete_task", "{\"task_ref\":\"T1\"}"),
-                createTasksCall("купить молоко"),
-                call("mark_ambiguous", "{\"reason\":\"не понял, про какое молоко речь\"}")), window);
+    void parse_extractsAmbiguousReasonFromActionItem() {
+        var result = parser.parse(List.of(proposeActions(
+                completeItemAmbiguous("T1", "не понял, про какое молоко речь"),
+                createItemAmbiguous("купить молоко", "не понял, про какое молоко речь"))), window);
 
         assertThat(result.ambiguous()).isTrue();
         assertThat(result.ambiguityReason()).isEqualTo("не понял, про какое молоко речь");
@@ -243,36 +288,32 @@ class ToolCallParserTest {
 
     @Test
     void parse_marksOnlyFirstActionAcceptedWhenAmbiguous() {
-        var result = parser.parse(List.of(
-                call("complete_task", "{\"task_ref\":\"T1\"}"),
-                createTasksCall("купить молоко"),
-                call("mark_ambiguous", "{\"reason\":\"двоякая реплика\"}")), window);
+        var result = parser.parse(List.of(proposeActions(
+                completeItemAmbiguous("T1", "двоякая реплика"),
+                createItem("купить молоко"))), window);
 
         assertThat(result.actions()).extracting("accepted").containsExactly(true, false);
     }
 
     @Test
     void parse_doesNotTouchAcceptedWhenNotAmbiguous() {
-        var result = parser.parse(List.of(
-                call("complete_task", "{\"task_ref\":\"T1\"}"),
-                createTasksCall("купить молоко")), window);
+        var result = parser.parse(List.of(proposeActions(completeItem("T1"), createItem("купить молоко"))), window);
 
         assertThat(result.actions()).extracting("accepted").containsExactly(true, true);
     }
 
     @Test
-    void parse_keepsOnlyFirstAmbiguousMark() {
-        var result = parser.parse(List.of(
-                call("mark_ambiguous", "{\"reason\":\"первая\"}"),
-                call("mark_ambiguous", "{\"reason\":\"вторая\"}")), window);
+    void parse_keepsFirstAmbiguousReasonWhenMultipleItemsCarryOne() {
+        var result = parser.parse(List.of(proposeActions(
+                completeItemAmbiguous("T1", "первая"),
+                createItemAmbiguous("что-то", "вторая"))), window);
 
         assertThat(result.ambiguityReason()).isEqualTo("первая");
-        assertThat(result.rejections()).hasSize(1);
     }
 
     @Test
     void parse_capturesRejectedTargetFromResolvedRefValidationFailure() {
-        var result = parser.parse(List.of(call("update_task", "{\"task_ref\":\"T1\"}")), window);
+        var result = parser.parse(List.of(proposeActions("{\"type\":\"update\",\"task_ref\":\"T1\"}")), window);
 
         assertThat(result.actions()).isEmpty();
         assertThat(result.rejections()).hasSize(1);
@@ -281,7 +322,7 @@ class ToolCallParserTest {
 
     @Test
     void parse_rejectedTargetNullWhenRefUnknown() {
-        var result = parser.parse(List.of(call("update_task", "{\"task_ref\":\"T99\"}")), window);
+        var result = parser.parse(List.of(proposeActions("{\"type\":\"update\",\"task_ref\":\"T99\"}")), window);
 
         assertThat(result.rejectedTarget()).isNull();
     }
@@ -295,7 +336,7 @@ class ToolCallParserTest {
 
     @Test
     void parse_ambiguousDefaultsFalse() {
-        var result = parser.parse(List.of(call("complete_task", "{\"task_ref\":\"T1\"}")), window);
+        var result = parser.parse(List.of(proposeActions(completeItem("T1"))), window);
 
         assertThat(result.ambiguous()).isFalse();
         assertThat(result.ambiguityReason()).isNull();

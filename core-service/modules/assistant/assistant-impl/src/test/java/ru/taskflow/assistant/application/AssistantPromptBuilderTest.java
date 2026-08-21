@@ -80,7 +80,7 @@ class AssistantPromptBuilderTest {
     void build_requiresDuplicateCheckBeforeCreate() {
         var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());
 
-        assertThat(parts.systemPrompt()).contains("create_tasks");
+        assertThat(parts.systemPrompt()).contains("type=create");
         assertThat(parts.systemPrompt())
                 .contains("сверься со списком выше: если там уже есть задача с тем же смыслом");
         assertThat(parts.systemPrompt())
@@ -100,7 +100,7 @@ class AssistantPromptBuilderTest {
         assertThat(parts.systemPrompt())
                 .contains("сообщение о сделанном, а не название новой задачи");
         assertThat(parts.systemPrompt())
-                .contains("закрывай её (complete_task), а не создавай вторую");
+                .contains("закрывай её (действие с type=complete), а не создавай вторую");
     }
 
     @Test
@@ -108,7 +108,7 @@ class AssistantPromptBuilderTest {
         var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());
 
         assertThat(parts.systemPrompt())
-                .contains("Заполняй description у элемента tasks, только если в реплике есть подробности сверх");
+                .contains("Заполняй description у действия, только если в реплике есть подробности сверх");
         assertThat(parts.systemPrompt())
                 .contains("оставляй description пустым");
     }
@@ -155,10 +155,20 @@ class AssistantPromptBuilderTest {
     }
 
     @Test
-    void build_explainsMarkAmbiguous() {
+    void build_noLongerMentionsSeparateToolsPerActionType() {
         var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());
 
-        assertThat(parts.systemPrompt()).contains("mark_ambiguous");
+        assertThat(parts.systemPrompt()).doesNotContain("create_tasks(");
+        assertThat(parts.systemPrompt()).doesNotContain("complete_task(");
+        assertThat(parts.systemPrompt()).doesNotContain("mark_ambiguous");
+    }
+
+    @Test
+    void build_explainsAmbiguousReasonField() {
+        var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());
+
+        assertThat(parts.systemPrompt()).contains("ambiguous_reason");
+        assertThat(parts.systemPrompt()).contains("propose_actions");
     }
 
     @Test
@@ -170,7 +180,7 @@ class AssistantPromptBuilderTest {
 
         assertThat(chat.systemPrompt()).doesNotContain("быстрого добавления");
         assertThat(quickAdd.systemPrompt()).contains("быстрого добавления");
-        assertThat(quickAdd.systemPrompt()).contains("create_tasks первым");
+        assertThat(quickAdd.systemPrompt()).contains("type=create первым");
     }
 
     @Test
@@ -209,7 +219,7 @@ class AssistantPromptBuilderTest {
         var parts = builder.build(emptyWindow(), "любой текст", ZONE, List.of("Личное"));
 
         assertThat(parts.systemPrompt())
-                .contains("единственно допустимые значения параметра group у create_tasks");
+                .contains("единственно допустимые значения параметра group у действий propose_actions");
         assertThat(parts.systemPrompt())
                 .contains("новых названий групп не придумывай");
     }

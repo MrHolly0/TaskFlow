@@ -72,15 +72,23 @@ class AgentLoopTest {
     }
 
     private LlmToolCall completeTaskCall() {
-        return new LlmToolCall("call-1", "complete_task", "{\"task_ref\":\"T1\"}");
+        return new LlmToolCall("call-1", "propose_actions",
+                "{\"actions\":[{\"type\":\"complete\",\"task_ref\":\"T1\"}]}");
     }
 
     private LlmToolCall emptyUpdateTaskCall() {
-        return new LlmToolCall("call-update", "update_task", "{\"task_ref\":\"T1\"}");
+        return new LlmToolCall("call-update", "propose_actions",
+                "{\"actions\":[{\"type\":\"update\",\"task_ref\":\"T1\"}]}");
+    }
+
+    private LlmToolCall updateWithFieldCall() {
+        return new LlmToolCall("call-update", "propose_actions",
+                "{\"actions\":[{\"type\":\"update\",\"task_ref\":\"T1\",\"priority\":\"HIGH\"}]}");
     }
 
     private LlmToolCall createTaskCall(String title) {
-        return new LlmToolCall("call-create", "create_tasks", "{\"tasks\":[{\"title\":\"" + title + "\"}]}");
+        return new LlmToolCall("call-create", "propose_actions",
+                "{\"actions\":[{\"type\":\"create\",\"title\":\"" + title + "\"}]}");
     }
 
     private LlmToolCall searchCall(String query) {
@@ -92,8 +100,13 @@ class AgentLoopTest {
                 "{\"question\":\"какую задачу закрыть?\",\"options\":[\"первую\",\"вторую\"]}");
     }
 
-    private LlmToolCall markAmbiguousCall(String reason) {
-        return new LlmToolCall("call-ambiguous", "mark_ambiguous", "{\"reason\":\"" + reason + "\"}");
+    // Модель делает ровно один вызов инструмента за ответ — двоякость и оба
+    // альтернативных прочтения приходят внутри одного propose_actions,
+    // ambiguous_reason на каждом из двух элементов, а не отдельным вызовом.
+    private LlmToolCall ambiguousCompleteAndCreateCall(String title, String reason) {
+        return new LlmToolCall("call-ambiguous", "propose_actions",
+                "{\"actions\":[{\"type\":\"complete\",\"task_ref\":\"T1\",\"ambiguous_reason\":\"" + reason + "\"},"
+                        + "{\"type\":\"create\",\"title\":\"" + title + "\",\"ambiguous_reason\":\"" + reason + "\"}]}");
     }
 
     private LlmToolResponse toolResponse(List<LlmToolCall> calls, String text) {
@@ -192,7 +205,7 @@ class AgentLoopTest {
     void run_stopsOnAmbiguousMarkWithBothAlternatives() {
         when(contextBuilder.build(userId)).thenReturn(window());
         when(gateway.callWithTools(any())).thenReturn(toolResponse(
-                List.of(completeTaskCall(), createTaskCall("кино"), markAmbiguousCall("не понял, про какое кино речь")),
+                List.of(ambiguousCompleteAndCreateCall("кино", "не понял, про какое кино речь")),
                 null));
 
         var outcome = loopWithFixedClock().run(userId, "закрой кино", zone);
@@ -249,9 +262,7 @@ class AgentLoopTest {
         // Не emptyUpdateTaskCall(): без единого поля ActionValidator отклонил
         // бы его как «нечего менять» (см. run_unrelatedRejectionStillBlocksFallback)
         // раньше, чем действие дошло бы до этой ветки.
-        var updateWithField = new LlmToolCall("call-update", "update_task",
-                "{\"task_ref\":\"T1\",\"priority\":\"HIGH\"}");
-        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(updateWithField), null));
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(updateWithFieldCall()), null));
 
         var outcome = loopWithFixedClock().run(userId, "изменить планы на кино", zone);
 
@@ -321,9 +332,7 @@ class AgentLoopTest {
     @Test
     void run_keepsModelActionFirstEvenForQuickAdd() {
         when(contextBuilder.build(userId)).thenReturn(movieWindow());
-        var updateWithField = new LlmToolCall("call-update", "update_task",
-                "{\"task_ref\":\"T1\",\"priority\":\"HIGH\"}");
-        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(updateWithField), null));
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(updateWithFieldCall()), null));
 
         var outcome = loopWithFixedClock().run(userId, "изменить планы на кино", zone,
                 ru.taskflow.assistant.api.AssistantEntryPoint.QUICK_ADD);
@@ -337,9 +346,7 @@ class AgentLoopTest {
     @Test
     void run_keepsModelActionFirstForChat() {
         when(contextBuilder.build(userId)).thenReturn(movieWindow());
-        var updateWithField = new LlmToolCall("call-update", "update_task",
-                "{\"task_ref\":\"T1\",\"priority\":\"HIGH\"}");
-        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(updateWithField), null));
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(updateWithFieldCall()), null));
 
         var outcome = loopWithFixedClock().run(userId, "изменить планы на кино", zone,
                 ru.taskflow.assistant.api.AssistantEntryPoint.CHAT);
