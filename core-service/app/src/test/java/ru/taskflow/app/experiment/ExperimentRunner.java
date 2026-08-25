@@ -172,10 +172,11 @@ class ExperimentRunner {
 
         boolean deterministic = isDeterministicAmbiguity(proposal.ambiguityReason());
         boolean modelMarked = proposal.exclusive() && !deterministic;
+        boolean fullyCorrect = resolveFullyCorrect(match, row.expected().ambiguous(), proposal.exclusive());
 
         return new ExperimentRunResult(
                 row.id(), row.category(), attempt, row.text(),
-                match.expectedCount(), match.actualCount(), match.countCorrect(), match.fullyCorrect(),
+                match.expectedCount(), match.actualCount(), match.countCorrect(), fullyCorrect,
                 match.missingCount(), match.extraCount(),
                 match.matched().stream().mapToInt(p -> p.attributeMismatches().size()).sum(),
                 proposal.actions().stream().map(a -> a.type().name()).collect(Collectors.joining(";")),
@@ -217,6 +218,20 @@ class ExperimentRunner {
                 "AMBIGUOUS".equals(row.category()), false, false, false, null,
                 null, true, "исключение: " + e.getClass().getSimpleName() + ": " + e.getMessage()
         );
+    }
+
+    /**
+     * Двоякая строка (expected.ambiguous=true) размечена как два
+     * взаимоисключающих варианта, а не как обычный пакет из двух действий:
+     * состав может совпасть, даже если система тихо применила бы оба вместо
+     * того, чтобы предложить выбор. Совпадение состава — необходимое, но не
+     * достаточное условие; без exclusive (=choiceOffered) это не то же
+     * самое поведение, что ожидалось. Для неоднозначных строк без причины
+     * (expected.ambiguous=false) ветка не тронута: спонтанный выбор там уже
+     * ловится расхождением состава действий (ожидалось одно, actual — два).
+     */
+    static boolean resolveFullyCorrect(ActionMatcher.MatchResult match, boolean expectedAmbiguous, boolean choiceOffered) {
+        return match.fullyCorrect() && (!expectedAmbiguous || choiceOffered);
     }
 
     private boolean isDeterministicAmbiguity(String reason) {

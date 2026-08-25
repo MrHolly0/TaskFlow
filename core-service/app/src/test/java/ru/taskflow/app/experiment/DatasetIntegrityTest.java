@@ -128,7 +128,11 @@ class DatasetIntegrityTest {
 
         assertThat(rows).hasSize(150);
         assertThat(withSetupTasks).isEqualTo(64);
-        assertThat(expectingNoActions).isEqualTo(34);
+        // 34 → 21 после переразметки AMBIGUOUS владельцем 25.08.2026: двоякость —
+        // это два взаимоисключающих варианта (action_count=2), а не ноль действий;
+        // ноль был ошибкой разметки, не поведением системы. AM-03/AM-15 остались
+        // с одиночным ожиданием — контроль, что ветка не срабатывает без причины.
+        assertThat(expectingNoActions).isEqualTo(21);
         assertThat(expectingAmbiguous).isEqualTo(13);
     }
 }
