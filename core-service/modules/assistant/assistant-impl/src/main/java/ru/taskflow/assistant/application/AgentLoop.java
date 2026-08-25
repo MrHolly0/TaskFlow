@@ -222,16 +222,23 @@ public class AgentLoop {
                     false, null, inputTokens, outputTokens);
         }
 
-        // complete_task сюда не попадает: «закрыть X» и «создать X» — не два
-        // правдоподобных прочтения одной реплики так, как ими являются
-        // «изменить X» и «создать X» (та настоящая двоякость, которую эта
-        // ветка и чинит, — «изменить планы на кино»). Если модель, уже
-        // знающая правило про прошедшее время, решила, что дело сделано,
-        // предлагать завести его заново незачем — looksLikeStandaloneTask
-        // не знает про время глагола и не должен, но здесь решение не за
-        // ним: модель уже высказалась однозначно.
+        // complete_task сюда не попадает по той же логике, что и раньше:
+        // «закрыть X» и «создать X» — не два правдоподобных прочтения одной
+        // реплики. reschedule/update сюда тоже не попадают — живой прогон
+        // (эксперимент Б, UE-01..UE-04, «перенеси встречу с директором на
+        // завтра на 15») показал: ActionValidator не пропускает reschedule
+        // без нового срока и update без изменённого поля — если действие
+        // этого типа вообще дошло досюда как единственное, оно уже несёт
+        // значение, извлечённое из самой реплики (новый срок, новый
+        // приоритет/группа/название). Явная команда с параметром двоякой не
+        // бывает: «перенеси X на завтра на 15» нельзя прочесть как название
+        // новой задачи, в отличие от голой ссылки без параметров («закрыть
+        // кино», «отчёт») — там ветка остаётся как была, это и чинила
+        // «изменить планы на кино».
         if (readsLikeATaskName && actions.size() == 1 && actions.getFirst().targetTaskId() != null
-                && actions.getFirst().type() != AssistantActionType.COMPLETE) {
+                && actions.getFirst().type() != AssistantActionType.COMPLETE
+                && actions.getFirst().type() != AssistantActionType.RESCHEDULE
+                && actions.getFirst().type() != AssistantActionType.UPDATE) {
             ProposedAction existing = actions.getFirst();
             String targetTitle = window.titleFor(existing.targetTaskId());
             if (!duplicateGuard.isDuplicateOf(userText, targetTitle)) {

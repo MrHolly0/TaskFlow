@@ -55,7 +55,9 @@ public final class ExperimentAggregator {
     }
 
     public record AggregateReport(
-            int totalRuns,
+            int totalRequested,
+            int cleanCount,
+            double cleanFraction,
             double recallByTaskCount,
             double countErrorRate,
             double fullCorrectnessRate,
@@ -73,11 +75,22 @@ public final class ExperimentAggregator {
             CostEstimate cost
     ) {}
 
-    public static AggregateReport aggregate(List<ExperimentRunResult> results,
+    /**
+     * Деградировавшие обращения (llmFailed=true — статус FAILED или нулевой
+     * расход токенов, см. ExperimentRunner.toResult) исключены из всех
+     * агрегатов здесь и только здесь: не выдаём измерение вслепую за
+     * результат. totalRequested/cleanCount/cleanFraction — чтобы отчёт всегда
+     * показывал, на какой доле реально посчитаны остальные цифры.
+     */
+    public static AggregateReport aggregate(List<ExperimentRunResult> allResults,
                                              double pricePerMillionInputTokens,
                                              double pricePerMillionOutputTokens) {
-        if (results.isEmpty()) {
+        if (allResults.isEmpty()) {
             throw new IllegalArgumentException("Нечего агрегировать — пустой список результатов");
+        }
+        List<ExperimentRunResult> results = allResults.stream().filter(r -> !r.llmFailed()).toList();
+        if (results.isEmpty()) {
+            throw new IllegalArgumentException("Все " + allResults.size() + " обращений деградировали — агрегировать нечего");
         }
 
         int totalExpected = results.stream().mapToInt(ExperimentRunResult::expectedActionCount).sum();
@@ -90,7 +103,9 @@ public final class ExperimentAggregator {
         double precision = totalActual == 0 ? Double.NaN : (double) totalMatched / totalActual;
 
         return new AggregateReport(
+                allResults.size(),
                 results.size(),
+                (double) results.size() / allResults.size(),
                 recall,
                 1.0 - (double) countCorrect / results.size(),
                 (double) fullyCorrect / results.size(),
@@ -109,8 +124,10 @@ public final class ExperimentAggregator {
         );
     }
 
-    public static AmbiguitySubsetStats ambiguitySubset(List<ExperimentRunResult> results) {
-        List<ExperimentRunResult> ambiguous = results.stream()
+    /** Тот же фильтр деградаций, что и в aggregate() — иначе провал провайдера ошибочно засчитался бы «двоякость не поймана». */
+    public static AmbiguitySubsetStats ambiguitySubset(List<ExperimentRunResult> allResults) {
+        List<ExperimentRunResult> ambiguous = allResults.stream()
+                .filter(r -> !r.llmFailed())
                 .filter(r -> "AMBIGUOUS".equals(r.category()))
                 .toList();
         return new AmbiguitySubsetStats(

@@ -152,7 +152,20 @@ class ExperimentRunner {
 
     private ExperimentRunResult toResult(DatasetRow row, int attempt, Proposal proposal,
                                           Map<String, UUID> setupRefToTaskId, ActionMatcher matcher) {
-        boolean llmFailed = proposal.status() == ProposalStatus.FAILED;
+        boolean statusFailed = proposal.status() == ProposalStatus.FAILED;
+        // Живой дефект (эксперимент Б, 50×3 21.08.2026): исчерпание дневного
+        // лимита токенов у поставщика (TPD, не TPM — см. отчёт) внутри
+        // nlp-worker перехватывается FallbackToolCallProvider и превращается
+        // в формально успешный пустой ответ (см. javadoc там же — так и
+        // задумано, чтобы отличать «модель промолчала» от сбоя провайдера, но
+        // здесь оба случая неотличимы снаружи). AgentLoop видит пустой ответ
+        // как «модель ничего не предложила» и синтезирует запасное создание
+        // из сырого текста — proposal.status() остаётся PENDING, llmFailed()
+        // не срабатывает. inputTokens=0 для настоящего ответа модели
+        // невозможен (системный промпт один — уже больше тысячи токенов),
+        // так что это надёжный признак деградации, не эвристика на удачу.
+        boolean zeroTokens = proposal.inputTokens() == 0 && proposal.outputTokens() == 0;
+        boolean llmFailed = statusFailed || zeroTokens;
         ActionMatcher.MatchResult match = llmFailed
                 ? matcher.match(List.of(), row.expected(), setupRefToTaskId, LocalDate.now(ZONE), ZONE)
                 : matcher.match(proposal.actions(), row.expected(), setupRefToTaskId, LocalDate.now(ZONE), ZONE);
@@ -178,8 +191,19 @@ class ExperimentRunner {
                 "AMBIGUOUS".equals(row.category()), proposal.exclusive(), modelMarked, deterministic,
                 proposal.ambiguityReason(),
                 proposal.status() == null ? null : proposal.status().name(),
-                llmFailed, llmFailed ? "деградация: " + proposal.clarification() : null
+                llmFailed, degradationNote(statusFailed, zeroTokens, proposal)
         );
+    }
+
+    private String degradationNote(boolean statusFailed, boolean zeroTokens, Proposal proposal) {
+        if (statusFailed) {
+            return "деградация: " + proposal.clarification();
+        }
+        if (zeroTokens) {
+            return "деградация: нулевой расход токенов при status=" + proposal.status()
+                    + " — вероятно исчерпан дневной лимит токенов у поставщика";
+        }
+        return null;
     }
 
     private ExperimentRunResult errorResult(DatasetRow row, int attempt, Exception e) {

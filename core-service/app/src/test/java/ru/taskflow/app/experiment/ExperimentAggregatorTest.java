@@ -24,9 +24,45 @@ class ExperimentAggregatorTest {
                 "PENDING", false, null);
     }
 
+    private ExperimentRunResult degraded(String category, String id) {
+        return new ExperimentRunResult(id, category, 1, "текст",
+                1, 0, false, false, 1, 0, 0, "", "", "", "", "",
+                ExperimentRunResult.NOT_MEASURED, ExperimentRunResult.NOT_MEASURED,
+                ExperimentRunResult.NOT_MEASURED, ExperimentRunResult.NOT_MEASURED,
+                0, 0,
+                1, false, 0,
+                0, "",
+                "AMBIGUOUS".equals(category), false, false, false, null,
+                "PENDING", true, "деградация: нулевой расход токенов");
+    }
+
     @Test
     void aggregate_rejectsEmptyResults() {
         assertThatThrownBy(() -> ExperimentAggregator.aggregate(List.of(), 1, 1))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    // Живой дефект (эксперимент Б, 50×3 21.08.2026): исчерпание дневного
+    // лимита токенов у поставщика возвращалось как формально успешный
+    // пустой ответ — 64 из 150 обращений выглядели как обычный результат
+    // при нулевом расходе токенов, и агрегаты были занижены смесью чистых
+    // и деградировавших данных.
+    @Test
+    void aggregate_excludesDegradedResponsesFromAllStatistics() {
+        var clean = result("SINGLE_CREATE", 1, 1, true, true, 0, 0, "", "CREATE:1/1",
+                100, 100, 0, 500, 100, false, false, false);
+
+        var report = ExperimentAggregator.aggregate(List.of(clean, degraded("SINGLE_CREATE", "R2")), 1, 1);
+
+        assertThat(report.totalRequested()).isEqualTo(2);
+        assertThat(report.cleanCount()).isEqualTo(1);
+        assertThat(report.cleanFraction()).isCloseTo(0.5, org.assertj.core.data.Offset.offset(0.0001));
+        assertThat(report.fullCorrectnessRate()).isEqualTo(1.0);
+    }
+
+    @Test
+    void aggregate_throwsWhenEveryResponseDegraded() {
+        assertThatThrownBy(() -> ExperimentAggregator.aggregate(List.of(degraded("SINGLE_CREATE", "R1")), 1, 1))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -128,5 +164,12 @@ class ExperimentAggregatorTest {
         assertThat(stats.deterministicCaughtCount()).isEqualTo(1);
         assertThat(stats.notMarkedCount()).isEqualTo(1);
         assertThat(stats.choiceOfferedCount()).isEqualTo(2);
+    }
+
+    @Test
+    void ambiguitySubset_excludesDegradedResponses() {
+        var stats = ExperimentAggregator.ambiguitySubset(List.of(degraded("AMBIGUOUS", "R1")));
+
+        assertThat(stats.totalAmbiguousRows()).isZero();
     }
 }

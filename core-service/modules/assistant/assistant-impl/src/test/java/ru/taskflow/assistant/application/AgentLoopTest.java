@@ -87,6 +87,16 @@ class AgentLoopTest {
                 "{\"actions\":[{\"type\":\"update\",\"task_ref\":\"T1\",\"priority\":\"HIGH\"}]}");
     }
 
+    private LlmToolCall rescheduleTaskCall() {
+        return new LlmToolCall("call-reschedule", "propose_actions",
+                "{\"actions\":[{\"type\":\"reschedule\",\"task_ref\":\"T1\",\"new_deadline\":\"2026-08-13T15:00:00+03:00\"}]}");
+    }
+
+    private LlmToolCall cancelTaskCall() {
+        return new LlmToolCall("call-cancel", "propose_actions",
+                "{\"actions\":[{\"type\":\"cancel\",\"task_ref\":\"T1\"}]}");
+    }
+
     private LlmToolCall createTaskCall(String title) {
         return new LlmToolCall("call-create", "propose_actions",
                 "{\"actions\":[{\"type\":\"create\",\"title\":\"" + title + "\"}]}");
@@ -351,23 +361,60 @@ class AgentLoopTest {
         assertThat(outcome.actions().getFirst().accepted()).isTrue();
     }
 
+    // Живой дефект (эксперимент Б, UE-01…UE-04): update/reschedule всегда
+    // несут значение, извлечённое из самой реплики (ActionValidator не
+    // пропускает их иначе — «нечего менять» / нет нового срока), поэтому
+    // они больше не годятся как пример настоящей двоякости. Голая ссылка
+    // без параметров (cancel/complete) годится по-прежнему — этот тест
+    // теперь про неё, а не про update.
     @Test
     void run_offersBothAlternativesForASecondPhraseAgainstSameTask() {
         when(contextBuilder.build(userId)).thenReturn(movieWindow());
-        // Не emptyUpdateTaskCall(): без единого поля ActionValidator отклонил
-        // бы его как «нечего менять» (см. run_unrelatedRejectionStillBlocksFallback)
-        // раньше, чем действие дошло бы до этой ветки.
-        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(updateWithFieldCall()), null));
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(cancelTaskCall()), null));
 
-        var outcome = loopWithFixedClock().run(userId, "изменить планы на кино", zone);
+        var outcome = loopWithFixedClock().run(userId, "отменить планы на кино", zone);
 
         assertThat(outcome.ambiguous()).isTrue();
         assertThat(outcome.actions()).hasSize(2);
         // Причина собирается из названия задачи, не из готовой сводки с
-        // глаголом (была бы «...означать «Изменить — кино с настей»...»).
+        // глаголом (была бы «...означать «Отменить — кино с настей»...»).
         assertThat(outcome.ambiguityReason()).isEqualTo("реплика могла означать «кино с настей», а могла — новую задачу");
         assertThat(outcome.inputTokens()).isEqualTo(10);
         assertThat(outcome.outputTokens()).isEqualTo(5);
+    }
+
+    // Живой дефект (эксперимент Б, UE-01, «перенеси встречу с директором на
+    // завтра на 15»): reschedule всегда несёт новый срок, извлечённый из
+    // реплики, — явная команда с параметром двоякой не бывает, в отличие
+    // от голой ссылки («закрыть кино»). Ветка раньше всё равно предлагала
+    // альтернативу «создать», хотя вторым правдоподобным прочтением тут и
+    // не пахнет.
+    @Test
+    void run_doesNotOfferCreateAlternativeForRescheduleWithExtractedDeadline() {
+        when(contextBuilder.build(userId)).thenReturn(movieWindow());
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(rescheduleTaskCall()), null));
+
+        var outcome = loopWithFixedClock().run(userId, "перенеси кино на завтра на 15", zone);
+
+        assertThat(outcome.ambiguous()).isFalse();
+        assertThat(outcome.actions()).hasSize(1);
+        assertThat(outcome.actions().getFirst().type()).isEqualTo(AssistantActionType.RESCHEDULE);
+    }
+
+    // То же самое для update: «изменить планы на кино» с priority=HIGH —
+    // раньше канонический пример этой ветки (сама ветка и была построена
+    // под него), теперь исключение: значение поля уже извлечено, второе
+    // прочтение неправдоподобно.
+    @Test
+    void run_doesNotOfferCreateAlternativeForUpdateWithExtractedField() {
+        when(contextBuilder.build(userId)).thenReturn(movieWindow());
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(updateWithFieldCall()), null));
+
+        var outcome = loopWithFixedClock().run(userId, "изменить планы на кино", zone);
+
+        assertThat(outcome.ambiguous()).isFalse();
+        assertThat(outcome.actions()).hasSize(1);
+        assertThat(outcome.actions().getFirst().type()).isEqualTo(AssistantActionType.UPDATE);
     }
 
     @Test
@@ -429,12 +476,12 @@ class AgentLoopTest {
     @Test
     void run_keepsModelActionFirstEvenForQuickAdd() {
         when(contextBuilder.build(userId)).thenReturn(movieWindow());
-        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(updateWithFieldCall()), null));
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(cancelTaskCall()), null));
 
-        var outcome = loopWithFixedClock().run(userId, "изменить планы на кино", zone,
+        var outcome = loopWithFixedClock().run(userId, "отменить планы на кино", zone,
                 ru.taskflow.assistant.api.AssistantEntryPoint.QUICK_ADD);
 
-        assertThat(outcome.actions().get(0).type()).isEqualTo(AssistantActionType.UPDATE);
+        assertThat(outcome.actions().get(0).type()).isEqualTo(AssistantActionType.CANCEL);
         assertThat(outcome.actions().get(0).accepted()).isTrue();
         assertThat(outcome.actions().get(1).type()).isEqualTo(AssistantActionType.CREATE);
         assertThat(outcome.actions().get(1).accepted()).isFalse();
@@ -443,12 +490,12 @@ class AgentLoopTest {
     @Test
     void run_keepsModelActionFirstForChat() {
         when(contextBuilder.build(userId)).thenReturn(movieWindow());
-        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(updateWithFieldCall()), null));
+        when(gateway.callWithTools(any())).thenReturn(toolResponse(List.of(cancelTaskCall()), null));
 
-        var outcome = loopWithFixedClock().run(userId, "изменить планы на кино", zone,
+        var outcome = loopWithFixedClock().run(userId, "отменить планы на кино", zone,
                 ru.taskflow.assistant.api.AssistantEntryPoint.CHAT);
 
-        assertThat(outcome.actions().get(0).type()).isEqualTo(AssistantActionType.UPDATE);
+        assertThat(outcome.actions().get(0).type()).isEqualTo(AssistantActionType.CANCEL);
         assertThat(outcome.actions().get(0).accepted()).isTrue();
         assertThat(outcome.actions().get(1).type()).isEqualTo(AssistantActionType.CREATE);
         assertThat(outcome.actions().get(1).accepted()).isFalse();

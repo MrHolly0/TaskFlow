@@ -49,6 +49,8 @@ class AggregateReportPrinter {
         var ambiguity = ExperimentAggregator.ambiguitySubset(results);
 
         System.out.println("=== " + latestJson.get().getFileName() + " (" + results.size() + " строк) ===");
+        System.out.printf(Locale.ROOT, "Чистых обращений: %d из %d (%.1f%%) — остальные агрегаты посчитаны только по ним%n",
+                report.cleanCount(), report.totalRequested(), 100.0 * report.cleanFraction());
         System.out.printf(Locale.ROOT, "Полнота (доля верно выделенных действий): %.3f%n", report.recall());
         System.out.printf(Locale.ROOT, "Точность: %.3f%n", report.precision());
         System.out.printf(Locale.ROOT, "Доля ошибок в количестве действий: %.3f%n", report.countErrorRate());
@@ -80,9 +82,5 @@ class AggregateReportPrinter {
         }
         System.out.println();
         System.out.println("Подмножество AMBIGUOUS: " + ambiguity);
-
-        long llmFailedCount = results.stream().filter(ExperimentRunResult::llmFailed).count();
-        System.out.printf(Locale.ROOT, "Деградаций/предела частоты: %d из %d (%.1f%%)%n",
-                llmFailedCount, results.size(), 100.0 * llmFailedCount / results.size());
     }
 }
