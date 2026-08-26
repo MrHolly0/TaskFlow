@@ -109,7 +109,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Main Content */}
       <div className="flex flex-1 flex-col min-w-0">
         {/* Top Bar */}
-        <header className="flex min-h-14 items-center justify-between border-b border-border px-4 lg:px-5 pt-[var(--safe-top)] flex-shrink-0">
+        <header className="flex min-h-[calc(3.5rem+var(--safe-top))] items-center justify-between border-b border-border px-4 lg:px-5 pt-[var(--safe-top)] flex-shrink-0">
           <div className="lg:hidden">
             <MuninLogo variant="header" className="h-5 w-auto text-foreground" />
           </div>
