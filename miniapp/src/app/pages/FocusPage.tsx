@@ -135,17 +135,17 @@ function FocusTaskCard({ task, index, timezone, onComplete, onSnooze, onStart, o
         )}
 
         {/* Actions */}
-        <div className="flex gap-2 pt-1">
+        <div className="flex flex-wrap gap-2 pt-1">
           <Button
             onClick={handleComplete}
-            className="flex-1 h-10 gap-2"
+            className="flex-1 min-w-[110px] h-10 gap-2"
           >
             ✓ Сделано
           </Button>
           {task.status === 'TODO' && (
             <Button
               variant="outline"
-              className="flex-1 h-10"
+              className="flex-1 min-w-[110px] h-10"
               onClick={() => onStart(task.id)}
             >
               Начать
@@ -153,7 +153,7 @@ function FocusTaskCard({ task, index, timezone, onComplete, onSnooze, onStart, o
           )}
           <Button
             variant="outline"
-            className="flex-1 h-10"
+            className="flex-1 min-w-[110px] h-10"
             onClick={() => onSnooze(task.id)}
           >
             Отложить
