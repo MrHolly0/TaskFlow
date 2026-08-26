@@ -14,8 +14,10 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import ru.taskflow.assistant.api.AssistantChannel;
 import ru.taskflow.assistant.api.AssistantEntryPoint;
 import ru.taskflow.assistant.api.AssistantService;
+import ru.taskflow.assistant.api.AssistantActionType;
 import ru.taskflow.assistant.api.ProposalStatus;
 import ru.taskflow.assistant.api.dto.Proposal;
+import ru.taskflow.assistant.api.dto.ProposedAction;
 import ru.taskflow.task.api.TaskPriority;
 import ru.taskflow.task.api.TaskService;
 import ru.taskflow.task.api.TaskSource;
@@ -43,24 +45,27 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Стенд эксперимента Б1–Б4 ТЗ (docs/vkr/тз-агенту-сбор-данных.md): один
  * проход по датасету собирает все показатели сразу — разбор, задержки,
  * токены, вызовы инструментов, отсев фильтров, признаки двоякости.
- * Отдельного прогона на каждый показатель НЕТ намеренно — при 8000 TPM
- * Groq пятикратный сбор кладёт бюджет квоты, который и так на исходе.
+ * Отдельного прогона на каждый показатель НЕТ намеренно — пятикратный сбор
+ * умножает расход токенов без прироста сведений.
  * <p>
  * Ретраев на отдельной (строка, попытка) НЕТ: цель — не скрыть срабатывания
  * предела частоты повтором, а честно посчитать, сколько их было (пункт
- * "остановись и доложи" Задачи 3). Пауза PACING_MS между обращениями —
- * единственная защита от 429, и это пауза, а не повторная попытка.
+ * "остановись и доложи" Задачи 3). Пауза между обращениями — единственная
+ * защита от 429, и это пауза, а не повторная попытка. Её длительность
+ * задаётся EXPERIMENT_PACING_MS и подбирается под лимит токенов в минуту
+ * действующего тарифа: 20 с были нужны при 8000 TPM бесплатного тарифа,
+ * на платном (250 000 TPM) хватает полутора секунд.
  * <p>
  * Путь к датасету и число повторов — извне (система/переменная окружения),
- * без пересборки: -Dexperiment.dataset=/путь/файл.json -Dexperiment.repeats=3
- * или EXPERIMENT_DATASET / EXPERIMENT_REPEATS.
+ * без пересборки: EXPERIMENT_DATASET / EXPERIMENT_REPEATS / EXPERIMENT_PACING_MS.
+ * Через -D передать НЕЛЬЗЯ: сборка форвардит в тестовую JVM только api.version.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Testcontainers
 @Tag("live")
 class ExperimentRunner {
 
-    private static final long PACING_MS = 20_000L;
+    private static final long DEFAULT_PACING_MS = 1_500L;
     private static final Pattern DETERMINISTIC_AMBIGUITY =
             Pattern.compile("^реплика могла означать «.*», а могла — новую задачу$");
     private static final ZoneId ZONE = ZoneId.of("Europe/Moscow");
@@ -101,11 +106,15 @@ class ExperimentRunner {
         ActionMatcher matcher = new ActionMatcher();
         List<ExperimentRunResult> results = new ArrayList<>();
 
+        long pacingMs = Long.parseLong(
+                configValue("experiment.pacingMs", "EXPERIMENT_PACING_MS",
+                        String.valueOf(DEFAULT_PACING_MS)));
+
         boolean first = true;
         for (int attempt = 1; attempt <= repeats; attempt++) {
             for (DatasetRow row : dataset) {
                 if (!first) {
-                    Thread.sleep(PACING_MS);
+                    Thread.sleep(pacingMs);
                 }
                 first = false;
                 results.add(runOneRow(userId, row, attempt, matcher));
@@ -165,10 +174,24 @@ class ExperimentRunner {
         // невозможен (системный промпт один — уже больше тысячи токенов),
         // так что это надёжный признак деградации, не эвристика на удачу.
         boolean zeroTokens = proposal.inputTokens() == 0 && proposal.outputTokens() == 0;
-        boolean llmFailed = statusFailed || zeroTokens;
+        // 26.08.2026: статус FAILED сам по себе деградацией больше НЕ считается.
+        // После починки учёта токенов degrade() проносит расход в предложение,
+        // поэтому FAILED с ненулевым расходом означает «модель ответила, но
+        // предлагать нечего» — это измеренный результат, он обязан попасть в
+        // статистику. Иначе категории NEGATIVE и EDGE_CASE, проверяющие отказ
+        // системы действовать, молча исчезают из выборки. Признак настоящего
+        // сбоя остаётся один — нулевой расход.
+        boolean llmFailed = zeroTokens;
+        // degrade() не возвращает пустое предложение молча: он создаёт задачу из
+        // сырого текста через createQuick. Предложение при этом пустое, поэтому
+        // без поправки стенд считал бы «ноль действий» и засчитывал строку как
+        // верную там, где ожидалось бездействие, — то есть хвалил бы систему за
+        // созданный мусор. Восстанавливаем фактически произошедшее создание.
+        List<ProposedAction> effectiveActions = degradedCreate(statusFailed, zeroTokens, proposal);
+
         ActionMatcher.MatchResult match = llmFailed
                 ? matcher.match(List.of(), row.expected(), setupRefToTaskId, LocalDate.now(ZONE), ZONE)
-                : matcher.match(proposal.actions(), row.expected(), setupRefToTaskId, LocalDate.now(ZONE), ZONE);
+                : matcher.match(effectiveActions, row.expected(), setupRefToTaskId, LocalDate.now(ZONE), ZONE);
 
         boolean deterministic = isDeterministicAmbiguity(proposal.ambiguityReason());
         boolean modelMarked = proposal.exclusive() && !deterministic;
@@ -179,7 +202,7 @@ class ExperimentRunner {
                 match.expectedCount(), match.actualCount(), match.countCorrect(), fullyCorrect,
                 match.missingCount(), match.extraCount(),
                 match.matched().stream().mapToInt(p -> p.attributeMismatches().size()).sum(),
-                proposal.actions().stream().map(a -> a.type().name()).collect(Collectors.joining(";")),
+                effectiveActions.stream().map(a -> a.type().name()).collect(Collectors.joining(";")),
                 String.join(" | ", match.missingDescriptions()),
                 String.join(" | ", match.extraDescriptions()),
                 match.matched().stream().flatMap(p -> p.attributeMismatches().stream()).collect(Collectors.joining(" | ")),
@@ -196,13 +219,30 @@ class ExperimentRunner {
         );
     }
 
-    private String degradationNote(boolean statusFailed, boolean zeroTokens, Proposal proposal) {
-        if (statusFailed) {
-            return "деградация: " + proposal.clarification();
+    /**
+     * Действия, фактически изменившие данные пользователя. Совпадают с
+     * предложенными, кроме пути деградации: там предложение пустое, но задача
+     * из сырого текста уже создана. Признак пути — FAILED при ненулевом
+     * расходе токенов (нулевой расход означает, что обращения не было вовсе).
+     */
+    private List<ProposedAction> degradedCreate(boolean statusFailed, boolean zeroTokens, Proposal proposal) {
+        if (!statusFailed || zeroTokens) {
+            return proposal.actions();
         }
+        String title = proposal.sourceText() == null ? "" : proposal.sourceText();
+        return List.of(new ProposedAction(1, AssistantActionType.CREATE, null,
+                Map.of("title", title, "type", "create"), "Создать — " + title, true));
+    }
+
+    private String degradationNote(boolean statusFailed, boolean zeroTokens, Proposal proposal) {
         if (zeroTokens) {
             return "деградация: нулевой расход токенов при status=" + proposal.status()
-                    + " — вероятно исчерпан дневной лимит токенов у поставщика";
+                    + " — обращение к модели не состоялось";
+        }
+        if (statusFailed) {
+            // Не деградация: модель ответила (расход ненулевой), но действий не
+            // предложила. Помечаем для разбора, в статистике строка остаётся.
+            return "модель ответила без действий: " + proposal.clarification();
         }
         return null;
     }
