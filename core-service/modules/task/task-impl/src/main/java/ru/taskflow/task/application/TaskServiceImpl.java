@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 import ru.taskflow.audit.api.AuditEventType;
 import ru.taskflow.audit.api.AuditService;
 import ru.taskflow.notify.api.NotificationService;
+import ru.taskflow.task.api.TaskPriority;
 import ru.taskflow.task.api.TaskService;
 import ru.taskflow.task.api.TaskStatus;
 import ru.taskflow.task.api.dto.CreateTaskRequest;
@@ -92,7 +93,8 @@ public class TaskServiceImpl implements TaskService {
         auditService.record(userId, savedTask.getId(), AuditEventType.CREATED, null);
 
         if (savedTask.getDeadline() != null) {
-            notificationService.scheduleTaskReminder(userId, savedTask.getId(), savedTask.getTitle(), savedTask.getDeadline());
+            notificationService.scheduleTaskReminder(userId, savedTask.getId(), savedTask.getTitle(),
+                    savedTask.getDeadline(), savedTask.getPriority() == TaskPriority.URGENT);
         }
 
         return taskMapper.toResponse(savedTask);
@@ -203,7 +205,8 @@ public class TaskServiceImpl implements TaskService {
         } else if (deadlineChanged || titleChanged) {
             cancelReminders(taskId);
             if (updatedTask.getDeadline() != null) {
-                notificationService.scheduleTaskReminder(userId, taskId, updatedTask.getTitle(), updatedTask.getDeadline());
+                notificationService.scheduleTaskReminder(userId, taskId, updatedTask.getTitle(),
+                        updatedTask.getDeadline(), updatedTask.getPriority() == TaskPriority.URGENT);
             }
         }
 
@@ -483,7 +486,8 @@ public class TaskServiceImpl implements TaskService {
         TaskJpaEntity savedTask = taskRepository.save(task);
 
         if (task.getDeadline() != null) {
-            notificationService.scheduleTaskReminder(userId, savedTask.getId(), savedTask.getTitle(), task.getDeadline());
+            notificationService.scheduleTaskReminder(userId, savedTask.getId(), savedTask.getTitle(),
+                    task.getDeadline(), savedTask.getPriority() == TaskPriority.URGENT);
         }
 
         return taskMapper.toResponse(savedTask);

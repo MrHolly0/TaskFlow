@@ -86,7 +86,7 @@ class TaskServiceTest {
 
         taskService.create(userId, request);
 
-        verify(notificationService).scheduleTaskReminder(userId, taskId, "сдать курсовую", deadline);
+        verify(notificationService).scheduleTaskReminder(userId, taskId, "сдать курсовую", deadline, false);
     }
 
     @Test
@@ -103,7 +103,7 @@ class TaskServiceTest {
 
         taskService.create(userId, request);
 
-        verify(notificationService, never()).scheduleTaskReminder(any(), any(), any(), any());
+        verify(notificationService, never()).scheduleTaskReminder(any(), any(), any(), any(), anyBoolean());
     }
 
     @Test
@@ -300,7 +300,7 @@ class TaskServiceTest {
         taskService.update(userId, taskId, request);
 
         verify(notificationService).cancelTaskNotifications(taskId);
-        verify(notificationService, never()).scheduleTaskReminder(any(), any(), any(), any());
+        verify(notificationService, never()).scheduleTaskReminder(any(), any(), any(), any(), anyBoolean());
     }
 
     @Test

@@ -4,7 +4,12 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 public interface NotificationService {
-    void scheduleTaskReminder(UUID userId, UUID taskId, String title, OffsetDateTime deadline);
+    /**
+     * urgent — приоритет задачи URGENT: при включённом в настройках
+     * urgentExtraReminder планирует дополнительное напоминание за 15 минут
+     * до срока, в дополнение к обычному.
+     */
+    void scheduleTaskReminder(UUID userId, UUID taskId, String title, OffsetDateTime deadline, boolean urgent);
     void cancelTaskNotifications(UUID taskId);
 
     /**
