@@ -13,6 +13,7 @@ import ru.taskflow.task.api.TaskStatus;
 import ru.taskflow.task.api.dto.CreateTaskRequest;
 import ru.taskflow.task.api.dto.DigestResponse;
 import ru.taskflow.task.api.dto.FocusResponse;
+import ru.taskflow.task.api.dto.ReminderResponse;
 import ru.taskflow.task.api.dto.TaskFilterRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
 import ru.taskflow.task.api.dto.TaskStatsItem;
@@ -35,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Основной сервис управления задачами пользователя.
@@ -55,6 +57,7 @@ public class TaskServiceImpl implements TaskService {
     private final TagRepository tagRepository;
     private final TaskMapper taskMapper;
     private final TaskReminderService taskReminderService;
+    private final ReminderRepository reminderRepository;
     private final AuditService auditService;
     private final GroupStyleResolver groupStyleResolver;
 
@@ -105,9 +108,11 @@ public class TaskServiceImpl implements TaskService {
      */
     @Override
     public TaskResponse findById(UUID userId, UUID taskId) {
-        return taskRepository.findByIdAndUserId(taskId, userId)
-                .map(taskMapper::toResponse)
+        var task = taskRepository.findByIdAndUserId(taskId, userId)
                 .orElseThrow(() -> new TaskNotFoundException(taskId));
+        var reminders = taskMapper.toReminderResponses(
+                reminderRepository.findByTaskIdAndStatusOrderByFireAtAsc(taskId, ReminderStatus.PENDING));
+        return withReminders(taskMapper.toResponse(task), reminders);
     }
 
     /**
@@ -123,14 +128,34 @@ public class TaskServiceImpl implements TaskService {
      */
     @Override
     public Page<TaskResponse> findAll(UUID userId, TaskFilterRequest filter, Pageable pageable) {
-        return taskRepository.findAllWithFilter(
+        Page<TaskJpaEntity> page = taskRepository.findAllWithFilter(
                 userId,
                 filter.groupId(),
                 filter.status(),
                 filter.priority(),
                 filter.tag(),
                 pageable
-        ).map(taskMapper::toResponse);
+        );
+
+        // Одна выборка напоминаний на всю страницу, не запрос на каждую
+        // карточку (А3) — group by taskId вместо N обращений к reminderRepository.
+        List<UUID> taskIds = page.getContent().stream().map(TaskJpaEntity::getId).toList();
+        Map<UUID, List<ReminderResponse>> remindersByTaskId = taskIds.isEmpty()
+                ? Map.of()
+                : reminderRepository.findByTaskIdInAndStatusOrderByFireAtAsc(taskIds, ReminderStatus.PENDING).stream()
+                        .collect(Collectors.groupingBy(
+                                r -> r.getTask().getId(),
+                                Collectors.mapping(taskMapper::toReminderResponse, Collectors.toList())));
+
+        return page.map(entity -> withReminders(taskMapper.toResponse(entity),
+                remindersByTaskId.getOrDefault(entity.getId(), List.of())));
+    }
+
+    private TaskResponse withReminders(TaskResponse response, List<ReminderResponse> reminders) {
+        return new TaskResponse(response.id(), response.title(), response.description(), response.priority(),
+                response.status(), response.deadline(), response.estimateMinutes(), response.source(),
+                response.groupId(), response.groupName(), response.tags(), response.createdAt(),
+                response.updatedAt(), response.completedAt(), reminders);
     }
 
     /**
@@ -478,6 +503,22 @@ public class TaskServiceImpl implements TaskService {
         var task = taskRepository.findByIdAndUserId(taskId, userId)
                 .orElseThrow(() -> new TaskNotFoundException(taskId));
         taskReminderService.createStandaloneReminder(userId, task, fireAt);
+    }
+
+    @Override
+    public List<ReminderResponse> getReminders(UUID userId, UUID taskId) {
+        taskRepository.findByIdAndUserId(taskId, userId)
+                .orElseThrow(() -> new TaskNotFoundException(taskId));
+        return taskMapper.toReminderResponses(
+                reminderRepository.findByTaskIdAndStatusOrderByFireAtAsc(taskId, ReminderStatus.PENDING));
+    }
+
+    @Override
+    @Transactional
+    public void cancelReminder(UUID userId, UUID taskId, UUID reminderId) {
+        taskRepository.findByIdAndUserId(taskId, userId)
+                .orElseThrow(() -> new TaskNotFoundException(taskId));
+        taskReminderService.cancelReminder(taskId, reminderId);
     }
 
     @Override

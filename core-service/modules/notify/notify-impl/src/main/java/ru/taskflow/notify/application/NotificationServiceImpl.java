@@ -40,7 +40,8 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional
-    public void scheduleReminder(UUID userId, UUID taskId, String title, OffsetDateTime fireAt, OffsetDateTime deadline) {
+    public void scheduleReminder(UUID userId, UUID taskId, UUID reminderId, String title,
+                                  OffsetDateTime fireAt, OffsetDateTime deadline) {
         OffsetDateTime now = OffsetDateTime.now();
         if (fireAt.isBefore(now)) {
             log.debug("Fire time is in the past, skipping notification for task: {}", taskId);
@@ -92,7 +93,7 @@ public class NotificationServiceImpl implements NotificationService {
         // (например письмо не ушло, или одно устройство отписалось) не мешает
         // доставке по остальным.
         destinations.forEach((channel, ids) ->
-                ids.forEach(destination -> scheduleForChannel(userId, taskId, channel, destination, fireAt, payload)));
+                ids.forEach(destination -> scheduleForChannel(userId, taskId, reminderId, channel, destination, fireAt, payload)));
     }
 
     private boolean channelEnabled(UserSettingsDto settings, IdentityProvider channel) {
@@ -104,11 +105,12 @@ public class NotificationServiceImpl implements NotificationService {
         };
     }
 
-    private void scheduleForChannel(UUID userId, UUID taskId, NotificationChannel channel, String destination,
-                                     OffsetDateTime fireAt, String payload) {
+    private void scheduleForChannel(UUID userId, UUID taskId, UUID reminderId, NotificationChannel channel,
+                                     String destination, OffsetDateTime fireAt, String payload) {
         var notification = new ScheduledNotificationJpaEntity();
         notification.setUserId(userId);
         notification.setTaskId(taskId);
+        notification.setReminderId(reminderId);
         notification.setChannel(channel);
         notification.setDestination(destination);
         notification.setFireAt(fireAt);
@@ -126,6 +128,13 @@ public class NotificationServiceImpl implements NotificationService {
     public void cancelTaskNotifications(UUID taskId) {
         scheduledNotificationRepository.deleteUnsentByTaskId(taskId);
         log.debug("Cancelled unsent notifications for task: {}", taskId);
+    }
+
+    @Override
+    @Transactional
+    public void cancelReminderNotifications(UUID reminderId) {
+        scheduledNotificationRepository.deleteUnsentByReminderId(reminderId);
+        log.debug("Cancelled unsent notifications for reminder: {}", reminderId);
     }
 
     @Override

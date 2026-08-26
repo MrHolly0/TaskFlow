@@ -18,6 +18,7 @@ import ru.taskflow.task.api.TaskStatus;
 import ru.taskflow.task.api.dto.CreateTaskRequest;
 import ru.taskflow.task.api.dto.DigestResponse;
 import ru.taskflow.task.api.dto.FocusResponse;
+import ru.taskflow.task.api.dto.ReminderResponse;
 import ru.taskflow.task.api.dto.ScheduleReminderRequest;
 import ru.taskflow.task.api.dto.TaskFilterRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
@@ -25,6 +26,7 @@ import ru.taskflow.task.api.dto.TaskStatsResponse;
 import ru.taskflow.task.api.dto.UpdateTaskRequest;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -97,6 +99,26 @@ public class TaskController {
             @AuthenticationPrincipal AuthenticatedUser user
     ) {
         taskService.scheduleReminder(user.userId(), id, request.fireAt());
+    }
+
+    @GetMapping("/{id}/reminders")
+    @Operation(summary = "Напоминания задачи", description = "Возвращает ещё не сработавшие напоминания задачи по возрастанию времени")
+    public List<ReminderResponse> getReminders(
+            @PathVariable java.util.UUID id,
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) {
+        return taskService.getReminders(user.userId(), id);
+    }
+
+    @DeleteMapping("/{id}/reminders/{reminderId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "Снять напоминание", description = "Отменяет одно напоминание задачи, не затрагивая остальные")
+    public void cancelReminder(
+            @PathVariable java.util.UUID id,
+            @PathVariable java.util.UUID reminderId,
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) {
+        taskService.cancelReminder(user.userId(), id, reminderId);
     }
 
     @DeleteMapping("/{id}")

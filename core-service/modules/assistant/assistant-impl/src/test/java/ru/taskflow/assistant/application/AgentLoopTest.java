@@ -221,7 +221,7 @@ class AgentLoopTest {
     private TaskResponse taskResponse(UUID id, String title) {
         return new TaskResponse(id, title, null, TaskPriority.MEDIUM, TaskStatus.TODO,
                 null, null, TaskSource.MANUAL, null, null, List.of(),
-                OffsetDateTime.now(), OffsetDateTime.now(), null);
+                OffsetDateTime.now(), OffsetDateTime.now(), null, List.of());
     }
 
     @Test

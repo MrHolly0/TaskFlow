@@ -5,6 +5,7 @@ import org.springframework.data.domain.Pageable;
 import ru.taskflow.task.api.dto.CreateTaskRequest;
 import ru.taskflow.task.api.dto.DigestResponse;
 import ru.taskflow.task.api.dto.FocusResponse;
+import ru.taskflow.task.api.dto.ReminderResponse;
 import ru.taskflow.task.api.dto.TaskFilterRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
 import ru.taskflow.task.api.dto.TaskStatsResponse;
@@ -34,6 +35,18 @@ public interface TaskService {
      * не иметь дедлайна вовсе. Не меняет deadline задачи.
      */
     void scheduleReminder(UUID userId, UUID taskId, OffsetDateTime fireAt);
+
+    /**
+     * Ещё не сработавшие напоминания задачи (А1), от ближайшего к дальнему.
+     * Пустой список, если их нет — не null.
+     */
+    List<ReminderResponse> getReminders(UUID userId, UUID taskId);
+
+    /**
+     * Снимает ровно одно напоминание (А2) — перевод в отменённый статус,
+     * не удаление; остальные напоминания той же задачи не затрагиваются.
+     */
+    void cancelReminder(UUID userId, UUID taskId, UUID reminderId);
 
     void delete(UUID userId, UUID taskId);
 

@@ -10,10 +10,21 @@ public interface NotificationService {
      * — сколько будет напоминаний и когда, решает планировщик над таблицей
      * reminders, не этот метод). deadline — только для текста напоминания
      * («Дедлайн: завтра в 9:00»), допускает null — у задачи может не быть
-     * срока вовсе (Б2).
+     * срока вовсе (Б2). reminderId клеймится на каждую созданную строку —
+     * без него отмена одного напоминания (см. cancelReminderNotifications)
+     * не отличила бы свои уведомления от уведомлений соседних напоминаний
+     * той же задачи.
      */
-    void scheduleReminder(UUID userId, UUID taskId, String title, OffsetDateTime fireAt, OffsetDateTime deadline);
+    void scheduleReminder(UUID userId, UUID taskId, UUID reminderId, String title,
+                          OffsetDateTime fireAt, OffsetDateTime deadline);
+
     void cancelTaskNotifications(UUID taskId);
+
+    /**
+     * Снятие ровно одного напоминания (А2) — не трогает уведомления,
+     * запланированные другими напоминаниями той же задачи.
+     */
+    void cancelReminderNotifications(UUID reminderId);
 
     /**
      * Переносит запланированные напоминания на другую учётку. Адресат каждой

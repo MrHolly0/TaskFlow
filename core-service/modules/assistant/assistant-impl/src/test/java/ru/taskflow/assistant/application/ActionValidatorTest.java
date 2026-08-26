@@ -187,7 +187,7 @@ class ActionValidatorTest {
         return new TaskResponse(
                 taskId, "купить молоко", null, TaskPriority.MEDIUM, status, null,
                 null, TaskSource.MANUAL, null, null,
-                List.of(), OffsetDateTime.now(), OffsetDateTime.now(), null
+                List.of(), OffsetDateTime.now(), OffsetDateTime.now(), null, List.of()
         );
     }
 }

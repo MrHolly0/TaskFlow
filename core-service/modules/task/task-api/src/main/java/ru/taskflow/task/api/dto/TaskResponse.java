@@ -22,5 +22,6 @@ public record TaskResponse(
         List<String> tags,
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt,
-        OffsetDateTime completedAt
+        OffsetDateTime completedAt,
+        List<ReminderResponse> reminders
 ) {}

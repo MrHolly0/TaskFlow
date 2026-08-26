@@ -55,6 +55,7 @@ class NotificationServiceImplTest {
     private final UUID userId = UUID.randomUUID();
     private final UUID taskId = UUID.randomUUID();
     private final OffsetDateTime fireAt = OffsetDateTime.now().plusDays(1);
+    private final UUID reminderId = UUID.randomUUID();
 
     @BeforeEach
     void setUp() {
@@ -71,7 +72,7 @@ class NotificationServiceImplTest {
         when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.of("12345"));
         when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.of("user@example.com"));
 
-        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
+        notificationService.scheduleReminder(userId, taskId, reminderId, "задача", fireAt, fireAt);
 
         ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
         verify(scheduledNotificationRepository, times(2)).save(captor.capture());
@@ -91,7 +92,7 @@ class NotificationServiceImplTest {
         when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.of("12345"));
         when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.empty());
 
-        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
+        notificationService.scheduleReminder(userId, taskId, reminderId, "задача", fireAt, fireAt);
 
         ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
         verify(scheduledNotificationRepository).save(captor.capture());
@@ -104,7 +105,7 @@ class NotificationServiceImplTest {
         when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.empty());
         when(userService.getTimezone(userId)).thenReturn(ZoneId.of("Asia/Yekaterinburg"));
 
-        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
+        notificationService.scheduleReminder(userId, taskId, reminderId, "задача", fireAt, fireAt);
 
         ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
         verify(scheduledNotificationRepository).save(captor.capture());
@@ -122,7 +123,7 @@ class NotificationServiceImplTest {
         when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.of("12345"));
         when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.empty());
 
-        notificationService.scheduleReminder(userId, taskId, "позвонить маме", fireAt, null);
+        notificationService.scheduleReminder(userId, taskId, reminderId, "позвонить маме", fireAt, null);
 
         ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
         verify(scheduledNotificationRepository).save(captor.capture());
@@ -140,7 +141,7 @@ class NotificationServiceImplTest {
         when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.empty());
         when(userService.getTimezone(userId)).thenReturn(ZoneId.of("Europe/Kaliningrad"));
 
-        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
+        notificationService.scheduleReminder(userId, taskId, reminderId, "задача", fireAt, fireAt);
 
         verify(userService).getTimezone(userId);
     }
@@ -150,7 +151,7 @@ class NotificationServiceImplTest {
         when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.empty());
         when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.empty());
 
-        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
+        notificationService.scheduleReminder(userId, taskId, reminderId, "задача", fireAt, fireAt);
 
         verify(scheduledNotificationRepository, never()).save(any());
         verify(userService, never()).getTimezone(any());
@@ -160,7 +161,7 @@ class NotificationServiceImplTest {
     void scheduleReminder_fireAtInPast_doesNotSchedule() {
         OffsetDateTime pastFireAt = OffsetDateTime.now().minusMinutes(5);
 
-        notificationService.scheduleReminder(userId, taskId, "задача", pastFireAt, pastFireAt);
+        notificationService.scheduleReminder(userId, taskId, reminderId, "задача", pastFireAt, pastFireAt);
 
         verify(scheduledNotificationRepository, never()).save(any());
         verify(userService, never()).getSettings(any());
@@ -171,6 +172,28 @@ class NotificationServiceImplTest {
         notificationService.cancelTaskNotifications(taskId);
 
         verify(scheduledNotificationRepository).deleteUnsentByTaskId(taskId);
+    }
+
+    @Test
+    void cancelReminderNotifications_deletesUnsentByReminderId() {
+        notificationService.cancelReminderNotifications(reminderId);
+
+        verify(scheduledNotificationRepository).deleteUnsentByReminderId(reminderId);
+    }
+
+    @Test
+    void scheduleReminder_stampsReminderIdOntoEveryScheduledRow() {
+        // А2: без своей метки на строке снять одно напоминание было бы
+        // нечем — задело бы либо всё по task_id, либо ничего.
+        when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.of("12345"));
+        when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.of("user@example.com"));
+
+        notificationService.scheduleReminder(userId, taskId, reminderId, "задача", fireAt, fireAt);
+
+        ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
+        verify(scheduledNotificationRepository, times(2)).save(captor.capture());
+        assertThat(captor.getAllValues()).extracting(ScheduledNotificationJpaEntity::getReminderId)
+                .containsOnly(reminderId);
     }
 
     @Test
@@ -201,7 +224,7 @@ class NotificationServiceImplTest {
     void scheduleReminder_skipsEverythingWhenMasterSwitchIsOff() {
         when(userService.getSettings(userId)).thenReturn(settings(false, true, true, true));
 
-        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
+        notificationService.scheduleReminder(userId, taskId, reminderId, "задача", fireAt, fireAt);
 
         verify(scheduledNotificationRepository, never()).save(any());
         verify(userService, never()).findExternalId(any(), any());
@@ -214,7 +237,7 @@ class NotificationServiceImplTest {
         when(userService.getSettings(userId)).thenReturn(settings(true, false, true, true));
         when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.of("user@example.com"));
 
-        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
+        notificationService.scheduleReminder(userId, taskId, reminderId, "задача", fireAt, fireAt);
 
         verify(userService, never()).findExternalId(userId, IdentityProvider.TELEGRAM);
         ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
@@ -226,7 +249,7 @@ class NotificationServiceImplTest {
     void scheduleReminder_skipsChannelWithIdentityButToggleOff() {
         when(userService.getSettings(userId)).thenReturn(settings(true, false, false, false));
 
-        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
+        notificationService.scheduleReminder(userId, taskId, reminderId, "задача", fireAt, fireAt);
 
         verify(scheduledNotificationRepository, never()).save(any());
     }
@@ -237,7 +260,7 @@ class NotificationServiceImplTest {
         // смотреть на подписки — иначе при включённом он бы их нашёл.
         when(userService.getSettings(userId)).thenReturn(settings(true, false, false, false));
 
-        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
+        notificationService.scheduleReminder(userId, taskId, reminderId, "задача", fireAt, fireAt);
 
         verify(scheduledNotificationRepository, never()).save(any());
         verify(pushSubscriptionRepository, never()).findByUserId(any());
@@ -253,7 +276,7 @@ class NotificationServiceImplTest {
         when(pushSubscriptionRepository.findByUserId(userId)).thenReturn(List.of(
                 subscription(subscriptionA), subscription(subscriptionB)));
 
-        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
+        notificationService.scheduleReminder(userId, taskId, reminderId, "задача", fireAt, fireAt);
 
         ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
         verify(scheduledNotificationRepository, times(2)).save(captor.capture());
@@ -269,7 +292,7 @@ class NotificationServiceImplTest {
         when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.empty());
         when(pushSubscriptionRepository.findByUserId(userId)).thenReturn(List.of());
 
-        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
+        notificationService.scheduleReminder(userId, taskId, reminderId, "задача", fireAt, fireAt);
 
         ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
         verify(scheduledNotificationRepository).save(captor.capture());

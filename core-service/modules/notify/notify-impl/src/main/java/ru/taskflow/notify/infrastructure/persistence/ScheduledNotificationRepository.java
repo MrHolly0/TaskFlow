@@ -15,6 +15,12 @@ public interface ScheduledNotificationRepository extends JpaRepository<Scheduled
     @Query("DELETE FROM ScheduledNotificationJpaEntity s WHERE s.taskId = :taskId AND s.sent = false")
     void deleteUnsentByTaskId(UUID taskId);
 
+    // Снятие одного напоминания не должно задеть доставку по соседним
+    // напоминаниям той же задачи (А2) — отсюда отдельный ключ, не taskId.
+    @Modifying
+    @Query("DELETE FROM ScheduledNotificationJpaEntity s WHERE s.reminderId = :reminderId AND s.sent = false")
+    void deleteUnsentByReminderId(@Param("reminderId") UUID reminderId);
+
     // userId и destination в одном UPDATE: если делать это двумя отдельными
     // запросами, после первого перенесённые строки станут неотличимы (по
     // userId) от тех, что у target были изначально, и второй запрос задел бы

@@ -8,6 +8,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import ru.taskflow.notify.api.NotificationService;
 import ru.taskflow.task.api.TaskPriority;
+import ru.taskflow.task.api.exception.ReminderNotFoundException;
 import ru.taskflow.task.infrastructure.persistence.ReminderJpaEntity;
 import ru.taskflow.task.infrastructure.persistence.ReminderRepository;
 import ru.taskflow.task.infrastructure.persistence.ReminderStatus;
@@ -18,9 +19,11 @@ import ru.taskflow.user.api.dto.UserSettingsDto;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
@@ -80,7 +83,7 @@ class TaskReminderServiceTest {
         verify(reminderRepository).save(captor.capture());
         assertThat(captor.getValue().getFireAt()).isEqualTo(deadline);
         assertThat(captor.getValue().getStatus()).isEqualTo(ReminderStatus.PENDING);
-        verify(notificationService).scheduleReminder(userId, task.getId(), task.getTitle(), deadline, deadline);
+        verify(notificationService).scheduleReminder(userId, task.getId(), null, task.getTitle(), deadline, deadline);
     }
 
     @Test
@@ -91,7 +94,7 @@ class TaskReminderServiceTest {
         service.planForDeadline(userId, task);
 
         verify(reminderRepository, never()).save(any());
-        verify(notificationService, never()).scheduleReminder(any(), any(), any(), any(), any());
+        verify(notificationService, never()).scheduleReminder(any(), any(), any(), any(), any(), any());
         verify(userService, never()).getSettings(any());
     }
 
@@ -102,7 +105,7 @@ class TaskReminderServiceTest {
         service.planForDeadline(userId, task);
 
         verify(reminderRepository, never()).save(any());
-        verify(notificationService, never()).scheduleReminder(any(), any(), any(), any(), any());
+        verify(notificationService, never()).scheduleReminder(any(), any(), any(), any(), any(), any());
     }
 
     // --- А6 ---
@@ -119,7 +122,7 @@ class TaskReminderServiceTest {
         verify(reminderRepository, times(2)).save(captor.capture());
         assertThat(captor.getAllValues()).extracting(ReminderJpaEntity::getFireAt)
                 .containsExactlyInAnyOrder(deadline.minusMinutes(60), deadline.minusMinutes(15));
-        verify(notificationService, times(2)).scheduleReminder(eq(userId), eq(task.getId()), eq(task.getTitle()), any(), eq(deadline));
+        verify(notificationService, times(2)).scheduleReminder(eq(userId), eq(task.getId()), any(), eq(task.getTitle()), any(), eq(deadline));
     }
 
     @Test
@@ -159,7 +162,7 @@ class TaskReminderServiceTest {
         verify(reminderRepository).save(captor.capture());
         assertThat(captor.getValue().getFireAt()).isEqualTo(fireAt);
         assertThat(captor.getValue().getTask()).isSameAs(task);
-        verify(notificationService).scheduleReminder(userId, task.getId(), task.getTitle(), fireAt, null);
+        verify(notificationService).scheduleReminder(userId, task.getId(), null, task.getTitle(), fireAt, null);
         assertThat(task.getDeadline()).isNull();
     }
 
@@ -173,5 +176,37 @@ class TaskReminderServiceTest {
 
         verify(reminderRepository).cancelPendingByTaskId(taskId);
         verify(notificationService).cancelTaskNotifications(taskId);
+    }
+
+    // --- А2: снятие одного напоминания ---
+
+    @Test
+    void cancelReminder_cancelsOnlyThatReminderAndItsOwnNotifications() {
+        UUID taskId = UUID.randomUUID();
+        UUID reminderId = UUID.randomUUID();
+        var reminder = new ReminderJpaEntity();
+        reminder.setStatus(ReminderStatus.PENDING);
+        when(reminderRepository.findByIdAndTaskId(reminderId, taskId)).thenReturn(Optional.of(reminder));
+
+        service.cancelReminder(taskId, reminderId);
+
+        assertThat(reminder.getStatus()).isEqualTo(ReminderStatus.CANCELLED);
+        verify(reminderRepository).save(reminder);
+        // Адресуется по id напоминания, а не задачи — соседние напоминания
+        // той же задачи (и их уведомления) этот вызов не трогает.
+        verify(notificationService).cancelReminderNotifications(reminderId);
+        verify(notificationService, never()).cancelTaskNotifications(any());
+        verify(reminderRepository, never()).cancelPendingByTaskId(any());
+    }
+
+    @Test
+    void cancelReminder_throwsNotFound_whenReminderDoesNotBelongToTask() {
+        UUID taskId = UUID.randomUUID();
+        UUID reminderId = UUID.randomUUID();
+        when(reminderRepository.findByIdAndTaskId(reminderId, taskId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.cancelReminder(taskId, reminderId))
+                .isInstanceOf(ReminderNotFoundException.class);
+        verify(notificationService, never()).cancelReminderNotifications(any());
     }
 }

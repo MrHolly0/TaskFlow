@@ -116,7 +116,7 @@ class ContextBuilderTest {
         return new TaskResponse(
                 id, title, null, TaskPriority.MEDIUM, TaskStatus.TODO, deadline,
                 null, TaskSource.MANUAL, UUID.randomUUID(), "Покупки",
-                List.of(), OffsetDateTime.now(), OffsetDateTime.now(), null
+                List.of(), OffsetDateTime.now(), OffsetDateTime.now(), null, List.of()
         );
     }
 }

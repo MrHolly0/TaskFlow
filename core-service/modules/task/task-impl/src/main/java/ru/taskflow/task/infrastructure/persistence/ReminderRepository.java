@@ -5,6 +5,8 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface ReminderRepository extends JpaRepository<ReminderJpaEntity, UUID> {
@@ -16,4 +18,14 @@ public interface ReminderRepository extends JpaRepository<ReminderJpaEntity, UUI
     @Query("UPDATE ReminderJpaEntity r SET r.status = ru.taskflow.task.infrastructure.persistence.ReminderStatus.CANCELLED "
             + "WHERE r.task.id = :taskId AND r.status = ru.taskflow.task.infrastructure.persistence.ReminderStatus.PENDING")
     int cancelPendingByTaskId(@Param("taskId") UUID taskId);
+
+    // А1: для карточки одной задачи.
+    List<ReminderJpaEntity> findByTaskIdAndStatusOrderByFireAtAsc(UUID taskId, ReminderStatus status);
+
+    // А3: одна выборка на всю страницу списка задач, не запрос на карточку.
+    List<ReminderJpaEntity> findByTaskIdInAndStatusOrderByFireAtAsc(List<UUID> taskIds, ReminderStatus status);
+
+    // А2: снятие адресуется id самого напоминания, принадлежность задаче
+    // проверяется тем же условием, что и её видимость пользователю.
+    Optional<ReminderJpaEntity> findByIdAndTaskId(UUID id, UUID taskId);
 }

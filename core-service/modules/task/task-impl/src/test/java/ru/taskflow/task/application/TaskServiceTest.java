@@ -6,12 +6,17 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import ru.taskflow.audit.api.AuditEventType;
 import ru.taskflow.audit.api.AuditService;
 import ru.taskflow.task.api.TaskPriority;
 import ru.taskflow.task.api.TaskStatus;
 import ru.taskflow.task.api.dto.CreateTaskRequest;
+import ru.taskflow.task.api.dto.ReminderResponse;
+import ru.taskflow.task.api.dto.TaskFilterRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
 import ru.taskflow.task.api.dto.UpdateTaskRequest;
 import ru.taskflow.task.api.exception.TaskNotFoundException;
@@ -41,6 +46,8 @@ class TaskServiceTest {
     private TaskMapper taskMapper;
     @Mock
     private TaskReminderService taskReminderService;
+    @Mock
+    private ReminderRepository reminderRepository;
     @Mock
     private AuditService auditService;
     @Mock
@@ -440,6 +447,113 @@ class TaskServiceTest {
 
     private TaskResponse mockResponse(UUID id, String title) {
         return new TaskResponse(id, title, null, null, TaskStatus.TODO,
-                null, null, null, null, null, List.of(), null, null, null);
+                null, null, null, null, null, List.of(), null, null, null, List.of());
+    }
+
+    // --- А1/А3: чтение напоминаний ---
+
+    @Test
+    void findById_embedsRemindersFromRepository() {
+        var entity = taskEntity();
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskMapper.toResponse(entity)).thenReturn(mockResponse(taskId, "задача"));
+        var reminderEntity = new ReminderJpaEntity();
+        when(reminderRepository.findByTaskIdAndStatusOrderByFireAtAsc(taskId, ReminderStatus.PENDING))
+                .thenReturn(List.of(reminderEntity));
+        var reminderResponse = new ReminderResponse(UUID.randomUUID(), OffsetDateTime.now(), "PENDING");
+        when(taskMapper.toReminderResponses(List.of(reminderEntity))).thenReturn(List.of(reminderResponse));
+
+        var result = taskService.findById(userId, taskId);
+
+        assertThat(result.reminders()).containsExactly(reminderResponse);
+    }
+
+    @Test
+    void findAll_embedsRemindersInOneBatchQuery_notPerTask() {
+        var task1 = taskEntity();
+        task1.setId(UUID.randomUUID());
+        var task2 = taskEntity();
+        task2.setId(UUID.randomUUID());
+        var pageable = PageRequest.of(0, 20);
+        Page<TaskJpaEntity> page = new PageImpl<>(List.of(task1, task2));
+        var filter = new TaskFilterRequest(null, null, null, null);
+
+        when(taskRepository.findAllWithFilter(eq(userId), any(), any(), any(), any(), eq(pageable))).thenReturn(page);
+        when(taskMapper.toResponse(task1)).thenReturn(mockResponse(task1.getId(), "задача 1"));
+        when(taskMapper.toResponse(task2)).thenReturn(mockResponse(task2.getId(), "задача 2"));
+        when(reminderRepository.findByTaskIdInAndStatusOrderByFireAtAsc(any(), eq(ReminderStatus.PENDING)))
+                .thenReturn(List.of());
+
+        var result = taskService.findAll(userId, filter, pageable);
+
+        assertThat(result.getContent()).hasSize(2);
+        verify(reminderRepository, times(1))
+                .findByTaskIdInAndStatusOrderByFireAtAsc(any(), eq(ReminderStatus.PENDING));
+        verify(reminderRepository, never()).findByTaskIdAndStatusOrderByFireAtAsc(any(), any());
+    }
+
+    @Test
+    void findAll_taskWithoutReminders_getsEmptyListNotNull() {
+        var entity = taskEntity();
+        entity.setId(UUID.randomUUID());
+        var pageable = PageRequest.of(0, 20);
+        Page<TaskJpaEntity> page = new PageImpl<>(List.of(entity));
+        var filter = new TaskFilterRequest(null, null, null, null);
+
+        when(taskRepository.findAllWithFilter(eq(userId), any(), any(), any(), any(), eq(pageable))).thenReturn(page);
+        when(taskMapper.toResponse(entity)).thenReturn(mockResponse(entity.getId(), "задача"));
+        when(reminderRepository.findByTaskIdInAndStatusOrderByFireAtAsc(any(), eq(ReminderStatus.PENDING)))
+                .thenReturn(List.of());
+
+        var result = taskService.findAll(userId, filter, pageable);
+
+        assertThat(result.getContent().getFirst().reminders()).isNotNull().isEmpty();
+    }
+
+    @Test
+    void getReminders_returnsRemindersFromRepository() {
+        var entity = taskEntity();
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        var reminderEntity = new ReminderJpaEntity();
+        when(reminderRepository.findByTaskIdAndStatusOrderByFireAtAsc(taskId, ReminderStatus.PENDING))
+                .thenReturn(List.of(reminderEntity));
+        var reminderResponse = new ReminderResponse(UUID.randomUUID(), OffsetDateTime.now(), "PENDING");
+        when(taskMapper.toReminderResponses(List.of(reminderEntity))).thenReturn(List.of(reminderResponse));
+
+        var result = taskService.getReminders(userId, taskId);
+
+        assertThat(result).containsExactly(reminderResponse);
+    }
+
+    @Test
+    void getReminders_throwsNotFound_whenTaskMissing() {
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> taskService.getReminders(userId, taskId))
+                .isInstanceOf(TaskNotFoundException.class);
+        verifyNoInteractions(reminderRepository);
+    }
+
+    // --- А2: снятие одного напоминания ---
+
+    @Test
+    void cancelReminder_delegatesToTaskReminderService_afterOwnershipCheck() {
+        var entity = taskEntity();
+        UUID reminderId = UUID.randomUUID();
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+
+        taskService.cancelReminder(userId, taskId, reminderId);
+
+        verify(taskReminderService).cancelReminder(taskId, reminderId);
+    }
+
+    @Test
+    void cancelReminder_throwsNotFound_whenTaskDoesNotBelongToUser() {
+        UUID reminderId = UUID.randomUUID();
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> taskService.cancelReminder(userId, taskId, reminderId))
+                .isInstanceOf(TaskNotFoundException.class);
+        verifyNoInteractions(taskReminderService);
     }
 }

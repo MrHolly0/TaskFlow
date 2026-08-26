@@ -83,7 +83,7 @@ class ProposalApplierTest {
         return new TaskResponse(
                 id, "задача", null, TaskPriority.MEDIUM, TaskStatus.TODO, null,
                 null, TaskSource.MANUAL, null, null,
-                List.of(), OffsetDateTime.now(), OffsetDateTime.now(), null
+                List.of(), OffsetDateTime.now(), OffsetDateTime.now(), null, List.of()
         );
     }
 

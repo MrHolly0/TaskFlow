@@ -28,6 +28,12 @@ public class ScheduledNotificationJpaEntity {
     @Column(name = "task_id", nullable = false)
     private UUID taskId;
 
+    // Nullable: строки, созданные до введения этого столбца, его не несут —
+    // им отмена по reminderId просто не сможет адресоваться, что не хуже
+    // прежнего поведения. Все новые строки клеймятся всегда (см. scheduleReminder).
+    @Column(name = "reminder_id")
+    private UUID reminderId;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 16)
     private NotificationChannel channel;

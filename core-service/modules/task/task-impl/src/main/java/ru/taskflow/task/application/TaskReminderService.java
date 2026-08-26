@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.taskflow.notify.api.NotificationService;
 import ru.taskflow.task.api.TaskPriority;
+import ru.taskflow.task.api.exception.ReminderNotFoundException;
 import ru.taskflow.task.infrastructure.persistence.ReminderJpaEntity;
 import ru.taskflow.task.infrastructure.persistence.ReminderRepository;
 import ru.taskflow.task.infrastructure.persistence.ReminderStatus;
@@ -93,6 +94,21 @@ public class TaskReminderService {
         notificationService.cancelTaskNotifications(taskId);
     }
 
+    /**
+     * Снимает ровно одно напоминание (А2) — перевод в CANCELLED, история в
+     * reminders сохраняется. Уведомления отменяются по id самого напоминания,
+     * а не задачи — соседние напоминания той же задачи не задеваются, ради
+     * этого таблица и заводилась.
+     */
+    @Transactional
+    public void cancelReminder(UUID taskId, UUID reminderId) {
+        var reminder = reminderRepository.findByIdAndTaskId(reminderId, taskId)
+                .orElseThrow(() -> new ReminderNotFoundException(reminderId));
+        reminder.setStatus(ReminderStatus.CANCELLED);
+        reminderRepository.save(reminder);
+        notificationService.cancelReminderNotifications(reminderId);
+    }
+
     private OffsetDateTime clampToDeadline(OffsetDateTime computedFireAt, OffsetDateTime deadline, OffsetDateTime now) {
         return computedFireAt.isBefore(now) ? deadline : computedFireAt;
     }
@@ -103,6 +119,6 @@ public class TaskReminderService {
         reminder.setFireAt(fireAt);
         reminder.setStatus(ReminderStatus.PENDING);
         reminderRepository.save(reminder);
-        notificationService.scheduleReminder(userId, task.getId(), task.getTitle(), fireAt, deadlineForDisplay);
+        notificationService.scheduleReminder(userId, task.getId(), reminder.getId(), task.getTitle(), fireAt, deadlineForDisplay);
     }
 }

@@ -1,0 +1,15 @@
+databaseChangeLog:
+  - changeSet:
+      id: 029-scheduled-notification-reminder-id
+      author: taskflow
+      comment: >
+        Снятие одного напоминания не должно трогать доставку по соседним
+        напоминаниям той же задачи (А2) — scheduled_notifications раньше
+        знал только task_id, точечно отменить одну строку было нечем.
+      changes:
+        - addColumn:
+            tableName: scheduled_notifications
+            columns:
+              - column:
+                  name: reminder_id
+                  type: UUID
