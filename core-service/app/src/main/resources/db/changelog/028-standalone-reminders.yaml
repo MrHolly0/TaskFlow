@@ -1,0 +1,41 @@
+databaseChangeLog:
+  - changeSet:
+      id: 028-reminders-standalone
+      author: taskflow
+      comment: >
+        Развязка срока задачи и времени напоминания: offset_minutes годился
+        только для «столько-то до дедлайна», а напоминание без дедлайна
+        (Б2) и несколько напоминаний на задачу (Б1) этого не выражают.
+        fire_at — абсолютное время, считается один раз при планировании.
+      changes:
+        - dropColumn:
+            tableName: reminders
+            columnName: offset_minutes
+        - addColumn:
+            tableName: reminders
+            columns:
+              - column:
+                  name: fire_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  constraints:
+                    nullable: false
+              - column:
+                  name: status
+                  type: VARCHAR(16)
+                  defaultValue: PENDING
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP WITH TIME ZONE
+                  defaultValueComputed: NOW()
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: reminders
+            indexName: idx_reminders_fire_status
+            columns:
+              - column:
+                  name: fire_at
+              - column:
+                  name: status

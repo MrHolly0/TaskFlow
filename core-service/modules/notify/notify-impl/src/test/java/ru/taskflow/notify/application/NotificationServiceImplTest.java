@@ -18,6 +18,7 @@ import ru.taskflow.user.api.dto.UserSettingsDto;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -31,6 +32,13 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+/**
+ * scheduleReminder больше не выводит момент отправки из deadline (это
+ * теперь решает TaskReminderService, см. его тесты на А4/А6/Б2) — здесь
+ * только адресация: какие каналы участвуют, кому шлём, что попадает в
+ * payload. fireAt в этих тестах — любое безопасно-будущее время, его
+ * конкретное значение проверяемому поведению не важно.
+ */
 @ExtendWith(MockitoExtension.class)
 class NotificationServiceImplTest {
 
@@ -46,6 +54,7 @@ class NotificationServiceImplTest {
 
     private final UUID userId = UUID.randomUUID();
     private final UUID taskId = UUID.randomUUID();
+    private final OffsetDateTime fireAt = OffsetDateTime.now().plusDays(1);
 
     @BeforeEach
     void setUp() {
@@ -57,12 +66,12 @@ class NotificationServiceImplTest {
     }
 
     @Test
-    void scheduleTaskReminder_createsOneRowPerChannelWhenBothIdentitiesExist() {
+    void scheduleReminder_createsOneRowPerChannelWhenBothIdentitiesExist() {
         // Строка на канал, не веер в одной: отказ одного не должен помешать другому.
         when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.of("12345"));
         when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.of("user@example.com"));
 
-        notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1), false);
+        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
 
         ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
         verify(scheduledNotificationRepository, times(2)).save(captor.capture());
@@ -74,14 +83,15 @@ class NotificationServiceImplTest {
                 .extracting(ScheduledNotificationJpaEntity::getDestination).containsExactly("12345");
         assertThat(saved).filteredOn(n -> n.getChannel() == NotificationChannel.EMAIL)
                 .extracting(ScheduledNotificationJpaEntity::getDestination).containsExactly("user@example.com");
+        assertThat(saved).extracting(ScheduledNotificationJpaEntity::getFireAt).containsOnly(fireAt);
     }
 
     @Test
-    void scheduleTaskReminder_createsOnlyTelegramRowWhenNoEmailIdentity() {
+    void scheduleReminder_createsOnlyTelegramRowWhenNoEmailIdentity() {
         when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.of("12345"));
         when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.empty());
 
-        notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1), false);
+        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
 
         ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
         verify(scheduledNotificationRepository).save(captor.capture());
@@ -89,12 +99,12 @@ class NotificationServiceImplTest {
     }
 
     @Test
-    void scheduleTaskReminder_stampsUserTimezoneIntoPayload() throws Exception {
+    void scheduleReminder_stampsUserTimezoneIntoPayload() throws Exception {
         when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.of("12345"));
         when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.empty());
         when(userService.getTimezone(userId)).thenReturn(ZoneId.of("Asia/Yekaterinburg"));
 
-        notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1), false);
+        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
 
         ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
         verify(scheduledNotificationRepository).save(captor.capture());
@@ -106,83 +116,54 @@ class NotificationServiceImplTest {
     }
 
     @Test
-    void scheduleTaskReminder_usesTimezoneFromUserService_notHardcoded() {
+    void scheduleReminder_deadlineNull_payloadCarriesNullDeadlineWithoutFailing() throws Exception {
+        // Б2: напоминание без срока задачи — deadline не участвует в фактическом
+        // времени отправки (fireAt) и допускает null в тексте напоминания.
+        when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.of("12345"));
+        when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.empty());
+
+        notificationService.scheduleReminder(userId, taskId, "позвонить маме", fireAt, null);
+
+        ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
+        verify(scheduledNotificationRepository).save(captor.capture());
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> payload = objectMapper.readValue(captor.getValue().getPayload(), HashMap.class);
+        assertThat(payload).containsKey("deadline");
+        assertThat(payload.get("deadline")).isNull();
+        assertThat(captor.getValue().getFireAt()).isEqualTo(fireAt);
+    }
+
+    @Test
+    void scheduleReminder_usesTimezoneFromUserService_notHardcoded() {
         when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.of("12345"));
         when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.empty());
         when(userService.getTimezone(userId)).thenReturn(ZoneId.of("Europe/Kaliningrad"));
 
-        notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1), false);
+        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
 
         verify(userService).getTimezone(userId);
     }
 
     @Test
-    void scheduleTaskReminder_skipsWhenNoIdentityAtAll() {
+    void scheduleReminder_skipsWhenNoIdentityAtAll() {
         when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.empty());
         when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.empty());
 
-        notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1), false);
+        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
 
         verify(scheduledNotificationRepository, never()).save(any());
         verify(userService, never()).getTimezone(any());
     }
 
     @Test
-    void scheduleTaskReminder_computedTimeInPast_deadlineInFuture_firesAtDeadline() {
-        // А4: defaultReminderMinutes=60 (см. defaultSettings), дедлайн через 30
-        // минут — расчётное время (дедлайн минус час) уже в прошлом, а сам срок
-        // ещё нет. Раньше это давало «через 5 секунд», теперь — момент срока.
-        when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.of("12345"));
-        when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.empty());
-        OffsetDateTime deadline = OffsetDateTime.now().plusMinutes(30);
+    void scheduleReminder_fireAtInPast_doesNotSchedule() {
+        OffsetDateTime pastFireAt = OffsetDateTime.now().minusMinutes(5);
 
-        notificationService.scheduleTaskReminder(userId, taskId, "проверить духовку", deadline, false);
-
-        ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
-        verify(scheduledNotificationRepository).save(captor.capture());
-        assertThat(captor.getValue().getFireAt()).isEqualTo(deadline);
-    }
-
-    @Test
-    void scheduleTaskReminder_computedTimeAndDeadlineBothInPast_doesNotSchedule() {
-        // А4: и расчётное время, и сам срок уже прошли — не напоминаем вовсе.
-        OffsetDateTime deadline = OffsetDateTime.now().minusMinutes(5);
-
-        notificationService.scheduleTaskReminder(userId, taskId, "проверить духовку", deadline, false);
+        notificationService.scheduleReminder(userId, taskId, "задача", pastFireAt, pastFireAt);
 
         verify(scheduledNotificationRepository, never()).save(any());
-    }
-
-    @Test
-    void scheduleTaskReminder_urgentAndExtraReminderEnabled_schedulesExtraReminder() {
-        // А6: urgentExtraReminder=true (см. settings()) и приоритет URGENT
-        // (передан как urgent=true) → второе напоминание, за 15 минут до срока.
-        when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.of("12345"));
-        when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.empty());
-        OffsetDateTime deadline = OffsetDateTime.now().plusDays(1);
-
-        notificationService.scheduleTaskReminder(userId, taskId, "задача", deadline, true);
-
-        ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
-        verify(scheduledNotificationRepository, times(2)).save(captor.capture());
-        assertThat(captor.getAllValues()).extracting(ScheduledNotificationJpaEntity::getFireAt)
-                .containsExactlyInAnyOrder(deadline.minusMinutes(60), deadline.minusMinutes(15));
-    }
-
-    @Test
-    void scheduleTaskReminder_urgentButExtraReminderSettingOff_doesNotScheduleExtraReminder() {
-        // А6: urgentExtraReminder=false → доп. напоминание не планируется, даже
-        // если задача URGENT.
-        when(userService.getSettings(userId)).thenReturn(new UserSettingsDto(
-                true, true, false, false, 60, false, "groq", null, "SILENCE", "SILENCE", "Europe/Moscow", "user"));
-        when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.of("12345"));
-        OffsetDateTime deadline = OffsetDateTime.now().plusDays(1);
-
-        notificationService.scheduleTaskReminder(userId, taskId, "задача", deadline, true);
-
-        ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
-        verify(scheduledNotificationRepository, times(1)).save(captor.capture());
-        assertThat(captor.getValue().getFireAt()).isEqualTo(deadline.minusMinutes(60));
+        verify(userService, never()).getSettings(any());
     }
 
     @Test
@@ -217,23 +198,23 @@ class NotificationServiceImplTest {
     }
 
     @Test
-    void scheduleTaskReminder_skipsEverythingWhenMasterSwitchIsOff() {
+    void scheduleReminder_skipsEverythingWhenMasterSwitchIsOff() {
         when(userService.getSettings(userId)).thenReturn(settings(false, true, true, true));
 
-        notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1), false);
+        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
 
         verify(scheduledNotificationRepository, never()).save(any());
         verify(userService, never()).findExternalId(any(), any());
     }
 
     @Test
-    void scheduleTaskReminder_doesNotCheckIdentityForDisabledChannel() {
+    void scheduleReminder_doesNotCheckIdentityForDisabledChannel() {
         // Выключенный переключатель не должен даже смотреть на идентичность —
         // при включённом он бы её нашёл, поэтому это разница именно от тумблера.
         when(userService.getSettings(userId)).thenReturn(settings(true, false, true, true));
         when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.of("user@example.com"));
 
-        notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1), false);
+        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
 
         verify(userService, never()).findExternalId(userId, IdentityProvider.TELEGRAM);
         ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
@@ -242,28 +223,28 @@ class NotificationServiceImplTest {
     }
 
     @Test
-    void scheduleTaskReminder_skipsChannelWithIdentityButToggleOff() {
+    void scheduleReminder_skipsChannelWithIdentityButToggleOff() {
         when(userService.getSettings(userId)).thenReturn(settings(true, false, false, false));
 
-        notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1), false);
+        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
 
         verify(scheduledNotificationRepository, never()).save(any());
     }
 
     @Test
-    void scheduleTaskReminder_pushToggleOff_doesNotEvenLookUpSubscriptions() {
+    void scheduleReminder_pushToggleOff_doesNotEvenLookUpSubscriptions() {
         // Как и с телеграмом/почтой: выключенный переключатель не должен даже
         // смотреть на подписки — иначе при включённом он бы их нашёл.
         when(userService.getSettings(userId)).thenReturn(settings(true, false, false, false));
 
-        notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1), false);
+        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
 
         verify(scheduledNotificationRepository, never()).save(any());
         verify(pushSubscriptionRepository, never()).findByUserId(any());
     }
 
     @Test
-    void scheduleTaskReminder_createsOneRowPerPushSubscription() {
+    void scheduleReminder_createsOneRowPerPushSubscription() {
         // Один пользователь — рабочий компьютер и телефон: обе подписки должны
         // получить своё напоминание, отказ одной не мешает другой.
         UUID subscriptionA = UUID.randomUUID();
@@ -272,7 +253,7 @@ class NotificationServiceImplTest {
         when(pushSubscriptionRepository.findByUserId(userId)).thenReturn(List.of(
                 subscription(subscriptionA), subscription(subscriptionB)));
 
-        notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1), false);
+        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
 
         ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
         verify(scheduledNotificationRepository, times(2)).save(captor.capture());
@@ -283,12 +264,12 @@ class NotificationServiceImplTest {
     }
 
     @Test
-    void scheduleTaskReminder_noPushSubscriptions_noWebPushRow() {
+    void scheduleReminder_noPushSubscriptions_noWebPushRow() {
         when(userService.findExternalId(userId, IdentityProvider.TELEGRAM)).thenReturn(Optional.of("12345"));
         when(userService.findExternalId(userId, IdentityProvider.EMAIL)).thenReturn(Optional.empty());
         when(pushSubscriptionRepository.findByUserId(userId)).thenReturn(List.of());
 
-        notificationService.scheduleTaskReminder(userId, taskId, "задача", OffsetDateTime.now().plusDays(1), false);
+        notificationService.scheduleReminder(userId, taskId, "задача", fireAt, fireAt);
 
         ArgumentCaptor<ScheduledNotificationJpaEntity> captor = ArgumentCaptor.forClass(ScheduledNotificationJpaEntity.class);
         verify(scheduledNotificationRepository).save(captor.capture());

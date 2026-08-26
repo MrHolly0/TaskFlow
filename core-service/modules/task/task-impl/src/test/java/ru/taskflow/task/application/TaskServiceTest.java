@@ -9,7 +9,6 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
 import ru.taskflow.audit.api.AuditEventType;
 import ru.taskflow.audit.api.AuditService;
-import ru.taskflow.notify.api.NotificationService;
 import ru.taskflow.task.api.TaskPriority;
 import ru.taskflow.task.api.TaskStatus;
 import ru.taskflow.task.api.dto.CreateTaskRequest;
@@ -41,7 +40,7 @@ class TaskServiceTest {
     @Mock
     private TaskMapper taskMapper;
     @Mock
-    private NotificationService notificationService;
+    private TaskReminderService taskReminderService;
     @Mock
     private AuditService auditService;
     @Mock
@@ -71,7 +70,10 @@ class TaskServiceTest {
     }
 
     @Test
-    void create_withDeadline_schedulesReminder() {
+    void create_delegatesReminderPlanningToTaskReminderService() {
+        // Что именно решается (планировать ли, когда, сколько) — забота
+        // TaskReminderService, проверено его собственными тестами; здесь
+        // важно только то, что TaskServiceImpl ему это делегирует.
         var deadline = OffsetDateTime.parse("2026-08-25T10:00:00Z");
         var request = new CreateTaskRequest("сдать курсовую", null, null, deadline, null, null, List.of(), null, null);
         var entity = new TaskJpaEntity();
@@ -86,24 +88,7 @@ class TaskServiceTest {
 
         taskService.create(userId, request);
 
-        verify(notificationService).scheduleTaskReminder(userId, taskId, "сдать курсовую", deadline, false);
-    }
-
-    @Test
-    void create_withoutDeadline_doesNotScheduleReminder() {
-        var request = new CreateTaskRequest("купить молоко", null, null, null, null, null, List.of(), null, null);
-        var entity = new TaskJpaEntity();
-        entity.setId(taskId);
-        entity.setUserId(userId);
-        entity.setTitle("купить молоко");
-        var response = mockResponse(taskId, "купить молоко");
-
-        when(taskRepository.save(any())).thenReturn(entity);
-        when(taskMapper.toResponse(entity)).thenReturn(response);
-
-        taskService.create(userId, request);
-
-        verify(notificationService, never()).scheduleTaskReminder(any(), any(), any(), any(), anyBoolean());
+        verify(taskReminderService).planForDeadline(userId, entity);
     }
 
     @Test
@@ -263,7 +248,7 @@ class TaskServiceTest {
 
         taskService.complete(userId, taskId);
 
-        verify(notificationService).cancelTaskNotifications(taskId);
+        verify(taskReminderService).cancelForTask(taskId);
     }
 
     @Test
@@ -284,7 +269,7 @@ class TaskServiceTest {
 
         taskService.delete(userId, taskId);
 
-        verify(notificationService).cancelTaskNotifications(taskId);
+        verify(taskReminderService).cancelForTask(taskId);
     }
 
     @Test
@@ -299,8 +284,8 @@ class TaskServiceTest {
 
         taskService.update(userId, taskId, request);
 
-        verify(notificationService).cancelTaskNotifications(taskId);
-        verify(notificationService, never()).scheduleTaskReminder(any(), any(), any(), any(), anyBoolean());
+        verify(taskReminderService).cancelForTask(taskId);
+        verify(taskReminderService, never()).planForDeadline(any(), any());
     }
 
     @Test
@@ -315,7 +300,7 @@ class TaskServiceTest {
 
         taskService.update(userId, taskId, request);
 
-        verify(notificationService, never()).cancelTaskNotifications(any());
+        verify(taskReminderService, never()).cancelForTask(any());
     }
 
     @Test

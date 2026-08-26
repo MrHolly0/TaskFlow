@@ -8,8 +8,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.taskflow.audit.api.AuditEventType;
 import ru.taskflow.audit.api.AuditService;
-import ru.taskflow.notify.api.NotificationService;
-import ru.taskflow.task.api.TaskPriority;
 import ru.taskflow.task.api.TaskService;
 import ru.taskflow.task.api.TaskStatus;
 import ru.taskflow.task.api.dto.CreateTaskRequest;
@@ -56,7 +54,7 @@ public class TaskServiceImpl implements TaskService {
     private final GroupRepository groupRepository;
     private final TagRepository tagRepository;
     private final TaskMapper taskMapper;
-    private final NotificationService notificationService;
+    private final TaskReminderService taskReminderService;
     private final AuditService auditService;
     private final GroupStyleResolver groupStyleResolver;
 
@@ -92,10 +90,7 @@ public class TaskServiceImpl implements TaskService {
         TaskJpaEntity savedTask = taskRepository.save(task);
         auditService.record(userId, savedTask.getId(), AuditEventType.CREATED, null);
 
-        if (savedTask.getDeadline() != null) {
-            notificationService.scheduleTaskReminder(userId, savedTask.getId(), savedTask.getTitle(),
-                    savedTask.getDeadline(), savedTask.getPriority() == TaskPriority.URGENT);
-        }
+        taskReminderService.planForDeadline(userId, savedTask);
 
         return taskMapper.toResponse(savedTask);
     }
@@ -201,13 +196,10 @@ public class TaskServiceImpl implements TaskService {
 
         boolean becameTerminal = request.status() == TaskStatus.DONE || request.status() == TaskStatus.CANCELLED;
         if (becameTerminal) {
-            cancelReminders(taskId);
+            taskReminderService.cancelForTask(taskId);
         } else if (deadlineChanged || titleChanged) {
-            cancelReminders(taskId);
-            if (updatedTask.getDeadline() != null) {
-                notificationService.scheduleTaskReminder(userId, taskId, updatedTask.getTitle(),
-                        updatedTask.getDeadline(), updatedTask.getPriority() == TaskPriority.URGENT);
-            }
+            taskReminderService.cancelForTask(taskId);
+            taskReminderService.planForDeadline(userId, updatedTask);
         }
 
         return taskMapper.toResponse(updatedTask);
@@ -231,7 +223,7 @@ public class TaskServiceImpl implements TaskService {
         task.setStatus(TaskStatus.DONE);
         task.setCompletedAt(OffsetDateTime.now());
         taskRepository.save(task);
-        cancelReminders(taskId);
+        taskReminderService.cancelForTask(taskId);
         auditService.record(userId, taskId, AuditEventType.STATUS_CHANGED, Map.of("status", "DONE"));
     }
 
@@ -253,18 +245,8 @@ public class TaskServiceImpl implements TaskService {
         task.setDeleted(true);
         task.setDeletedAt(OffsetDateTime.now());
         taskRepository.save(task);
-        cancelReminders(taskId);
+        taskReminderService.cancelForTask(taskId);
         auditService.record(userId, taskId, AuditEventType.DELETED, null);
-    }
-
-    /**
-     * Отменяет запланированные напоминания задачи.
-     *
-     * Единая точка для всех переходов, после которых задача перестаёт быть
-     * актуальной: завершение, отмена, удаление, смена дедлайна/названия.
-     */
-    private void cancelReminders(UUID taskId) {
-        notificationService.cancelTaskNotifications(taskId);
     }
 
     private List<TagJpaEntity> resolveOrCreateTags(UUID userId, List<String> tagNames) {
@@ -485,12 +467,17 @@ public class TaskServiceImpl implements TaskService {
 
         TaskJpaEntity savedTask = taskRepository.save(task);
 
-        if (task.getDeadline() != null) {
-            notificationService.scheduleTaskReminder(userId, savedTask.getId(), savedTask.getTitle(),
-                    task.getDeadline(), savedTask.getPriority() == TaskPriority.URGENT);
-        }
+        taskReminderService.planForDeadline(userId, savedTask);
 
         return taskMapper.toResponse(savedTask);
+    }
+
+    @Override
+    @Transactional
+    public void scheduleReminder(UUID userId, UUID taskId, OffsetDateTime fireAt) {
+        var task = taskRepository.findByIdAndUserId(taskId, userId)
+                .orElseThrow(() -> new TaskNotFoundException(taskId));
+        taskReminderService.createStandaloneReminder(userId, task, fireAt);
     }
 
     @Override

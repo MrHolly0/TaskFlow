@@ -12,6 +12,7 @@ import ru.taskflow.task.api.dto.TaskTransferResult;
 import ru.taskflow.task.api.dto.UpdateTaskRequest;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -26,6 +27,13 @@ public interface TaskService {
     TaskResponse update(UUID userId, UUID taskId, UpdateTaskRequest request);
 
     void complete(UUID userId, UUID taskId);
+
+    /**
+     * Напоминание на конкретное время независимо от срока задачи (Б2) — срок
+     * обязательство перед кем-то, напоминание просьба к себе, и задача может
+     * не иметь дедлайна вовсе. Не меняет deadline задачи.
+     */
+    void scheduleReminder(UUID userId, UUID taskId, OffsetDateTime fireAt);
 
     void delete(UUID userId, UUID taskId);
 

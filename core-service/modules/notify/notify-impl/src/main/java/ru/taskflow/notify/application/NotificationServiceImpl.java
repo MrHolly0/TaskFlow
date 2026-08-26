@@ -33,11 +33,6 @@ import java.util.UUID;
 @Slf4j
 public class NotificationServiceImpl implements NotificationService {
 
-    // Совпадает с подписью в настройках («Доп. за 15 мин для срочных») —
-    // отдельного поля под этот отступ в UserSettingsDto нет, urgentExtraReminder
-    // только включает/выключает саму идею дополнительного напоминания.
-    private static final int URGENT_EXTRA_MINUTES = 15;
-
     private final ScheduledNotificationRepository scheduledNotificationRepository;
     private final PushSubscriptionRepository pushSubscriptionRepository;
     private final UserService userService;
@@ -45,14 +40,10 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional
-    public void scheduleTaskReminder(UUID userId, UUID taskId, String title, OffsetDateTime deadline, boolean urgent) {
-        if (deadline == null) {
-            return;
-        }
-
+    public void scheduleReminder(UUID userId, UUID taskId, String title, OffsetDateTime fireAt, OffsetDateTime deadline) {
         OffsetDateTime now = OffsetDateTime.now();
-        if (deadline.isBefore(now)) {
-            log.debug("Deadline is in the past, skipping notification for task: {}", taskId);
+        if (fireAt.isBefore(now)) {
+            log.debug("Fire time is in the past, skipping notification for task: {}", taskId);
             return;
         }
 
@@ -96,32 +87,10 @@ public class NotificationServiceImpl implements NotificationService {
         ZoneId timezone = userService.getTimezone(userId);
         String payload = buildPayload(title, deadline, timezone);
 
-        // Расчётное время могло уже пройти, а сам срок — ещё нет (например,
-        // «за час» на задаче с дедлайном через 30 минут): тогда напоминаем в
-        // момент срока, а не через несколько секунд после запроса — иначе
-        // «через 30 минут проверить духовку» будит немедленно вместо того,
-        // чтобы подождать нужные полчаса. Если прошёл и сам срок — сюда не
-        // попадаем вовсе, см. проверку в начале метода.
-        OffsetDateTime computedFireAt = deadline.minusMinutes(settings.defaultReminderMinutes());
-        OffsetDateTime fireAt = computedFireAt.isBefore(now) ? deadline : computedFireAt;
-        scheduleForDestinations(userId, taskId, destinations, fireAt, payload);
-
-        if (urgent && settings.urgentExtraReminder()) {
-            OffsetDateTime computedUrgentFireAt = deadline.minusMinutes(URGENT_EXTRA_MINUTES);
-            OffsetDateTime urgentFireAt = computedUrgentFireAt.isBefore(now) ? deadline : computedUrgentFireAt;
-            // Не дублируем, если оба напоминания клэмпнуло в одну и ту же точку.
-            if (!urgentFireAt.isEqual(fireAt)) {
-                scheduleForDestinations(userId, taskId, destinations, urgentFireAt, payload);
-            }
-        }
-    }
-
-    // Строка на адресата, а не веер внутри одной строки: sent и retry_count
-    // живут в строке, и только так отказ одного канала или одной подписки
-    // (например письмо не ушло, или одно устройство отписалось) не мешает
-    // доставке по остальным.
-    private void scheduleForDestinations(UUID userId, UUID taskId, Map<NotificationChannel, List<String>> destinations,
-                                          OffsetDateTime fireAt, String payload) {
+        // Строка на адресата, а не веер внутри одной строки: sent и retry_count
+        // живут в строке, и только так отказ одного канала или одной подписки
+        // (например письмо не ушло, или одно устройство отписалось) не мешает
+        // доставке по остальным.
         destinations.forEach((channel, ids) ->
                 ids.forEach(destination -> scheduleForChannel(userId, taskId, channel, destination, fireAt, payload)));
     }
@@ -171,7 +140,9 @@ public class NotificationServiceImpl implements NotificationService {
         try {
             Map<String, Object> payload = new HashMap<>();
             payload.put("taskTitle", title);
-            payload.put("deadline", deadline.toString());
+            // null — у задачи нет срока (Б2): DeadlineHumanizer и оба отправителя
+            // в notification-worker уже умеют опускать строку дедлайна для null.
+            payload.put("deadline", deadline != null ? deadline.toString() : null);
             payload.put("timezone", timezone.getId());
             return objectMapper.writeValueAsString(payload);
         } catch (Exception e) {

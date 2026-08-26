@@ -5,11 +5,14 @@ import java.util.UUID;
 
 public interface NotificationService {
     /**
-     * urgent — приоритет задачи URGENT: при включённом в настройках
-     * urgentExtraReminder планирует дополнительное напоминание за 15 минут
-     * до срока, в дополнение к обычному.
+     * fireAt — когда именно отправить, уже посчитано вызывающей стороной:
+     * этот метод больше не выводит время напоминания из срока задачи (Б1/Б2
+     * — сколько будет напоминаний и когда, решает планировщик над таблицей
+     * reminders, не этот метод). deadline — только для текста напоминания
+     * («Дедлайн: завтра в 9:00»), допускает null — у задачи может не быть
+     * срока вовсе (Б2).
      */
-    void scheduleTaskReminder(UUID userId, UUID taskId, String title, OffsetDateTime deadline, boolean urgent);
+    void scheduleReminder(UUID userId, UUID taskId, String title, OffsetDateTime fireAt, OffsetDateTime deadline);
     void cancelTaskNotifications(UUID taskId);
 
     /**

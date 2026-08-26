@@ -18,6 +18,7 @@ import ru.taskflow.task.api.TaskStatus;
 import ru.taskflow.task.api.dto.CreateTaskRequest;
 import ru.taskflow.task.api.dto.DigestResponse;
 import ru.taskflow.task.api.dto.FocusResponse;
+import ru.taskflow.task.api.dto.ScheduleReminderRequest;
 import ru.taskflow.task.api.dto.TaskFilterRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
 import ru.taskflow.task.api.dto.TaskStatsResponse;
@@ -85,6 +86,17 @@ public class TaskController {
             @AuthenticationPrincipal AuthenticatedUser user
     ) {
         taskService.complete(user.userId(), id);
+    }
+
+    @PostMapping("/{id}/reminders")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "Добавить напоминание", description = "Планирует напоминание на конкретное время независимо от срока задачи")
+    public void scheduleReminder(
+            @PathVariable java.util.UUID id,
+            @RequestBody @Valid ScheduleReminderRequest request,
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) {
+        taskService.scheduleReminder(user.userId(), id, request.fireAt());
     }
 
     @DeleteMapping("/{id}")
