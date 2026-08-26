@@ -25,6 +25,7 @@ declare global {
         expand: () => void;
         disableVerticalSwipes?: () => void;
         safeAreaInset?: TelegramSafeAreaInset;
+        contentSafeAreaInset?: TelegramSafeAreaInset;
         onEvent?: (eventType: string, callback: () => void) => void;
       };
     };
@@ -172,17 +173,22 @@ export const clearAuthTokens = () => {
   localStorage.removeItem('refresh_token');
 };
 
-// env(safe-area-inset-*) в Telegram не работает — там свои поля safeAreaInset,
-// и меняются они на лету (поворот экрана, вход/выход из fullscreen), поэтому
-// пишем их в те же CSS-переменные не один раз, а по событиям.
+// env(safe-area-inset-*) в Telegram не работает — там свои поля. safeAreaInset —
+// вырез устройства (notch, home indicator), contentSafeAreaInset — отступ под
+// собственную панель Telegram (кнопки Close/… в fullscreen), они независимы и
+// складываются. Оба меняются на лету (поворот экрана, вход/выход из fullscreen),
+// поэтому пишем их в CSS-переменные не один раз, а по событиям.
 const applyTelegramSafeArea = () => {
-  const inset = window.Telegram?.WebApp?.safeAreaInset;
-  if (!inset) return;
+  const twa = window.Telegram?.WebApp;
+  const device = twa?.safeAreaInset;
+  const content = twa?.contentSafeAreaInset;
+  if (!device && !content) return;
   const root = document.documentElement.style;
-  root.setProperty('--safe-top', `${inset.top}px`);
-  root.setProperty('--safe-bottom', `${inset.bottom}px`);
-  root.setProperty('--safe-left', `${inset.left}px`);
-  root.setProperty('--safe-right', `${inset.right}px`);
+  const side = (key: keyof TelegramSafeAreaInset) => (device?.[key] ?? 0) + (content?.[key] ?? 0);
+  root.setProperty('--safe-top', `${side('top')}px`);
+  root.setProperty('--safe-bottom', `${side('bottom')}px`);
+  root.setProperty('--safe-left', `${side('left')}px`);
+  root.setProperty('--safe-right', `${side('right')}px`);
 };
 
 export const initializeTelegramWebApp = () => {
@@ -193,6 +199,7 @@ export const initializeTelegramWebApp = () => {
   twa.disableVerticalSwipes?.();
   applyTelegramSafeArea();
   twa.onEvent?.('safeAreaChanged', applyTelegramSafeArea);
+  twa.onEvent?.('contentSafeAreaChanged', applyTelegramSafeArea);
   twa.onEvent?.('fullscreenChanged', applyTelegramSafeArea);
 };
 
