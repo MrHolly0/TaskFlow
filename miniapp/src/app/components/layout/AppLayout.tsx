@@ -62,7 +62,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const displayName = useDisplayName();
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen bg-background pl-[var(--safe-left)] pr-[var(--safe-right)]">
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex lg:w-56 lg:flex-col border-r border-border">
         <div className="flex h-14 items-center border-b border-border px-5 flex-shrink-0">
@@ -109,7 +109,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Main Content */}
       <div className="flex flex-1 flex-col min-w-0">
         {/* Top Bar */}
-        <header className="flex h-14 items-center justify-between border-b border-border px-4 lg:px-5 flex-shrink-0">
+        <header className="flex min-h-14 items-center justify-between border-b border-border px-4 lg:px-5 pt-[var(--safe-top)] flex-shrink-0">
           <div className="lg:hidden">
             <MuninLogo variant="header" className="h-5 w-auto text-foreground" />
           </div>
@@ -158,7 +158,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6 pb-24 lg:pb-8">
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6 pb-[calc(6rem+var(--safe-bottom))] lg:pb-8">
           <NotificationChannelPrompt />
           {children}
         </main>
@@ -168,14 +168,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         {location.pathname !== '/assistant' && (
           <button
             onClick={() => setQuickInputOpen(true)}
-            className="lg:hidden fixed bottom-20 right-4 z-40 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center active:scale-95 transition-transform cursor-pointer"
+            className="lg:hidden fixed bottom-[calc(5rem+var(--safe-bottom))] right-4 z-40 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center active:scale-95 transition-transform cursor-pointer"
           >
             <IconPlus className="h-6 w-6" />
           </button>
         )}
 
         {/* Mobile Bottom Navigation */}
-        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 flex items-center border-t border-border bg-background/95 backdrop-blur">
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 flex items-center border-t border-border bg-background/95 backdrop-blur pb-[var(--safe-bottom)] pl-[var(--safe-left)] pr-[var(--safe-right)]">
           {[
             { href: '/', icon: IconSparkles, label: 'Сейчас' },
             { href: '/assistant', icon: IconMessageCircle, label: 'Ассистент' },

@@ -9,6 +9,13 @@ interface AuthResponse {
   userId: string;
 }
 
+interface TelegramSafeAreaInset {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
 declare global {
   interface Window {
     Telegram?: {
@@ -17,6 +24,8 @@ declare global {
         ready: () => void;
         expand: () => void;
         disableVerticalSwipes?: () => void;
+        safeAreaInset?: TelegramSafeAreaInset;
+        onEvent?: (eventType: string, callback: () => void) => void;
       };
     };
   }
@@ -163,12 +172,28 @@ export const clearAuthTokens = () => {
   localStorage.removeItem('refresh_token');
 };
 
+// env(safe-area-inset-*) в Telegram не работает — там свои поля safeAreaInset,
+// и меняются они на лету (поворот экрана, вход/выход из fullscreen), поэтому
+// пишем их в те же CSS-переменные не один раз, а по событиям.
+const applyTelegramSafeArea = () => {
+  const inset = window.Telegram?.WebApp?.safeAreaInset;
+  if (!inset) return;
+  const root = document.documentElement.style;
+  root.setProperty('--safe-top', `${inset.top}px`);
+  root.setProperty('--safe-bottom', `${inset.bottom}px`);
+  root.setProperty('--safe-left', `${inset.left}px`);
+  root.setProperty('--safe-right', `${inset.right}px`);
+};
+
 export const initializeTelegramWebApp = () => {
   const twa = window.Telegram?.WebApp;
   if (!twa) return;
   twa.ready();
   twa.expand();
   twa.disableVerticalSwipes?.();
+  applyTelegramSafeArea();
+  twa.onEvent?.('safeAreaChanged', applyTelegramSafeArea);
+  twa.onEvent?.('fullscreenChanged', applyTelegramSafeArea);
 };
 
 export const getUserFromToken = (token: string): { id: string; username: string } | null => {
