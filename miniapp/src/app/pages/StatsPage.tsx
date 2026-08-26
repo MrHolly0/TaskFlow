@@ -4,49 +4,57 @@ import { useTaskStats } from '@/lib/hooks/useTasks';
 import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
 import { isSameZonedDay, zonedDayKey } from '@/lib/utils';
 
+/** Склонение для 2–4 («2 активных дня») и остальных случаев. */
+function pluralDays(count: number): string {
+  const tail = count % 10;
+  const teen = count % 100;
+  if (tail === 1 && teen !== 11) return 'активный день';
+  if (tail >= 2 && tail <= 4 && (teen < 12 || teen > 14)) return 'активных дня';
+  return 'активных дней';
+}
+
 export function StatsPage() {
   const { data: statsTasks = [] } = useTaskStats();
   const { timezone, isReady: timezoneReady } = useUserTimezone();
 
   const now = new Date();
-  const weekAgo = new Date(now);
-  weekAgo.setDate(weekAgo.getDate() - 7);
 
-  const created = statsTasks.filter((t) => new Date(t.createdAt) >= weekAgo).length;
-  const done = statsTasks.filter((t) => t.completedAt && new Date(t.completedAt) >= weekAgo).length;
+  // Одно окно на всю страницу: последние семь календарных дней в поясе пользователя.
+  // Карточки и график считаются по нему же, иначе итоги расходятся со столбцами.
+  const windowDays = timezoneReady
+    ? Array.from({ length: 7 }, (_, i) => {
+        const date = new Date();
+        date.setDate(date.getDate() - (6 - i));
+        return date;
+      })
+    : [];
+
+  const windowKeys = new Set(windowDays.map((date) => zonedDayKey(date, timezone)));
+  const inWindow = (value?: string | null) =>
+    !!value && windowKeys.has(zonedDayKey(value, timezone));
+
+  const created = statsTasks.filter((t) => inWindow(t.createdAt)).length;
+  const done = statsTasks.filter((t) => inWindow(t.completedAt)).length;
   const overdue = statsTasks.filter((t) =>
     t.deadline && new Date(t.deadline) < now && t.status !== 'DONE' && t.status !== 'CANCELLED'
   ).length;
 
-  const activityData = timezoneReady ? Array.from({ length: 7 }, (_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (6 - i));
+  const activityData = windowDays.map((date) => ({
+    name: date.toLocaleDateString('ru-RU', { weekday: 'short', timeZone: timezone }),
+    создано: statsTasks.filter((task) => isSameZonedDay(task.createdAt, date, timezone)).length,
+    сделано: statsTasks.filter(
+      (task) => task.completedAt && isSameZonedDay(task.completedAt, date, timezone)
+    ).length,
+  }));
 
-    const totalDay = statsTasks.filter((task) =>
-      isSameZonedDay(task.createdAt, date, timezone)
-    ).length;
-
-    const completedDay = statsTasks.filter((task) =>
-      task.completedAt && isSameZonedDay(task.completedAt, date, timezone)
-    ).length;
-
-    return {
-      name: date.toLocaleDateString('ru-RU', { weekday: 'short', timeZone: timezone }),
-      создано: totalDay,
-      сделано: completedDay,
-    };
-  }) : [];
-
-  const activeDays = timezoneReady
-    ? new Set(statsTasks.map((t) => zonedDayKey(t.createdAt, timezone))).size
-    : 0;
+  const activeDays = activityData.filter((d) => d.создано > 0 || d.сделано > 0).length;
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <h1 className="text-2xl font-semibold">Статистика</h1>
 
       <div>
-        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-3">Эта неделя</h2>
+        <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-3">За 7 дней</h2>
         <div className="grid grid-cols-3 gap-3">
           <Card className="p-5 text-center">
             <div className="text-3xl font-bold">{created}</div>
@@ -67,8 +75,8 @@ export function StatsPage() {
         <div className="flex items-center gap-4">
           <div className="text-4xl">🔥</div>
           <div>
-            <div className="text-xl font-semibold">{activeDays} активных дней</div>
-            <p className="text-sm text-muted-foreground">Не пропускай завтра!</p>
+            <div className="text-xl font-semibold">{activeDays} {pluralDays(activeDays)}</div>
+            <p className="text-sm text-muted-foreground">Отмечено за последние 7 дней</p>
           </div>
         </div>
       </Card>
@@ -103,7 +111,7 @@ export function StatsPage() {
             <Legend
               wrapperStyle={{ fontSize: '12px', color: 'var(--muted-foreground)' }}
             />
-            <Bar dataKey="создано" fill="var(--muted-foreground)" fillOpacity={0.3} radius={[4, 4, 0, 0]} />
+            <Bar dataKey="создано" fill="var(--chart-created)" radius={[4, 4, 0, 0]} />
             <Bar dataKey="сделано" fill="var(--primary)" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
