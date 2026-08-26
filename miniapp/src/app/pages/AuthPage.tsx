@@ -135,7 +135,7 @@ export function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+    <div className="min-h-dvh bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <motion.div
           initial={{ opacity: 0, y: 24 }}

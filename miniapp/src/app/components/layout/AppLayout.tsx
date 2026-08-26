@@ -62,7 +62,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const displayName = useDisplayName();
 
   return (
-    <div className="flex h-screen bg-background pl-[var(--safe-left)] pr-[var(--safe-right)]">
+    <div className="flex h-dvh bg-background pl-[var(--safe-left)] pr-[var(--safe-right)]">
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex lg:w-56 lg:flex-col border-r border-border">
         <div className="flex h-14 items-center border-b border-border px-5 flex-shrink-0">
