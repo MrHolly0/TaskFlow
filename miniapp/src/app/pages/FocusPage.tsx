@@ -67,10 +67,11 @@ interface FocusTaskCardProps {
   timezone: string;
   onComplete: (id: string) => void;
   onSnooze: (id: string) => void;
+  onStart: (id: string) => void;
   onClick: (task: Task) => void;
 }
 
-function FocusTaskCard({ task, index, timezone, onComplete, onSnooze, onClick }: FocusTaskCardProps) {
+function FocusTaskCard({ task, index, timezone, onComplete, onSnooze, onStart, onClick }: FocusTaskCardProps) {
   const [completing, setCompleting] = useState(false);
   useMinuteTick();
 
@@ -141,6 +142,15 @@ function FocusTaskCard({ task, index, timezone, onComplete, onSnooze, onClick }:
           >
             ✓ Сделано
           </Button>
+          {task.status === 'TODO' && (
+            <Button
+              variant="outline"
+              className="flex-1 h-10"
+              onClick={() => onStart(task.id)}
+            >
+              Начать
+            </Button>
+          )}
           <Button
             variant="outline"
             className="flex-1 h-10"
@@ -176,8 +186,20 @@ export function FocusPage() {
   const showingUpcoming = todayDone && upcomingTasks.length > 0;
   const tasksToShow = showingUpcoming ? upcomingTasks : focusTasks;
 
-  const pendingCount = allTasks.filter((t: any) => t.status !== 'DONE' && t.status !== 'CANCELLED').length;
-  const remainingCount = Math.max(0, pendingCount - tasksToShow.length);
+  // Счётчик закрытого, не невыполненного: по исследованию задач без срока,
+  // откладывание — способ управления эмоциями, ведущие причины — страх
+  // неудачи и перфекционизм. Счётчик невыполненного питает именно эти
+  // причины, счётчик сделанного — нет.
+  const closedTodayCount = allTasks.filter((t: any) => {
+    if (!t.completedAt) return false;
+    const completedZoned = toZonedTime(new Date(t.completedAt), timezone);
+    const nowZoned = toZonedTime(new Date(), timezone);
+    return (
+      completedZoned.getFullYear() === nowZoned.getFullYear() &&
+      completedZoned.getMonth() === nowZoned.getMonth() &&
+      completedZoned.getDate() === nowZoned.getDate()
+    );
+  }).length;
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -209,6 +231,10 @@ export function FocusPage() {
 
   const handleCompleteTask = (id: string) => {
     completeTask(id);
+  };
+
+  const handleStartTask = (id: string) => {
+    updateTask({ id, status: 'IN_PROGRESS' });
   };
 
   if (isLoading || !timezoneReady) {
@@ -278,7 +304,7 @@ export function FocusPage() {
             to="/all"
             className="flex-shrink-0 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            <span>{remainingCount > 0 ? `Еще ${remainingCount}` : 'Все задачи'}</span>
+            <span>{closedTodayCount > 0 ? `Закрыто ${closedTodayCount}` : 'Все задачи'}</span>
             <IconArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
@@ -311,6 +337,7 @@ export function FocusPage() {
                 timezone={timezone}
                 onComplete={handleCompleteTask}
                 onSnooze={handleSnooze}
+                onStart={handleStartTask}
                 onClick={handleOpenTask}
               />
             ))}

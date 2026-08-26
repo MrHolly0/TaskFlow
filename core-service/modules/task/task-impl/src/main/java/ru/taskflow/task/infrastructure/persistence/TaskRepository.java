@@ -53,6 +53,7 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
               WHEN 'NORMAL' THEN 2
               ELSE 3
             END,
+            CASE WHEN t.status = ru.taskflow.task.api.TaskStatus.IN_PROGRESS THEN 0 ELSE 1 END,
             CASE WHEN t.deadline IS NULL THEN 1 ELSE 0 END,
             t.deadline
             """)
