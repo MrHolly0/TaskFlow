@@ -83,6 +83,12 @@ class AssistantServiceImplTest {
         return new AgentOutcome(actions, List.of(), clarification, List.of(), assistantText, window, 1, llmFailed);
     }
 
+    private AgentOutcome emptyWindowOutcomeWithTokens(int inputTokens, int outputTokens) {
+        TaskContextWindow window = new TaskContextWindow("", java.util.Map.of(), java.util.Map.of());
+        return new AgentOutcome(List.of(), List.of(), null, List.of(), null, window, 1, false, false, null,
+                inputTokens, outputTokens);
+    }
+
     private ProposalActionJpaEntity action(int ordinal, boolean accepted) {
         ProposalActionJpaEntity action = new ProposalActionJpaEntity();
         action.setOrdinal(ordinal);
@@ -142,12 +148,15 @@ class AssistantServiceImplTest {
         verify(proposalRepository, never()).save(any());
         assertThat(result.status()).isEqualTo(ProposalStatus.FAILED);
         assertThat(result.sourceText()).isEqualTo("хм");
+        // обращения к модели не было (llmFailed) — расход честно нулевой
+        assertThat(result.inputTokens()).isZero();
+        assertThat(result.outputTokens()).isZero();
     }
 
     @Test
     void handleText_savesRawTextTaskWhenOutcomeEmpty() {
         when(userService.getTimezone(userId)).thenReturn(zone);
-        AgentOutcome outcome = emptyWindowOutcome(List.of(), null, null, false);
+        AgentOutcome outcome = emptyWindowOutcomeWithTokens(1500, 200);
         when(agentLoop.run(userId, "непонятно что", zone, AssistantEntryPoint.CHAT)).thenReturn(outcome);
         when(taskService.createQuick(eq(userId), any())).thenReturn(taskResponse());
 
@@ -156,6 +165,10 @@ class AssistantServiceImplTest {
         verify(taskService).createQuick(eq(userId), any());
         verify(proposalRepository, never()).save(any());
         assertThat(result.status()).isEqualTo(ProposalStatus.FAILED);
+        // модель ответила (llmFailed=false), просто без действий — расход не нулевой,
+        // это отличает осознанный отказ действовать от недоступности инфраструктуры
+        assertThat(result.inputTokens()).isEqualTo(1500);
+        assertThat(result.outputTokens()).isEqualTo(200);
     }
 
     @Test
@@ -324,6 +337,11 @@ class AssistantServiceImplTest {
         verify(agentLoop, never()).run(any(), any(), any(), any());
         verify(proposalRepository, never()).save(any());
         assertThat(result.status()).isEqualTo(ProposalStatus.FAILED);
+        // обращения к модели не было вовсе — речь не распозналась до запуска AgentLoop
+        assertThat(result.inputTokens()).isZero();
+        assertThat(result.outputTokens()).isZero();
+        assertThat(result.totalLatencyMs()).isZero();
+        assertThat(result.modelPasses()).isZero();
     }
 
     @Test

@@ -37,8 +37,13 @@ import java.util.UUID;
 
 /**
  * Ведущий принцип части 2в: сказанное пользователем не теряется никогда. Отказ LLM
- * и пустой ответ модели деградируют одинаково — реплика превращается в отдельную
- * задачу через createQuick, а не пропадает вместе с несостоявшимся предложением.
+ * и пустой ответ модели деградируют одинаково по поведению — реплика в обоих случаях
+ * превращается в отдельную задачу через createQuick, а не пропадает вместе с
+ * несостоявшимся предложением. Но в отчётности они различимы: degrade() переносит в
+ * Proposal токены и задержки из AgentOutcome, если он есть (обращение к модели
+ * состоялось, просто без действий), и нули, если его нет (обращения не было вовсе —
+ * например, речь не распозналась до запуска AgentLoop). Иначе измерение путает отказ
+ * инфраструктуры с осознанным отказом модели действовать.
  */
 @Service
 @RequiredArgsConstructor
@@ -73,7 +78,7 @@ public class AssistantServiceImpl implements AssistantService {
     public Proposal handleVoice(UUID userId, byte[] audio, AssistantChannel channel, AssistantEntryPoint entryPoint) {
         String text = nlpGatewayService.transcribe(audio);
         if (isBlank(text)) {
-            return degrade(userId, VOICE_TRANSCRIPTION_FAILED_TEXT, TaskSource.BOT_VOICE);
+            return degrade(userId, VOICE_TRANSCRIPTION_FAILED_TEXT, TaskSource.BOT_VOICE, null);
         }
 
         ZoneId zone = userService.getTimezone(userId);
@@ -84,7 +89,7 @@ public class AssistantServiceImpl implements AssistantService {
     private Proposal toProposal(UUID userId, String text, AssistantChannel channel, String inputKind,
                                  AgentOutcome outcome, TaskSource degradedSource) {
         if (outcome.llmFailed() || isEmpty(outcome)) {
-            return degrade(userId, text, degradedSource);
+            return degrade(userId, text, degradedSource, outcome);
         }
 
         ProposalJpaEntity entity = proposalFactory.from(userId, text, channel, inputKind, outcome);
@@ -231,14 +236,30 @@ public class AssistantServiceImpl implements AssistantService {
         return channel == AssistantChannel.WEB ? TaskSource.WEB : TaskSource.BOT_TEXT;
     }
 
-    private Proposal degrade(UUID userId, String text, TaskSource source) {
+    /**
+     * outcome — null, только если обращения к модели не было вовсе (например,
+     * распознавание речи упало до запуска AgentLoop): тогда токены и задержки
+     * честно нулевые. Если обращение состоялось (модель ответила без действий
+     * или llmFailed), outcome несёт реальный расход — переносим его в Proposal,
+     * иначе стенд измерения примет содержательный ответ модели за деградацию
+     * инфраструктуры.
+     */
+    private Proposal degrade(UUID userId, String text, TaskSource source, AgentOutcome outcome) {
         String title = text.length() > MAX_TITLE_LENGTH ? text.substring(0, MAX_TITLE_LENGTH) : text;
         CreateTaskRequest request = new CreateTaskRequest(title, null, null, null, null, null, null, null, source);
         TaskResponse created = taskService.createQuick(userId, request);
         recordDegradedCreation(userId, created.id());
 
         OffsetDateTime now = OffsetDateTime.now(clock);
-        return new Proposal(null, null, userId, ProposalStatus.FAILED, text, DEGRADATION_EXPLANATION, List.of(), now, now);
+        int inputTokens = outcome != null ? outcome.inputTokens() : 0;
+        int outputTokens = outcome != null ? outcome.outputTokens() : 0;
+        long totalLatencyMs = outcome != null ? outcome.totalLatencyMs() : 0;
+        long firstPassLatencyMs = outcome != null ? outcome.firstPassLatencyMs() : 0;
+        long secondPassLatencyMs = outcome != null ? outcome.secondPassLatencyMs() : 0;
+        int modelPasses = outcome != null ? outcome.passes() : 0;
+        return new Proposal(null, null, userId, ProposalStatus.FAILED, text, DEGRADATION_EXPLANATION, List.of(),
+                now, now, false, null, List.of(), inputTokens, outputTokens, totalLatencyMs, firstPassLatencyMs,
+                secondPassLatencyMs, modelPasses);
     }
 
     private void recordDegradedCreation(UUID userId, UUID taskId) {

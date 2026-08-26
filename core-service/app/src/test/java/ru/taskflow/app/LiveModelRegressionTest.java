@@ -99,10 +99,17 @@ class LiveModelRegressionTest {
 
     private Proposal handleText(UUID userId, String text, AssistantEntryPoint entryPoint) {
         Proposal proposal = assistantService.handleText(userId, text, AssistantChannel.WEB, entryPoint);
+        // Нулевой расход токенов отличает настоящую недоступность модели (обращения
+        // не было или провайдер отказал) от случая, когда модель ответила, но не
+        // предложила ни одного действия — см. AssistantServiceImpl.degrade().
+        boolean modelUnavailable = proposal.inputTokens() == 0 && proposal.outputTokens() == 0;
+        String reason = modelUnavailable
+                ? "Модель недоступна (nlp-worker/Groq)"
+                : "Модель ответила, но не вызвала ни одного действия";
         assertThat(proposal.status())
                 .overridingErrorMessage(
-                        "Модель недоступна (nlp-worker/Groq) — реплика выродилась в деградацию вместо предложения: %s",
-                        proposal.clarification())
+                        "%s — реплика выродилась в деградацию вместо предложения: %s",
+                        reason, proposal.clarification())
                 .isNotEqualTo(ProposalStatus.FAILED);
         return proposal;
     }
