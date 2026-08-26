@@ -348,12 +348,15 @@ export function SettingsPage() {
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground">
+              Применяется, если для задачи не указано другое время напоминания.
+            </p>
           </div>
           <div className="flex items-center justify-between gap-4">
             <div className="flex flex-col gap-1">
               <Label htmlFor="urgent-reminder">Доп. за 15 мин для срочных</Label>
               <p className="text-xs text-muted-foreground">
-                Дополнительное напоминание для срочных задач
+                Дополнительное напоминание для срочных задач, если для задачи не указано иное
               </p>
             </div>
             <Switch
