@@ -17,6 +17,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import ru.taskflow.task.api.TaskStatus;
 
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -76,6 +77,47 @@ class TaskRepositoryTest {
 
         assertThat(withoutCompleted).isEmpty();
         assertThat(withCompleted).extracting(TaskJpaEntity::getTitle).containsExactly("позвонить Марку");
+    }
+
+    @Test
+    void findFocusTasks_returnsTaskWithPastPlannedDate_evenWithoutDeadline() {
+        var userId = UUID.randomUUID();
+        var endOfToday = OffsetDateTime.now().withHour(23).withMinute(59).withSecond(59).withNano(0);
+        var task = newTask(userId, "позвонить юристу", null);
+        task.setPlannedDate(endOfToday.minusDays(3));
+        repository.saveAndFlush(task);
+        entityManager.clear();
+
+        var found = repository.findFocusTasks(userId, TaskStatus.DONE, endOfToday);
+
+        assertThat(found).extracting(TaskJpaEntity::getTitle).containsExactly("позвонить юристу");
+    }
+
+    @Test
+    void findFocusTasks_excludesTaskSnoozedToFutureDay() {
+        var userId = UUID.randomUUID();
+        var endOfToday = OffsetDateTime.now().withHour(23).withMinute(59).withSecond(59).withNano(0);
+        var task = newTask(userId, "отложенная задача", null);
+        task.setPlannedDate(endOfToday.plusDays(1));
+        repository.saveAndFlush(task);
+        entityManager.clear();
+
+        var found = repository.findFocusTasks(userId, TaskStatus.DONE, endOfToday);
+
+        assertThat(found).isEmpty();
+    }
+
+    @Test
+    void findFocusTasks_stillIncludesTaskWithoutPlannedDateOrDeadline() {
+        var userId = UUID.randomUUID();
+        var endOfToday = OffsetDateTime.now().withHour(23).withMinute(59).withSecond(59).withNano(0);
+        var task = newTask(userId, "без срока и без дня", null);
+        repository.saveAndFlush(task);
+        entityManager.clear();
+
+        var found = repository.findFocusTasks(userId, TaskStatus.DONE, endOfToday);
+
+        assertThat(found).extracting(TaskJpaEntity::getTitle).containsExactly("без срока и без дня");
     }
 
     private TaskJpaEntity newTask(UUID userId, String title, String description) {

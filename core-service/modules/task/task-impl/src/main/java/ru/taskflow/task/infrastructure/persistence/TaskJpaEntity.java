@@ -54,6 +54,11 @@ public class TaskJpaEntity {
     @Column(name = "deadline")
     private OffsetDateTime deadline;
 
+    // День исполнения — предположение, когда заняться, в отличие от deadline
+    // (обязательство). Двигает «Отложить», не участвует в просрочке.
+    @Column(name = "planned_date")
+    private OffsetDateTime plannedDate;
+
     @Column(name = "estimate_minutes")
     private Integer estimateMinutes;
 

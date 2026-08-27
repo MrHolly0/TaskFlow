@@ -59,3 +59,5 @@ databaseChangeLog:
       file: db/changelog/029-scheduled-notification-reminder-id.yaml
   - include:
       file: db/changelog/030-proposal-action-remind.yaml
+  - include:
+      file: db/changelog/031-task-planned-date.yaml

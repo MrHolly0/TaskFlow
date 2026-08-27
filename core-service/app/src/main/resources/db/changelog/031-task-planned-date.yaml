@@ -1,0 +1,17 @@
+databaseChangeLog:
+  - changeSet:
+      id: 031-task-planned-date
+      author: taskflow
+      comment: >
+        Срок и день исполнения — разные вещи (docs/vkr/исследование-задачи-без-срока.md,
+        §4.1): deadline — обязательство, planned_date — предположение, когда
+        заняться. Сейчас «Отложить» переписывает deadline, стирая настоящий
+        срок задачи. planned_date двигает «Отложить», deadline остаётся
+        источником просрочки и меняется только явно.
+      changes:
+        - addColumn:
+            tableName: tasks
+            columns:
+              - column:
+                  name: planned_date
+                  type: TIMESTAMP WITH TIME ZONE

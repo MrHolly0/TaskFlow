@@ -438,6 +438,40 @@ class TaskServiceTest {
         assertThat(result.tasks()).hasSize(3);
     }
 
+    // --- Пункт А: день исполнения не участвует в просрочке ---
+
+    @Test
+    void getDigest_taskWithOnlyPastPlannedDate_doesNotCountAsOverdue() {
+        var entity = taskEntity();
+        entity.setPlannedDate(OffsetDateTime.now(ZoneOffset.UTC).minusDays(3));
+        when(taskRepository.findDigestTasks(eq(userId), any(OffsetDateTime.class), eq(TaskStatus.DONE)))
+                .thenReturn(List.of(entity));
+        when(taskMapper.toResponse(entity)).thenReturn(mockResponse(taskId, "задача"));
+
+        var result = taskService.getDigest(userId, java.time.LocalDate.now());
+
+        assertThat(result.overdueTasks()).isZero();
+    }
+
+    @Test
+    void update_settingPlannedDate_doesNotTouchReminders() {
+        var entity = taskEntity();
+        var request = new UpdateTaskRequest(null, null, null, null, null, null, null, null, null,
+                OffsetDateTime.now().plusDays(1));
+        var response = mockResponse(taskId, "задача");
+
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskRepository.save(any())).thenReturn(entity);
+        when(taskMapper.toResponse(entity)).thenReturn(response);
+
+        taskService.update(userId, taskId, request);
+
+        assertThat(entity.getPlannedDate()).isNotNull();
+        assertThat(entity.getDeadline()).isNull();
+        verify(taskReminderService, never()).cancelForTask(any());
+        verify(taskReminderService, never()).planForDeadline(any(), any());
+    }
+
     private TaskJpaEntity taskEntity() {
         var e = new TaskJpaEntity();
         e.setUserId(userId);

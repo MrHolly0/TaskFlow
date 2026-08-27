@@ -46,7 +46,10 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
             WHERE t.userId = :userId
               AND t.status != :done
               AND t.isDeleted = false
-              AND (t.deadline IS NULL OR t.deadline <= :endOfToday)
+              AND (
+                (t.plannedDate IS NULL AND (t.deadline IS NULL OR t.deadline <= :endOfToday))
+                OR (t.plannedDate IS NOT NULL AND t.plannedDate <= :endOfToday)
+              )
             ORDER BY CASE t.priority
               WHEN 'URGENT' THEN 0
               WHEN 'HIGH' THEN 1

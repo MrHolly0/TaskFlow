@@ -16,6 +16,7 @@ interface Task {
   priority: string;
   status: string;
   deadline?: string;
+  plannedDate?: string;
   estimateMinutes?: number;
   source: string;
   groupId?: string;
@@ -215,6 +216,7 @@ export interface UpdateTaskRequest {
   priority?: string;
   status?: string;
   deadline?: string | null;
+  plannedDate?: string | null;
   estimateMinutes?: number | null;
   groupId?: string | null;
 }

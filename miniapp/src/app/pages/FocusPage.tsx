@@ -22,6 +22,7 @@ interface Task {
   priority: string;
   status: string;
   deadline?: string;
+  plannedDate?: string;
   estimateMinutes?: number;
   groupName?: string;
 }
@@ -221,7 +222,7 @@ export function FocusPage() {
       9, 0, 0
     );
     const tomorrow9am = fromZonedTime(wallClockTomorrow9am, timezone);
-    updateTask({ id, deadline: tomorrow9am.toISOString() });
+    updateTask({ id, plannedDate: tomorrow9am.toISOString() });
   };
 
   const handleOpenTask = (task: Task) => {

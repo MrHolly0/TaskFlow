@@ -17,5 +17,11 @@ public record UpdateTaskRequest(
         UUID groupId,
         String groupName,
         List<String> tags,
-        Integer estimateMinutes
-) {}
+        Integer estimateMinutes,
+        OffsetDateTime plannedDate
+) {
+    public UpdateTaskRequest(String title, String description, TaskPriority priority, TaskStatus status,
+            OffsetDateTime deadline, UUID groupId, String groupName, List<String> tags, Integer estimateMinutes) {
+        this(title, description, priority, status, deadline, groupId, groupName, tags, estimateMinutes, null);
+    }
+}

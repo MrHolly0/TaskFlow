@@ -15,6 +15,7 @@ public record TaskResponse(
         TaskPriority priority,
         TaskStatus status,
         OffsetDateTime deadline,
+        OffsetDateTime plannedDate,
         Integer estimateMinutes,
         TaskSource source,
         UUID groupId,
@@ -24,4 +25,12 @@ public record TaskResponse(
         OffsetDateTime updatedAt,
         OffsetDateTime completedAt,
         List<ReminderResponse> reminders
-) {}
+) {
+    public TaskResponse(UUID id, String title, String description, TaskPriority priority, TaskStatus status,
+            OffsetDateTime deadline, Integer estimateMinutes, TaskSource source, UUID groupId, String groupName,
+            List<String> tags, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime completedAt,
+            List<ReminderResponse> reminders) {
+        this(id, title, description, priority, status, deadline, null, estimateMinutes, source, groupId, groupName,
+                tags, createdAt, updatedAt, completedAt, reminders);
+    }
+}

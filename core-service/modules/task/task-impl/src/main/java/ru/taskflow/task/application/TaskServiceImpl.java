@@ -153,8 +153,8 @@ public class TaskServiceImpl implements TaskService {
 
     private TaskResponse withReminders(TaskResponse response, List<ReminderResponse> reminders) {
         return new TaskResponse(response.id(), response.title(), response.description(), response.priority(),
-                response.status(), response.deadline(), response.estimateMinutes(), response.source(),
-                response.groupId(), response.groupName(), response.tags(), response.createdAt(),
+                response.status(), response.deadline(), response.plannedDate(), response.estimateMinutes(),
+                response.source(), response.groupId(), response.groupName(), response.tags(), response.createdAt(),
                 response.updatedAt(), response.completedAt(), reminders);
     }
 
@@ -191,6 +191,9 @@ public class TaskServiceImpl implements TaskService {
         if (request.priority() != null) task.setPriority(request.priority());
         if (request.deadline() != null) task.setDeadline(request.deadline());
         if (request.estimateMinutes() != null) task.setEstimateMinutes(request.estimateMinutes());
+        // Отдельный путь: день исполнения не участвует в deadlineChanged ниже
+        // и не трогает напоминания — они привязаны к deadline, а не к нему.
+        if (request.plannedDate() != null) task.setPlannedDate(request.plannedDate());
 
         if (request.status() != null) {
             task.setStatus(request.status());
@@ -326,6 +329,9 @@ public class TaskServiceImpl implements TaskService {
         }
         if (request.estimateMinutes() != null && !request.estimateMinutes().equals(task.getEstimateMinutes())) {
             delta.put("estimateMinutes", request.estimateMinutes());
+        }
+        if (request.plannedDate() != null && !request.plannedDate().equals(task.getPlannedDate())) {
+            delta.put("plannedDate", request.plannedDate());
         }
         if (request.status() != null && !request.status().equals(task.getStatus())) {
             delta.put("status", request.status());
