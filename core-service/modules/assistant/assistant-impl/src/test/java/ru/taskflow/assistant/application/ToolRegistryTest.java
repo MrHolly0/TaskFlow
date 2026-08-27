@@ -83,6 +83,22 @@ class ToolRegistryTest {
                 .containsExactlyInAnyOrder("question", "chitchat", "unclear");
     }
 
+    // Пункт 1: описание unclear в самом инструменте не должно быть шире, чем
+    // в промпте — модель читает оба. "Короткая фраза, совпадающая..." —
+    // ровно та же граница, что и в AssistantPromptBuilderTest.
+    @Test
+    void toolDefinitions_noActionDistinguishesUnclearFromAmbiguity() {
+        var noAction = registry.toolDefinitions().stream()
+                .filter(t -> ToolRegistry.NO_ACTION.equals(functionName(t)))
+                .findFirst().orElseThrow();
+
+        Map<String, Object> function = (Map<String, Object>) noAction.get("function");
+        String description = (String) function.get("description");
+
+        assertThat(description).contains("не unclear");
+        assertThat(description).contains("ambiguous_reason");
+    }
+
     @Test
     void toolDefinitions_noActionRequiresReasonAndAnswer() {
         var noAction = registry.toolDefinitions().stream()

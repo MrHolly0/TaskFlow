@@ -236,6 +236,26 @@ class AssistantPromptBuilderTest {
         assertThat(parts.systemPrompt()).contains("реплика без содержания");
     }
 
+    // Пункт 1: unclear не должен перехватывать короткие фразы, совпадающие
+    // по смыслу с активной задачей из списка — это двоякость (правило 5),
+    // не «не разбирается» (правило 6). Живой прогон (27.08) показал: модель
+    // путала эти два случая, когда unclear был описан широко.
+    @Test
+    void build_excludesAmbiguousPhrasesFromUnclear() {
+        var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());
+
+        assertThat(parts.systemPrompt())
+                .contains("Короткая фраза, совпадающая по смыслу с активной задачей из списка, под unclear не подходит");
+        assertThat(parts.systemPrompt()).contains("Это двоякость, разбирай её по правилу 5, а не unclear");
+    }
+
+    @Test
+    void build_rule5ReferencesPriorityOverNoAction() {
+        var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());
+
+        assertThat(parts.systemPrompt()).contains("Проверяй эту неоднозначность отдельно и раньше правил 2 и 6");
+    }
+
     @Test
     void build_handlesNoGroupsYet() {
         var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());

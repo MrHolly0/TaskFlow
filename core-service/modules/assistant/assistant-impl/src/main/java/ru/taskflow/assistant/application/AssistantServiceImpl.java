@@ -290,10 +290,12 @@ public class AssistantServiceImpl implements AssistantService {
 
     /**
      * Модель явно отказалась предлагать действие (no_action) — вопрос о
-     * данных, реплика без содержания или формулировка, которую не разобрать
-     * в команду (Б1). Третье состояние, не разновидность сбоя (Б2): задачу
-     * не создаём, recordDegradedCreation не вызываем (Б3) — пользователь
-     * видит ответ модели вместо пустого предложения.
+     * данных, реплика без содержания или формулировка, из которой не
+     * восстанавливается ни одна команда (Б1; отдельно от двоякости —
+     * см. правило 5/6 в AssistantPromptBuilder). Третье состояние, не
+     * разновидность сбоя (Б2): задачу не создаём, recordDegradedCreation
+     * не вызываем (Б3) — пользователь видит ответ модели вместо пустого
+     * предложения.
      */
     private Proposal declinedResponse(UUID userId, String text, AgentOutcome outcome) {
         OffsetDateTime now = OffsetDateTime.now(clock);
