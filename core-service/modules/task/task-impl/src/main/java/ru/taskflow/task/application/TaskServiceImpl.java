@@ -8,11 +8,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.taskflow.audit.api.AuditEventType;
 import ru.taskflow.audit.api.AuditService;
+import ru.taskflow.shared.exception.ValidationException;
+import ru.taskflow.task.api.RecurrenceType;
 import ru.taskflow.task.api.TaskService;
+import ru.taskflow.task.api.TaskSource;
 import ru.taskflow.task.api.TaskStatus;
 import ru.taskflow.task.api.dto.CreateTaskRequest;
 import ru.taskflow.task.api.dto.DigestResponse;
 import ru.taskflow.task.api.dto.FocusResponse;
+import ru.taskflow.task.api.dto.RecurrenceRule;
 import ru.taskflow.task.api.dto.ReminderResponse;
 import ru.taskflow.task.api.dto.TaskFilterRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
@@ -25,12 +29,15 @@ import ru.taskflow.task.api.exception.TaskNotFoundException;
 import ru.taskflow.task.infrastructure.persistence.*;
 
 import java.sql.Timestamp;
+import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,6 +65,7 @@ public class TaskServiceImpl implements TaskService {
     private final TaskMapper taskMapper;
     private final TaskReminderService taskReminderService;
     private final ReminderRepository reminderRepository;
+    private final RecurrenceRepository recurrenceRepository;
     private final AuditService auditService;
     private final GroupStyleResolver groupStyleResolver;
 
@@ -95,7 +103,11 @@ public class TaskServiceImpl implements TaskService {
 
         taskReminderService.planForDeadline(userId, savedTask);
 
-        return taskMapper.toResponse(savedTask);
+        RecurrenceRule recurrence = request.recurrence() != null
+                ? saveRecurrence(savedTask, request.recurrence())
+                : null;
+
+        return withRecurrence(taskMapper.toResponse(savedTask), recurrence);
     }
 
     /**
@@ -112,7 +124,8 @@ public class TaskServiceImpl implements TaskService {
                 .orElseThrow(() -> new TaskNotFoundException(taskId));
         var reminders = taskMapper.toReminderResponses(
                 reminderRepository.findByTaskIdAndStatusOrderByFireAtAsc(taskId, ReminderStatus.PENDING));
-        return withReminders(taskMapper.toResponse(task), reminders);
+        var recurrence = recurrenceRepository.findById(taskId).map(this::toRule).orElse(null);
+        return withRecurrence(withReminders(taskMapper.toResponse(task), reminders), recurrence);
     }
 
     /**
@@ -146,9 +159,17 @@ public class TaskServiceImpl implements TaskService {
                         .collect(Collectors.groupingBy(
                                 r -> r.getTask().getId(),
                                 Collectors.mapping(taskMapper::toReminderResponse, Collectors.toList())));
+        // Тот же приём, что и для напоминаний выше: одна выборка на страницу,
+        // не запрос на каждую карточку — task_id сам первичный ключ recurrences,
+        // поэтому findAllById достаточно.
+        Map<UUID, RecurrenceRule> recurrenceByTaskId = taskIds.isEmpty()
+                ? Map.of()
+                : recurrenceRepository.findAllById(taskIds).stream()
+                        .collect(Collectors.toMap(RecurrenceJpaEntity::getTaskId, this::toRule));
 
-        return page.map(entity -> withReminders(taskMapper.toResponse(entity),
-                remindersByTaskId.getOrDefault(entity.getId(), List.of())));
+        return page.map(entity -> withRecurrence(
+                withReminders(taskMapper.toResponse(entity), remindersByTaskId.getOrDefault(entity.getId(), List.of())),
+                recurrenceByTaskId.get(entity.getId())));
     }
 
     private TaskResponse withReminders(TaskResponse response, List<ReminderResponse> reminders) {
@@ -156,7 +177,65 @@ public class TaskServiceImpl implements TaskService {
                 response.status(), response.deadline(), response.plannedDate(), response.estimateMinutes(),
                 response.source(), response.groupId(), response.groupName(), response.tags(), response.createdAt(),
                 response.updatedAt(), response.completedAt(), reminders, response.startedAt(),
-                response.plannedDateSetAt());
+                response.plannedDateSetAt(), response.recurrence());
+    }
+
+    private TaskResponse withRecurrence(TaskResponse response, RecurrenceRule recurrence) {
+        return new TaskResponse(response.id(), response.title(), response.description(), response.priority(),
+                response.status(), response.deadline(), response.plannedDate(), response.estimateMinutes(),
+                response.source(), response.groupId(), response.groupName(), response.tags(), response.createdAt(),
+                response.updatedAt(), response.completedAt(), response.reminders(), response.startedAt(),
+                response.plannedDateSetAt(), recurrence);
+    }
+
+    private static final int MAX_DAY_OF_MONTH = 31;
+
+    private void validateRecurrence(RecurrenceRule rule) {
+        if (rule.type() == null) {
+            throw new ValidationException("не указан тип повтора");
+        }
+        if (rule.type() == RecurrenceType.CUSTOM) {
+            throw new ValidationException("тип повтора CUSTOM пока не поддерживается");
+        }
+        if (rule.type() == RecurrenceType.MONTHLY
+                && (rule.dayOfMonth() == null || rule.dayOfMonth() < 1 || rule.dayOfMonth() > MAX_DAY_OF_MONTH)) {
+            throw new ValidationException("для месячного повтора нужен день месяца от 1 до 31");
+        }
+        if (rule.intervalN() != null && rule.intervalN() < 1) {
+            throw new ValidationException("интервал повтора должен быть не меньше 1");
+        }
+    }
+
+    private RecurrenceRule saveRecurrence(TaskJpaEntity task, RecurrenceRule rule) {
+        validateRecurrence(rule);
+        RecurrenceJpaEntity entity = recurrenceRepository.findById(task.getId()).orElseGet(RecurrenceJpaEntity::new);
+        entity.setTask(task);
+        entity.setType(rule.type());
+        entity.setIntervalN(rule.intervalN() != null ? rule.intervalN() : 1);
+        entity.setDaysOfWeek(encodeDaysOfWeek(rule.daysOfWeek()));
+        entity.setDayOfMonth(rule.dayOfMonth());
+        entity.setEndsAt(rule.endsAt());
+        RecurrenceJpaEntity saved = recurrenceRepository.save(entity);
+        return toRule(saved);
+    }
+
+    private RecurrenceRule toRule(RecurrenceJpaEntity entity) {
+        return new RecurrenceRule(entity.getType(), entity.getIntervalN(), decodeDaysOfWeek(entity.getDaysOfWeek()),
+                entity.getDayOfMonth(), entity.getEndsAt());
+    }
+
+    private String encodeDaysOfWeek(List<DayOfWeek> days) {
+        if (days == null || days.isEmpty()) {
+            return null;
+        }
+        return days.stream().map(d -> String.valueOf(d.getValue())).collect(Collectors.joining(","));
+    }
+
+    private List<DayOfWeek> decodeDaysOfWeek(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        return Arrays.stream(raw.split(",")).map(s -> DayOfWeek.of(Integer.parseInt(s.trim()))).toList();
     }
 
     /**
@@ -237,14 +316,21 @@ public class TaskServiceImpl implements TaskService {
             taskReminderService.planForDeadline(userId, updatedTask);
         }
 
-        return taskMapper.toResponse(updatedTask);
+        RecurrenceRule recurrence = request.recurrence() != null
+                ? saveRecurrence(updatedTask, request.recurrence())
+                : recurrenceRepository.findById(taskId).map(this::toRule).orElse(null);
+
+        return withRecurrence(taskMapper.toResponse(updatedTask), recurrence);
     }
 
     /**
      * Отмечает задачу как выполненную.
      *
-     * Устанавливает статус DONE, фиксирует время завершения
-     * и отменяет запланированные напоминания.
+     * Устанавливает статус DONE, фиксирует время завершения,
+     * отменяет запланированные напоминания и, если у задачи есть правило
+     * повтора, порождает следующее вхождение (А2). Отмена (CANCELLED,
+     * см. update()) вхождение намеренно не порождает — этот путь через неё
+     * не проходит.
      *
      * @param userId ID пользователя
      * @param taskId ID задачи
@@ -339,6 +425,9 @@ public class TaskServiceImpl implements TaskService {
         }
         if (request.plannedDate() != null && !request.plannedDate().equals(task.getPlannedDate())) {
             delta.put("plannedDate", request.plannedDate());
+        }
+        if (request.recurrence() != null) {
+            delta.put("recurrence", request.recurrence().type().name());
         }
         if (request.status() != null && !request.status().equals(task.getStatus())) {
             delta.put("status", request.status());
@@ -518,7 +607,11 @@ public class TaskServiceImpl implements TaskService {
 
         taskReminderService.planForDeadline(userId, savedTask);
 
-        return taskMapper.toResponse(savedTask);
+        RecurrenceRule recurrence = request.recurrence() != null
+                ? saveRecurrence(savedTask, request.recurrence())
+                : null;
+
+        return withRecurrence(taskMapper.toResponse(savedTask), recurrence);
     }
 
     @Override

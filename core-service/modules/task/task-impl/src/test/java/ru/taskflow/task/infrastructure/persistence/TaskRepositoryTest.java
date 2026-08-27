@@ -15,6 +15,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import ru.taskflow.task.api.RecurrenceType;
 import ru.taskflow.task.api.TaskStatus;
 
 import java.time.OffsetDateTime;
@@ -48,6 +49,9 @@ class TaskRepositoryTest {
 
     @Autowired
     private TaskRepository repository;
+
+    @Autowired
+    private RecurrenceRepository recurrenceRepository;
 
     @Autowired
     private TestEntityManager entityManager;
@@ -118,6 +122,28 @@ class TaskRepositoryTest {
         var found = repository.findFocusTasks(userId, TaskStatus.DONE, endOfToday);
 
         assertThat(found).extracting(TaskJpaEntity::getTitle).containsExactly("без срока и без дня");
+    }
+
+    @Test
+    void recurrenceRule_roundTripsThroughRealSchema() {
+        var userId = UUID.randomUUID();
+        var task = newTask(userId, "полить цветы", null);
+        repository.saveAndFlush(task);
+
+        var recurrence = new RecurrenceJpaEntity();
+        recurrence.setTask(task);
+        recurrence.setType(RecurrenceType.WEEKLY);
+        recurrence.setIntervalN(2);
+        recurrence.setDaysOfWeek("2,4");
+        recurrence.setEndsAt(OffsetDateTime.parse("2027-01-01T00:00:00Z"));
+        recurrenceRepository.saveAndFlush(recurrence);
+        entityManager.clear();
+
+        var loaded = recurrenceRepository.findById(task.getId()).orElseThrow();
+        assertThat(loaded.getType()).isEqualTo(RecurrenceType.WEEKLY);
+        assertThat(loaded.getIntervalN()).isEqualTo(2);
+        assertThat(loaded.getDaysOfWeek()).isEqualTo("2,4");
+        assertThat(loaded.getEndsAt()).isEqualTo(OffsetDateTime.parse("2027-01-01T00:00:00Z"));
     }
 
     private TaskJpaEntity newTask(UUID userId, String title, String description) {

@@ -18,11 +18,17 @@ public record CreateTaskRequest(
         String groupName,
         List<String> tags,
         Integer estimateMinutes,
-        TaskSource source
+        TaskSource source,
+        RecurrenceRule recurrence
 ) {
     public CreateTaskRequest {
         if (priority == null) priority = TaskPriority.MEDIUM;
         if (source == null) source = TaskSource.MANUAL;
         if (tags == null) tags = List.of();
+    }
+
+    public CreateTaskRequest(String title, String description, TaskPriority priority, OffsetDateTime deadline,
+            UUID groupId, String groupName, List<String> tags, Integer estimateMinutes, TaskSource source) {
+        this(title, description, priority, deadline, groupId, groupName, tags, estimateMinutes, source, null);
     }
 }

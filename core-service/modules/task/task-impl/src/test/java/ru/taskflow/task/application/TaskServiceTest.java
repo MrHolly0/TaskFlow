@@ -12,9 +12,12 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import ru.taskflow.audit.api.AuditEventType;
 import ru.taskflow.audit.api.AuditService;
+import ru.taskflow.shared.exception.ValidationException;
+import ru.taskflow.task.api.RecurrenceType;
 import ru.taskflow.task.api.TaskPriority;
 import ru.taskflow.task.api.TaskStatus;
 import ru.taskflow.task.api.dto.CreateTaskRequest;
+import ru.taskflow.task.api.dto.RecurrenceRule;
 import ru.taskflow.task.api.dto.ReminderResponse;
 import ru.taskflow.task.api.dto.TaskFilterRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
@@ -48,6 +51,8 @@ class TaskServiceTest {
     private TaskReminderService taskReminderService;
     @Mock
     private ReminderRepository reminderRepository;
+    @Mock
+    private RecurrenceRepository recurrenceRepository;
     @Mock
     private AuditService auditService;
     @Mock
@@ -96,6 +101,56 @@ class TaskServiceTest {
         taskService.create(userId, request);
 
         verify(taskReminderService).planForDeadline(userId, entity);
+    }
+
+    // --- Блок А1: правило повтора хранится ---
+
+    @Test
+    void create_savesRecurrenceRule_whenProvided() {
+        var entity = taskEntity();
+        entity.setId(taskId);
+        var rule = new RecurrenceRule(RecurrenceType.DAILY, 2, null, null, null);
+        var request = new CreateTaskRequest("зарядка", null, null, null, null, null, List.of(), null, null, rule);
+
+        when(taskRepository.save(any())).thenReturn(entity);
+        when(taskMapper.toResponse(entity)).thenReturn(mockResponse(taskId, "зарядка"));
+        when(recurrenceRepository.findById(taskId)).thenReturn(Optional.empty());
+        when(recurrenceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        var result = taskService.create(userId, request);
+
+        var captor = ArgumentCaptor.forClass(RecurrenceJpaEntity.class);
+        verify(recurrenceRepository).save(captor.capture());
+        assertThat(captor.getValue().getType()).isEqualTo(RecurrenceType.DAILY);
+        assertThat(captor.getValue().getIntervalN()).isEqualTo(2);
+        assertThat(result.recurrence().type()).isEqualTo(RecurrenceType.DAILY);
+    }
+
+    @Test
+    void create_rejectsCustomRecurrence() {
+        var entity = taskEntity();
+        entity.setId(taskId);
+        var rule = new RecurrenceRule(RecurrenceType.CUSTOM, null, null, null, null);
+        var request = new CreateTaskRequest("задача", null, null, null, null, null, List.of(), null, null, rule);
+
+        when(taskRepository.save(any())).thenReturn(entity);
+
+        assertThatThrownBy(() -> taskService.create(userId, request))
+                .isInstanceOf(ValidationException.class);
+        verify(recurrenceRepository, never()).save(any());
+    }
+
+    @Test
+    void create_rejectsMonthlyWithoutDayOfMonth() {
+        var entity = taskEntity();
+        entity.setId(taskId);
+        var rule = new RecurrenceRule(RecurrenceType.MONTHLY, null, null, null, null);
+        var request = new CreateTaskRequest("задача", null, null, null, null, null, List.of(), null, null, rule);
+
+        when(taskRepository.save(any())).thenReturn(entity);
+
+        assertThatThrownBy(() -> taskService.create(userId, request))
+                .isInstanceOf(ValidationException.class);
     }
 
     @Test

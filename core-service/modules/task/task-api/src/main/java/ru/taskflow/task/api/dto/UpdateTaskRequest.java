@@ -18,10 +18,18 @@ public record UpdateTaskRequest(
         String groupName,
         List<String> tags,
         Integer estimateMinutes,
-        OffsetDateTime plannedDate
+        OffsetDateTime plannedDate,
+        RecurrenceRule recurrence
 ) {
     public UpdateTaskRequest(String title, String description, TaskPriority priority, TaskStatus status,
             OffsetDateTime deadline, UUID groupId, String groupName, List<String> tags, Integer estimateMinutes) {
-        this(title, description, priority, status, deadline, groupId, groupName, tags, estimateMinutes, null);
+        this(title, description, priority, status, deadline, groupId, groupName, tags, estimateMinutes, null, null);
+    }
+
+    public UpdateTaskRequest(String title, String description, TaskPriority priority, TaskStatus status,
+            OffsetDateTime deadline, UUID groupId, String groupName, List<String> tags, Integer estimateMinutes,
+            OffsetDateTime plannedDate) {
+        this(title, description, priority, status, deadline, groupId, groupName, tags, estimateMinutes, plannedDate,
+                null);
     }
 }
