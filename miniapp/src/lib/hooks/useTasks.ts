@@ -25,6 +25,8 @@ interface Task {
   createdAt: string;
   updatedAt: string;
   completedAt?: string;
+  startedAt?: string;
+  plannedDateSetAt?: string;
   reminders?: ReminderResponse[];
 }
 

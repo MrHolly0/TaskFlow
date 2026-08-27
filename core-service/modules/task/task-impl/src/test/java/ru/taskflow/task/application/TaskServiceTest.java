@@ -511,6 +511,40 @@ class TaskServiceTest {
         verify(taskReminderService, never()).planForDeadline(any(), any());
     }
 
+    // --- Пункт В: сигналы видимого продвижения ---
+
+    @Test
+    void update_transitioningToInProgress_setsStartedAt() {
+        var entity = taskEntity();
+        var request = new UpdateTaskRequest(null, null, null, TaskStatus.IN_PROGRESS, null, null, null, null, null,
+                null);
+        var response = mockResponse(taskId, "задача");
+
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskRepository.save(any())).thenReturn(entity);
+        when(taskMapper.toResponse(entity)).thenReturn(response);
+
+        taskService.update(userId, taskId, request);
+
+        assertThat(entity.getStartedAt()).isNotNull();
+    }
+
+    @Test
+    void update_settingPlannedDate_setsPlannedDateSetAt() {
+        var entity = taskEntity();
+        var request = new UpdateTaskRequest(null, null, null, null, null, null, null, null, null,
+                OffsetDateTime.now().plusDays(1));
+        var response = mockResponse(taskId, "задача");
+
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskRepository.save(any())).thenReturn(entity);
+        when(taskMapper.toResponse(entity)).thenReturn(response);
+
+        taskService.update(userId, taskId, request);
+
+        assertThat(entity.getPlannedDateSetAt()).isNotNull();
+    }
+
     private TaskJpaEntity taskEntity() {
         var e = new TaskJpaEntity();
         e.setUserId(userId);

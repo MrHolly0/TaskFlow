@@ -61,3 +61,5 @@ databaseChangeLog:
       file: db/changelog/030-proposal-action-remind.yaml
   - include:
       file: db/changelog/031-task-planned-date.yaml
+  - include:
+      file: db/changelog/032-task-progress-signals.yaml

@@ -24,13 +24,23 @@ public record TaskResponse(
         OffsetDateTime createdAt,
         OffsetDateTime updatedAt,
         OffsetDateTime completedAt,
-        List<ReminderResponse> reminders
+        List<ReminderResponse> reminders,
+        OffsetDateTime startedAt,
+        OffsetDateTime plannedDateSetAt
 ) {
     public TaskResponse(UUID id, String title, String description, TaskPriority priority, TaskStatus status,
             OffsetDateTime deadline, Integer estimateMinutes, TaskSource source, UUID groupId, String groupName,
             List<String> tags, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime completedAt,
             List<ReminderResponse> reminders) {
         this(id, title, description, priority, status, deadline, null, estimateMinutes, source, groupId, groupName,
-                tags, createdAt, updatedAt, completedAt, reminders);
+                tags, createdAt, updatedAt, completedAt, reminders, null, null);
+    }
+
+    public TaskResponse(UUID id, String title, String description, TaskPriority priority, TaskStatus status,
+            OffsetDateTime deadline, OffsetDateTime plannedDate, Integer estimateMinutes, TaskSource source,
+            UUID groupId, String groupName, List<String> tags, OffsetDateTime createdAt, OffsetDateTime updatedAt,
+            OffsetDateTime completedAt, List<ReminderResponse> reminders) {
+        this(id, title, description, priority, status, deadline, plannedDate, estimateMinutes, source, groupId,
+                groupName, tags, createdAt, updatedAt, completedAt, reminders, null, null);
     }
 }

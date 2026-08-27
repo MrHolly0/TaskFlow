@@ -1,0 +1,19 @@
+databaseChangeLog:
+  - changeSet:
+      id: 032-task-progress-signals
+      author: taskflow
+      comment: >
+        Видимое продвижение в фокус-режиме (docs/vkr/исследование-представление-задач.md,
+        §9-11): помимо закрытого — начатое и отложенное сегодня. Отдельные
+        отметки времени, не updated_at, — иначе правку другого поля в тот же
+        день не отличить от самого события.
+      changes:
+        - addColumn:
+            tableName: tasks
+            columns:
+              - column:
+                  name: started_at
+                  type: TIMESTAMP WITH TIME ZONE
+              - column:
+                  name: planned_date_set_at
+                  type: TIMESTAMP WITH TIME ZONE

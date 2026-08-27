@@ -155,7 +155,8 @@ public class TaskServiceImpl implements TaskService {
         return new TaskResponse(response.id(), response.title(), response.description(), response.priority(),
                 response.status(), response.deadline(), response.plannedDate(), response.estimateMinutes(),
                 response.source(), response.groupId(), response.groupName(), response.tags(), response.createdAt(),
-                response.updatedAt(), response.completedAt(), reminders);
+                response.updatedAt(), response.completedAt(), reminders, response.startedAt(),
+                response.plannedDateSetAt());
     }
 
     /**
@@ -193,12 +194,18 @@ public class TaskServiceImpl implements TaskService {
         if (request.estimateMinutes() != null) task.setEstimateMinutes(request.estimateMinutes());
         // Отдельный путь: день исполнения не участвует в deadlineChanged ниже
         // и не трогает напоминания — они привязаны к deadline, а не к нему.
-        if (request.plannedDate() != null) task.setPlannedDate(request.plannedDate());
+        if (request.plannedDate() != null) {
+            task.setPlannedDate(request.plannedDate());
+            task.setPlannedDateSetAt(OffsetDateTime.now());
+        }
 
         if (request.status() != null) {
             task.setStatus(request.status());
             if (request.status() == TaskStatus.DONE && task.getCompletedAt() == null) {
                 task.setCompletedAt(OffsetDateTime.now());
+            }
+            if (request.status() == TaskStatus.IN_PROGRESS) {
+                task.setStartedAt(OffsetDateTime.now());
             }
         }
 

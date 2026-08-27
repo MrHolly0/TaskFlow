@@ -194,20 +194,32 @@ export function FocusPage() {
   const showingUpcoming = todayDone && upcomingTasks.length > 0;
   const tasksToShow = showingUpcoming ? upcomingTasks : focusTasks;
 
-  // Счётчик закрытого, не невыполненного: по исследованию задач без срока,
+  // Продвижение, а не невыполненное: по исследованию задач без срока,
   // откладывание — способ управления эмоциями, ведущие причины — страх
   // неудачи и перфекционизм. Счётчик невыполненного питает именно эти
-  // причины, счётчик сделанного — нет.
-  const closedTodayCount = allTasks.filter((t: any) => {
-    if (!t.completedAt) return false;
-    const completedZoned = toZonedTime(new Date(t.completedAt), timezone);
+  // причины, счётчик сделанного — нет. Три плоских числа за сегодня, без
+  // сравнения с планом и без серии дней — просто что случилось.
+  const isToday = (dateStr?: string) => {
+    if (!dateStr) return false;
+    const zoned = toZonedTime(new Date(dateStr), timezone);
     const nowZoned = toZonedTime(new Date(), timezone);
     return (
-      completedZoned.getFullYear() === nowZoned.getFullYear() &&
-      completedZoned.getMonth() === nowZoned.getMonth() &&
-      completedZoned.getDate() === nowZoned.getDate()
+      zoned.getFullYear() === nowZoned.getFullYear() &&
+      zoned.getMonth() === nowZoned.getMonth() &&
+      zoned.getDate() === nowZoned.getDate()
     );
-  }).length;
+  };
+
+  const closedTodayCount = allTasks.filter((t: any) => isToday(t.completedAt)).length;
+  const startedTodayCount = allTasks.filter((t: any) => isToday(t.startedAt)).length;
+  const movedTodayCount = allTasks.filter((t: any) => isToday(t.plannedDateSetAt)).length;
+
+  const progressParts = [
+    closedTodayCount > 0 ? `закрыто ${closedTodayCount}` : null,
+    startedTodayCount > 0 ? `начато ${startedTodayCount}` : null,
+    movedTodayCount > 0 ? `отложено ${movedTodayCount}` : null,
+  ].filter(Boolean);
+  const progressLabel = progressParts.length > 0 ? `Сегодня: ${progressParts.join(' · ')}` : 'Все задачи';
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -310,9 +322,9 @@ export function FocusPage() {
           </div>
           <Link
             to="/all"
-            className="flex-shrink-0 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            className="flex-shrink-0 flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors text-right"
           >
-            <span>{closedTodayCount > 0 ? `Закрыто ${closedTodayCount}` : 'Все задачи'}</span>
+            <span>{progressLabel}</span>
             <IconArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>

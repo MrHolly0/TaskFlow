@@ -59,6 +59,14 @@ public class TaskJpaEntity {
     @Column(name = "planned_date")
     private OffsetDateTime plannedDate;
 
+    // Отдельно от updatedAt — тот меняется при любой правке, а не только при
+    // переходе в работу или переносе дня (нужно для счётчика продвижения).
+    @Column(name = "started_at")
+    private OffsetDateTime startedAt;
+
+    @Column(name = "planned_date_set_at")
+    private OffsetDateTime plannedDateSetAt;
+
     @Column(name = "estimate_minutes")
     private Integer estimateMinutes;
 
