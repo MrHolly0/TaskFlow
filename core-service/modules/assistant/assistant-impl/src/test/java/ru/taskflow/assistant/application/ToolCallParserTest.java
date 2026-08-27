@@ -6,6 +6,9 @@ import ru.taskflow.assistant.api.AssistantActionType;
 import ru.taskflow.assistant.api.DeclineReason;
 import ru.taskflow.task.api.TaskService;
 
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -18,9 +21,10 @@ class ToolCallParserTest {
     private final UUID taskId = UUID.randomUUID();
     private final TaskContextWindow window = new TaskContextWindow(
             "T1 · купить молоко", Map.of("T1", taskId), Map.of("T1", "купить молоко"));
+    private final Clock clock = Clock.fixed(Instant.parse("2026-08-12T10:00:00Z"), ZoneOffset.UTC);
 
     private final ToolCallParser parser = new ToolCallParser(
-            new ToolRegistry(), new ActionValidator(mock(TaskService.class)), new SummaryRenderer(), new ObjectMapper());
+            new ToolRegistry(), new ActionValidator(mock(TaskService.class), clock), new SummaryRenderer(), new ObjectMapper());
 
     private ToolCall call(String name, String args) {
         return new ToolCall("id-1", name, args);
@@ -341,6 +345,30 @@ class ToolCallParserTest {
 
         assertThat(result.ambiguous()).isFalse();
         assertThat(result.ambiguityReason()).isNull();
+    }
+
+    // --- Блок В: remind ---
+
+    @Test
+    void parse_buildsActionFromRemindItem() {
+        var result = parser.parse(List.of(proposeActions(
+                "{\"type\":\"remind\",\"task_ref\":\"T1\",\"reminder_at\":\"2026-08-13T09:00:00Z\"}")), window);
+
+        assertThat(result.actions()).hasSize(1);
+        var action = result.actions().getFirst();
+        assertThat(action.type()).isEqualTo(AssistantActionType.REMIND);
+        assertThat(action.targetTaskId()).isEqualTo(taskId);
+        assertThat(action.payload()).containsEntry("reminder_at", "2026-08-13T09:00:00Z");
+    }
+
+    @Test
+    void parse_rejectsRemindInThePast() {
+        var result = parser.parse(List.of(proposeActions(
+                "{\"type\":\"remind\",\"task_ref\":\"T1\",\"reminder_at\":\"2026-08-01T09:00:00Z\"}")), window);
+
+        assertThat(result.actions()).isEmpty();
+        assertThat(result.rejections()).hasSize(1);
+        assertThat(result.rejections().getFirst()).contains("прошло");
     }
 
     // --- Блок Б: no_action ---

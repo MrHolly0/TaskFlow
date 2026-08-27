@@ -43,7 +43,7 @@ public class ToolRegistry {
                                         "type", "object",
                                         "properties", Map.ofEntries(
                                                 Map.entry("type", enumParam("Вид действия",
-                                                        List.of("create", "complete", "reschedule", "update", "cancel"))),
+                                                        List.of("create", "complete", "reschedule", "update", "cancel", "remind"))),
                                                 Map.entry("task_ref", stringParam(
                                                         "Ярлык существующей задачи из списка, например T3 — "
                                                                 + "для всех видов, кроме create")),
@@ -67,6 +67,16 @@ public class ToolRegistry {
                                                         "Короткий комментарий, если пользователь его дал — для complete")),
                                                 Map.entry("reason", stringParam(
                                                         "Причина отмены, если пользователь её назвал — для cancel")),
+                                                Map.entry("reminder_at", stringParam(
+                                                        "Абсолютное время напоминания в формате ISO-8601 со "
+                                                                + "смещением — для remind (обязательно) и опционально "
+                                                                + "для create, если реплика создаёт задачу сразу с "
+                                                                + "напоминанием. Срок задачи и время напоминания — "
+                                                                + "разные вещи, remind не меняет deadline. Заполняй, "
+                                                                + "только если время названо в реплике прямо — датой, "
+                                                                + "временем или отступом от срока («за час до "
+                                                                + "встречи»); не угадывай уместное время по смыслу "
+                                                                + "задачи.")),
                                                 Map.entry("ambiguous_reason", stringParam(
                                                         "Заполняй, только если это действие — одно из "
                                                                 + "взаимоисключающих прочтений одной и той же фразы "

@@ -30,7 +30,7 @@ public class ToolCallParser {
     private static final int MAX_ACTIONS = 20;
     private static final Set<AssistantActionType> REF_BEARING_TYPES = EnumSet.of(
             AssistantActionType.COMPLETE, AssistantActionType.RESCHEDULE,
-            AssistantActionType.UPDATE, AssistantActionType.CANCEL
+            AssistantActionType.UPDATE, AssistantActionType.CANCEL, AssistantActionType.REMIND
     );
 
     private final ToolRegistry toolRegistry;

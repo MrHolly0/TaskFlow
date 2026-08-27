@@ -103,4 +103,29 @@ class SummaryRendererTest {
 
         assertThat(result).isEqualTo("Создать — без названия");
     }
+
+    // --- Блок В: remind ---
+
+    @Test
+    void render_remindUsesExistingTaskTitleAndTime() {
+        var result = renderer.render(AssistantActionType.REMIND, "позвонить маме",
+                Map.of("reminder_at", "2026-08-13T09:00:00+03:00"));
+
+        assertThat(result).isEqualTo("Напомнить — позвонить маме → 13.08 09:00");
+    }
+
+    @Test
+    void render_createIncludesReminderWhenPresent() {
+        var result = renderer.render(AssistantActionType.CREATE, null,
+                Map.of("title", "позвонить маме", "reminder_at", "2026-08-13T09:00:00+03:00"));
+
+        assertThat(result).isEqualTo("Создать — позвонить маме · напомнить 13.08 09:00");
+    }
+
+    @Test
+    void render_createOmitsReminderMentionWhenAbsent() {
+        var result = renderer.render(AssistantActionType.CREATE, null, Map.of("title", "сдать отчёт"));
+
+        assertThat(result).doesNotContain("напомнить");
+    }
 }

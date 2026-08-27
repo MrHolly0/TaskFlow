@@ -9,6 +9,7 @@ import ru.taskflow.task.api.TaskStatus;
 import ru.taskflow.task.api.dto.TaskResponse;
 import ru.taskflow.task.api.exception.TaskNotFoundException;
 
+import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.util.Locale;
 import java.util.Map;
@@ -20,6 +21,7 @@ import java.util.UUID;
 public class ActionValidator {
 
     private final TaskService taskService;
+    private final Clock clock;
 
     private static final Set<String> UPDATABLE_FIELDS = Set.of("title", "description", "priority", "group");
 
@@ -64,6 +66,7 @@ public class ActionValidator {
         return switch (type) {
             case RESCHEDULE -> validateReschedule(args, taskId);
             case UPDATE -> validateUpdate(args, taskId);
+            case REMIND -> validateRemind(args, taskId);
             case COMPLETE, CANCEL -> ValidationResult.ok(taskId);
             case CREATE -> throw new IllegalStateException("CREATE обработан выше");
         };
@@ -79,7 +82,8 @@ public class ActionValidator {
         } catch (TaskNotFoundException e) {
             return ValidationResult.fail("задача не найдена или недоступна");
         }
-        if (task.status() == TaskStatus.DONE && type == AssistantActionType.COMPLETE) {
+        if (task.status() == TaskStatus.DONE
+                && (type == AssistantActionType.COMPLETE || type == AssistantActionType.REMIND)) {
             return ValidationResult.fail("задача уже закрыта");
         }
         if (task.status() == TaskStatus.CANCELLED) {
@@ -102,7 +106,34 @@ public class ActionValidator {
         if (args.containsKey("recurrence")) {
             return ValidationResult.fail("повторяющиеся задачи пока не поддерживаются");
         }
+        if (args.containsKey("reminder_at")) {
+            OffsetDateTime reminderAt = parseTimeOrNull(args.get("reminder_at"));
+            if (reminderAt == null) {
+                return ValidationResult.fail("не удалось разобрать время напоминания: " + args.get("reminder_at"));
+            }
+            if (reminderAt.isBefore(OffsetDateTime.now(clock))) {
+                return ValidationResult.fail("время напоминания уже прошло");
+            }
+        }
         return ValidationResult.ok(null);
+    }
+
+    // Та же прикладная валидация, что и у остальных действий (В): прошедшее
+    // время отклоняется, чужая задача недоступна — второе уже обеспечивает
+    // общий блок разрешения ярлыка выше, здесь только время.
+    private ValidationResult validateRemind(Map<String, Object> args, UUID taskId) {
+        Object reminderAt = args.get("reminder_at");
+        if (reminderAt == null || reminderAt.toString().isBlank()) {
+            return ValidationResult.failForTask("не указано reminder_at", taskId);
+        }
+        OffsetDateTime parsed = parseTimeOrNull(reminderAt);
+        if (parsed == null) {
+            return ValidationResult.failForTask("не удалось разобрать время напоминания: " + reminderAt, taskId);
+        }
+        if (parsed.isBefore(OffsetDateTime.now(clock))) {
+            return ValidationResult.failForTask("время напоминания уже прошло", taskId);
+        }
+        return ValidationResult.ok(taskId);
     }
 
     private ValidationResult validateReschedule(Map<String, Object> args, UUID taskId) {
@@ -149,6 +180,14 @@ public class ActionValidator {
             return true;
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    private OffsetDateTime parseTimeOrNull(Object raw) {
+        try {
+            return OffsetDateTime.parse(raw.toString().trim());
+        } catch (Exception e) {
+            return null;
         }
     }
 }

@@ -253,11 +253,14 @@ public class AgentLoop {
         // бывает: «перенеси X на завтра на 15» нельзя прочесть как название
         // новой задачи, в отличие от голой ссылки без параметров («закрыть
         // кино», «отчёт») — там ветка остаётся как была, это и чинила
-        // «изменить планы на кино».
+        // «изменить планы на кино». remind (блок В) по той же причине, что
+        // reschedule/update: reminder_at обязателен по ActionValidator и
+        // всегда извлечён из самой реплики.
         if (readsLikeATaskName && actions.size() == 1 && actions.getFirst().targetTaskId() != null
                 && actions.getFirst().type() != AssistantActionType.COMPLETE
                 && actions.getFirst().type() != AssistantActionType.RESCHEDULE
-                && actions.getFirst().type() != AssistantActionType.UPDATE) {
+                && actions.getFirst().type() != AssistantActionType.UPDATE
+                && actions.getFirst().type() != AssistantActionType.REMIND) {
             ProposedAction existing = actions.getFirst();
             String targetTitle = window.titleFor(existing.targetTaskId());
             if (!duplicateGuard.isDuplicateOf(userText, targetTitle)) {

@@ -20,13 +20,15 @@ public class SummaryRenderer {
     public String render(AssistantActionType type, String taskTitle, Map<String, Object> payload) {
         String body = switch (type) {
             case CREATE -> "Создать — " + stringOrDefault(payload.get("title"), "без названия")
-                    + createDeadlineSuffix(payload.get("deadline"));
+                    + createDeadlineSuffix(payload.get("deadline")) + createReminderSuffix(payload.get("reminder_at"));
             case COMPLETE -> "Закрыть — " + stringOrDefault(taskTitle, "задача");
             case CANCEL -> "Отменить — " + stringOrDefault(taskTitle, "задача");
             case RESCHEDULE -> "Перенести — " + stringOrDefault(taskTitle, "задача")
                     + " → " + formatDeadline(payload.get("new_deadline"));
             case UPDATE -> "Изменить — " + stringOrDefault(taskTitle, "задача")
                     + " (" + changedFields(payload) + ")";
+            case REMIND -> "Напомнить — " + stringOrDefault(taskTitle, "задача")
+                    + " → " + formatDeadline(payload.get("reminder_at"));
         };
         return truncate(body);
     }
@@ -50,6 +52,13 @@ public class SummaryRenderer {
             return "";
         }
         return " · до " + formatDeadline(deadline);
+    }
+
+    private String createReminderSuffix(Object reminderAt) {
+        if (reminderAt == null) {
+            return "";
+        }
+        return " · напомнить " + formatDeadline(reminderAt);
     }
 
     private String formatDeadline(Object raw) {

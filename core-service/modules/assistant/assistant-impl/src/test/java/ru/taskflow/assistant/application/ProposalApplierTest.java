@@ -409,6 +409,77 @@ class ProposalApplierTest {
         verify(taskService, never()).update(any(), any(), any());
     }
 
+    // --- Блок В: remind ---
+
+    @Test
+    void apply_dispatchesRemindToScheduleReminder() {
+        UUID t1 = UUID.randomUUID();
+        ProposalActionJpaEntity a1 = action(0, AssistantActionType.REMIND, t1,
+                "{\"reminder_at\":\"2026-08-13T09:00:00+03:00\"}", true);
+        ProposalJpaEntity entity = proposal("TELEGRAM", "TEXT", a1);
+
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.REMIND, t1))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, t1));
+
+        ApplyResult result = applier.apply(userId, entity);
+
+        verify(taskService).scheduleReminder(userId, t1, OffsetDateTime.parse("2026-08-13T09:00:00+03:00"));
+        assertThat(result.appliedCount()).isEqualTo(1);
+        assertThat(a1.getApplyError()).isNull();
+        assertThat(a1.getAppliedTaskId()).isEqualTo(t1);
+    }
+
+    @Test
+    void apply_rejectsRemindWithUnparseableTime() {
+        UUID t1 = UUID.randomUUID();
+        ProposalActionJpaEntity a1 = action(0, AssistantActionType.REMIND, t1, "{\"reminder_at\":\"не время\"}", true);
+        ProposalJpaEntity entity = proposal("TELEGRAM", "TEXT", a1);
+
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.REMIND, t1))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, t1));
+
+        ApplyResult result = applier.apply(userId, entity);
+
+        assertThat(result.appliedCount()).isEqualTo(0);
+        assertThat(result.status()).isEqualTo(ProposalStatus.FAILED);
+        verify(taskService, never()).scheduleReminder(any(), any(), any());
+    }
+
+    // Срок задачи и время напоминания — разные вещи: create с reminder_at
+    // ставит напоминание отдельным вызовом уже после создания задачи, а не
+    // выводит его из deadline. Работает и без deadline вовсе.
+    @Test
+    void apply_createWithReminderAtSchedulesReminderAfterCreation() {
+        UUID createdId = UUID.randomUUID();
+        ProposalActionJpaEntity a1 = action(0, AssistantActionType.CREATE, null,
+                "{\"title\":\"позвонить маме\",\"reminder_at\":\"2026-08-13T10:00:00+03:00\"}", true);
+        ProposalJpaEntity entity = proposal("TELEGRAM", "TEXT", a1);
+
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.CREATE, null))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, null));
+        when(taskService.createQuick(eq(userId), any())).thenReturn(taskResponse(createdId));
+
+        applier.apply(userId, entity);
+
+        verify(taskService).createQuick(eq(userId), any());
+        verify(taskService).scheduleReminder(userId, createdId, OffsetDateTime.parse("2026-08-13T10:00:00+03:00"));
+    }
+
+    @Test
+    void apply_createWithoutReminderAtDoesNotScheduleOne() {
+        UUID createdId = UUID.randomUUID();
+        ProposalActionJpaEntity a1 = action(0, AssistantActionType.CREATE, null, "{\"title\":\"обычная задача\"}", true);
+        ProposalJpaEntity entity = proposal("TELEGRAM", "TEXT", a1);
+
+        when(actionValidator.revalidateForApply(userId, AssistantActionType.CREATE, null))
+                .thenReturn(new ActionValidator.ValidationResult(true, null, null));
+        when(taskService.createQuick(eq(userId), any())).thenReturn(taskResponse(createdId));
+
+        applier.apply(userId, entity);
+
+        verify(taskService, never()).scheduleReminder(any(), any(), any());
+    }
+
     @Test
     void apply_preservesDomainExceptionMessage() {
         UUID t1 = UUID.randomUUID();

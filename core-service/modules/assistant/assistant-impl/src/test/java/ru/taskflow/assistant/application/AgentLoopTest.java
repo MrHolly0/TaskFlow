@@ -45,7 +45,7 @@ class AgentLoopTest {
     private final AssistantPromptBuilder promptBuilder = new AssistantPromptBuilder("Мунин");
     private final ToolRegistry toolRegistry = new ToolRegistry();
     private final ToolCallParser toolCallParser = new ToolCallParser(
-            toolRegistry, new ActionValidator(taskService), new SummaryRenderer(), new ObjectMapper());
+            toolRegistry, new ActionValidator(taskService, Clock.fixed(now, zone)), new SummaryRenderer(), new ObjectMapper());
     private final DuplicateGuard duplicateGuard = new DuplicateGuard(new TitleSimilarity());
     private final TitleChangeGuard titleChangeGuard = new TitleChangeGuard();
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -115,6 +115,16 @@ class AgentLoopTest {
     private LlmToolCall noActionCall(String reason, String answer) {
         return new LlmToolCall("call-no-action", "no_action",
                 "{\"reason\":\"" + reason + "\",\"answer\":\"" + answer + "\"}");
+    }
+
+    private LlmToolCall remindTaskCall(String reminderAt) {
+        return new LlmToolCall("call-remind", "propose_actions",
+                "{\"actions\":[{\"type\":\"remind\",\"task_ref\":\"T1\",\"reminder_at\":\"" + reminderAt + "\"}]}");
+    }
+
+    private LlmToolCall createWithReminderCall(String title, String reminderAt) {
+        return new LlmToolCall("call-create-remind", "propose_actions",
+                "{\"actions\":[{\"type\":\"create\",\"title\":\"" + title + "\",\"reminder_at\":\"" + reminderAt + "\"}]}");
     }
 
     // Модель делает ровно один вызов инструмента за ответ — двоякость и оба
@@ -377,6 +387,42 @@ class AgentLoopTest {
         // runFirstPass — declineReason не должен теряться при этой перестройке.
         assertThat(outcome.declineReason()).isEqualTo(DeclineReason.UNCLEAR);
         assertThat(outcome.totalLatencyMs()).isPositive();
+    }
+
+    // Блок В: напоминание на существующую задачу — срок задачи не трогает.
+    @Test
+    void run_returnsRemindActionForExistingTask() {
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(
+                toolResponse(List.of(remindTaskCall("2026-08-13T09:00:00+03:00")), null));
+
+        var outcome = loopWithFixedClock().run(userId, "напомни про молоко завтра в 9", zone);
+
+        assertThat(outcome.actions()).hasSize(1);
+        var action = outcome.actions().getFirst();
+        assertThat(action.type()).isEqualTo(AssistantActionType.REMIND);
+        assertThat(action.targetTaskId()).isEqualTo(existingTaskId);
+        assertThat(action.payload()).containsEntry("reminder_at", "2026-08-13T09:00:00+03:00");
+    }
+
+    // Создать задачу сразу с напоминанием — одно действие, не два: ссылки на
+    // ещё не созданную задачу в том же пакете не существует.
+    @Test
+    void run_returnsCreateActionWithReminderAt() {
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(
+                toolResponse(List.of(createWithReminderCall("позвонить маме", "2026-08-13T10:00:00+03:00")), null));
+
+        var outcome = loopWithFixedClock().run(userId, "напомни завтра в 10 позвонить маме", zone);
+
+        assertThat(outcome.actions()).hasSize(1);
+        var action = outcome.actions().getFirst();
+        assertThat(action.type()).isEqualTo(AssistantActionType.CREATE);
+        assertThat(action.payload()).containsEntry("title", "позвонить маме");
+        assertThat(action.payload()).containsEntry("reminder_at", "2026-08-13T10:00:00+03:00");
+        // Срок и напоминание — разные вещи: создание с одним лишь напоминанием
+        // не подставляет reminder_at в качестве deadline.
+        assertThat(action.payload()).doesNotContainKey("deadline");
     }
 
     @Test

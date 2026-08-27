@@ -180,6 +180,17 @@ public class ProposalApplier {
                 taskService.update(userId, targetTaskId, request);
                 yield targetTaskId;
             }
+            case REMIND -> {
+                // Срок обязателен по контракту REMIND так же, как new_deadline у
+                // RESCHEDULE: дошедшее сюда действие уже прошло ActionValidator,
+                // неразобранное значение на этом шаге — отказ, не «ничего не менять».
+                OffsetDateTime reminderAt = parseDeadline(payload.get("reminder_at"));
+                if (reminderAt == null) {
+                    throw new ActionApplyException("не удалось распознать время напоминания");
+                }
+                taskService.scheduleReminder(userId, targetTaskId, reminderAt);
+                yield targetTaskId;
+            }
         };
     }
 
@@ -196,6 +207,13 @@ public class ProposalApplier {
                 sourceOf(proposal)
         );
         TaskResponse created = taskService.createQuick(userId, request);
+        // Срок задачи и время напоминания — разные вещи (В): напоминание
+        // ставится отдельным вызовом, а не выводится из deadline, и работает
+        // даже если deadline вовсе не задан.
+        OffsetDateTime reminderAt = parseDeadline(payload.get("reminder_at"));
+        if (reminderAt != null) {
+            taskService.scheduleReminder(userId, created.id(), reminderAt);
+        }
         return created.id();
     }
 
@@ -225,12 +243,13 @@ public class ProposalApplier {
      * дедлайн, а не статус, но выделенного события для срока в AuditEventType
      * нет — STATUS_CHANGED здесь ближе по смыслу к "что-то изменилось в жизненном
      * цикле задачи", чем UPDATED, которое в остальном коде обозначает правку полей
-     * содержимого (title/description/priority).
+     * содержимого (title/description/priority). REMIND по той же причине: не
+     * поле задачи и не статус, но выделенного события для напоминаний нет тоже.
      */
     private AuditEventType eventTypeFor(AssistantActionType type) {
         return switch (type) {
             case CREATE -> AuditEventType.CREATED;
-            case COMPLETE, RESCHEDULE, CANCEL -> AuditEventType.STATUS_CHANGED;
+            case COMPLETE, RESCHEDULE, CANCEL, REMIND -> AuditEventType.STATUS_CHANGED;
             case UPDATE -> AuditEventType.UPDATED;
         };
     }

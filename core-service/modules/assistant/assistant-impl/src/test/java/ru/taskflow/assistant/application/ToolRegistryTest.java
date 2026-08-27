@@ -108,11 +108,11 @@ class ToolRegistryTest {
         assertThat(actionsParam.get("type")).isEqualTo("array");
         assertThat(itemPropertyNames(actionsParam)).contains(
                 "type", "task_ref", "title", "description", "priority", "deadline",
-                "new_deadline", "group", "tags", "note", "reason", "ambiguous_reason");
+                "new_deadline", "group", "tags", "note", "reason", "reminder_at", "ambiguous_reason");
     }
 
     @Test
-    void toolDefinitions_actionTypeFieldListsAllFiveKinds() {
+    void toolDefinitions_actionTypeFieldListsAllSixKinds() {
         var proposeActions = registry.toolDefinitions().stream()
                 .filter(t -> ToolRegistry.PROPOSE_ACTIONS.equals(functionName(t)))
                 .findFirst().orElseThrow();
@@ -123,7 +123,7 @@ class ToolRegistryTest {
         Map<String, Object> typeProperty = (Map<String, Object>) itemProperties.get("type");
 
         assertThat((List<String>) typeProperty.get("enum"))
-                .containsExactlyInAnyOrder("create", "complete", "reschedule", "update", "cancel");
+                .containsExactlyInAnyOrder("create", "complete", "reschedule", "update", "cancel", "remind");
     }
 
     // Живой дефект: модель устойчиво возвращала один вызов инструмента на
