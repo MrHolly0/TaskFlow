@@ -95,6 +95,9 @@ public class AssistantServiceImpl implements AssistantService {
         if (outcome.llmFailed()) {
             return degrade(userId, text, degradedSource, outcome);
         }
+        if (outcome.isDeclined()) {
+            return declinedResponse(userId, text, outcome);
+        }
         if (isEmpty(outcome)) {
             return silentModelResponse(userId, text, outcome);
         }
@@ -283,6 +286,21 @@ public class AssistantServiceImpl implements AssistantService {
                 now, now, false, null, List.of(), outcome.inputTokens(), outcome.outputTokens(),
                 outcome.totalLatencyMs(), outcome.firstPassLatencyMs(), outcome.secondPassLatencyMs(),
                 outcome.passes());
+    }
+
+    /**
+     * Модель явно отказалась предлагать действие (no_action) — вопрос о
+     * данных, реплика без содержания или формулировка, которую не разобрать
+     * в команду (Б1). Третье состояние, не разновидность сбоя (Б2): задачу
+     * не создаём, recordDegradedCreation не вызываем (Б3) — пользователь
+     * видит ответ модели вместо пустого предложения.
+     */
+    private Proposal declinedResponse(UUID userId, String text, AgentOutcome outcome) {
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        return new Proposal(null, null, userId, ProposalStatus.DECLINED, text, outcome.assistantText(), List.of(),
+                now, now, false, null, List.of(), outcome.inputTokens(), outcome.outputTokens(),
+                outcome.totalLatencyMs(), outcome.firstPassLatencyMs(), outcome.secondPassLatencyMs(),
+                outcome.passes(), outcome.declineReason());
     }
 
     private void recordDegradedCreation(UUID userId, UUID taskId) {

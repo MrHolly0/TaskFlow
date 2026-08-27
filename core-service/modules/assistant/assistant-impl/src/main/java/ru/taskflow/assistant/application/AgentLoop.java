@@ -95,6 +95,14 @@ public class AgentLoop {
         rejections.addAll(guarded1.rejections());
         rejections.addAll(titled1.rejections());
 
+        // no_action заменяет действие, а не дополняет его (Б1) — до всех
+        // остальных веток: клaрификация/двоякость приходят полем действия
+        // внутри propose_actions и с отказом не пересекаются.
+        if (parsed1.isDeclined()) {
+            return new AgentOutcome(List.of(), rejections, null, null, parsed1.declineAnswer(), window, 1, false,
+                    false, null, response1.inputTokens(), response1.outputTokens(), 0, 0, 0, parsed1.declineReason());
+        }
+
         if (parsed1.isClarification() || parsed1.ambiguous()) {
             return new AgentOutcome(titled1.actions(), rejections, parsed1.clarification(),
                     parsed1.clarificationOptions(), response1.text(), window, 1, false,
@@ -145,6 +153,15 @@ public class AgentLoop {
         rejections.addAll(guarded2.rejections());
         rejections.addAll(titled2.rejections());
 
+        if (parsed2.isDeclined()) {
+            AgentOutcome outcome = new AgentOutcome(List.of(), rejections, null, null, parsed2.declineAnswer(),
+                    extended.window(), 2, false, false, null,
+                    response1.inputTokens() + response2.inputTokens(),
+                    response1.outputTokens() + response2.outputTokens(),
+                    0, 0, 0, parsed2.declineReason());
+            return withSecondPassLatency(outcome, secondPassLatencyMs);
+        }
+
         List<ProposedAction> combined = combineAndRenumber(pass1Actions, titled2.actions());
 
         String clarification = parsed2.isClarification() ? parsed2.clarification() : null;
@@ -179,14 +196,16 @@ public class AgentLoop {
         return new AgentOutcome(outcome.actions(), outcome.rejections(), outcome.clarification(),
                 outcome.clarificationOptions(), outcome.assistantText(), outcome.window(), outcome.passes(),
                 outcome.llmFailed(), outcome.ambiguous(), outcome.ambiguityReason(), outcome.inputTokens(),
-                outcome.outputTokens(), totalLatencyMs, firstPassLatencyMs, outcome.secondPassLatencyMs());
+                outcome.outputTokens(), totalLatencyMs, firstPassLatencyMs, outcome.secondPassLatencyMs(),
+                outcome.declineReason());
     }
 
     private AgentOutcome withSecondPassLatency(AgentOutcome outcome, long secondPassLatencyMs) {
         return new AgentOutcome(outcome.actions(), outcome.rejections(), outcome.clarification(),
                 outcome.clarificationOptions(), outcome.assistantText(), outcome.window(), outcome.passes(),
                 outcome.llmFailed(), outcome.ambiguous(), outcome.ambiguityReason(), outcome.inputTokens(),
-                outcome.outputTokens(), outcome.totalLatencyMs(), outcome.firstPassLatencyMs(), secondPassLatencyMs);
+                outcome.outputTokens(), outcome.totalLatencyMs(), outcome.firstPassLatencyMs(), secondPassLatencyMs,
+                outcome.declineReason());
     }
 
     /**

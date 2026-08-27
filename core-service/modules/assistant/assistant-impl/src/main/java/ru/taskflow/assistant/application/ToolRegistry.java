@@ -11,6 +11,7 @@ public class ToolRegistry {
     public static final String PROPOSE_ACTIONS = "propose_actions";
     public static final String SEARCH_TASKS = "search_tasks";
     public static final String ASK_USER = "ask_user";
+    public static final String NO_ACTION = "no_action";
 
     public boolean isProposeActions(String toolName) {
         return PROPOSE_ACTIONS.equals(toolName);
@@ -22,6 +23,10 @@ public class ToolRegistry {
 
     public boolean isControl(String toolName) {
         return ASK_USER.equals(toolName);
+    }
+
+    public boolean isNoAction(String toolName) {
+        return NO_ACTION.equals(toolName);
     }
 
     public List<Map<String, Object>> toolDefinitions() {
@@ -77,7 +82,16 @@ public class ToolRegistry {
                 tool(SEARCH_TASKS, "Найти задачи пользователя, если нужной нет в показанном списке", Map.of(
                         "query", stringParam("Поисковая фраза"),
                         "include_completed", Map.of("type", "boolean", "description", "Искать среди выполненных тоже")
-                ), List.of("query"))
+                ), List.of("query")),
+
+                tool(NO_ACTION, "Используй вместо propose_actions, когда реплика не описывает действие "
+                        + "над задачами: вопрос о данных, реплика без содержания или формулировка, которую "
+                        + "нельзя разобрать в команду. Заменяет действие, а не дополняет его — одного вызова "
+                        + "достаточно.", Map.of(
+                        "reason", enumParam("Почему действие не предлагается",
+                                List.of("question", "chitchat", "unclear")),
+                        "answer", stringParam("Короткий ответ пользователю")
+                ), List.of("reason", "answer"))
         );
     }
 

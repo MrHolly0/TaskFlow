@@ -8,6 +8,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import ru.taskflow.assistant.api.AssistantChannel;
 import ru.taskflow.assistant.api.AssistantEntryPoint;
+import ru.taskflow.assistant.api.DeclineReason;
 import ru.taskflow.assistant.api.ProposalStatus;
 import ru.taskflow.assistant.api.dto.ApplyResult;
 import ru.taskflow.assistant.api.dto.Proposal;
@@ -87,6 +88,12 @@ class AssistantServiceImplTest {
         TaskContextWindow window = new TaskContextWindow("", java.util.Map.of(), java.util.Map.of());
         return new AgentOutcome(List.of(), List.of(), null, List.of(), null, window, 1, false, false, null,
                 inputTokens, outputTokens);
+    }
+
+    private AgentOutcome declinedOutcome(DeclineReason reason, String answer, int inputTokens, int outputTokens) {
+        TaskContextWindow window = new TaskContextWindow("", java.util.Map.of(), java.util.Map.of());
+        return new AgentOutcome(List.of(), List.of(), null, List.of(), answer, window, 1, false, false, null,
+                inputTokens, outputTokens, 0, 0, 0, reason);
     }
 
     private ProposalActionJpaEntity action(int ordinal, boolean accepted) {
@@ -175,6 +182,99 @@ class AssistantServiceImplTest {
         // недоступности инфраструктуры (llmFailed, тест ниже)
         assertThat(result.inputTokens()).isEqualTo(1500);
         assertThat(result.outputTokens()).isEqualTo(200);
+    }
+
+    // --- Блок Б: no_action ---
+
+    @Test
+    void handleText_declinedQuestionDoesNotCreateTaskAndCarriesAnswer() {
+        // «покажи задачи на завтра» — модель явно отказалась действием и
+        // ответила текстом вместо того, чтобы становиться задачей (Б1/Б3).
+        when(userService.getTimezone(userId)).thenReturn(zone);
+        AgentOutcome outcome = declinedOutcome(DeclineReason.QUESTION, "На завтра задач нет.", 1600, 40);
+        when(agentLoop.run(userId, "покажи задачи на завтра", zone, AssistantEntryPoint.CHAT)).thenReturn(outcome);
+
+        Proposal result = service.handleText(userId, "покажи задачи на завтра", AssistantChannel.TELEGRAM);
+
+        verify(taskService, never()).createQuick(any(), any());
+        verify(auditService, never()).record(any(), any(), any(), any());
+        verify(proposalRepository, never()).save(any());
+        assertThat(result.status()).isEqualTo(ProposalStatus.DECLINED);
+        assertThat(result.actions()).isEmpty();
+        assertThat(result.clarification()).isEqualTo("На завтра задач нет.");
+        assertThat(result.inputTokens()).isEqualTo(1600);
+        assertThat(result.outputTokens()).isEqualTo(40);
+    }
+
+    @Test
+    void handleText_declinedChitchatDoesNotCreateTask() {
+        when(userService.getTimezone(userId)).thenReturn(zone);
+        AgentOutcome outcome = declinedOutcome(DeclineReason.CHITCHAT, "Пожалуйста!", 1550, 20);
+        when(agentLoop.run(userId, "спасибо", zone, AssistantEntryPoint.CHAT)).thenReturn(outcome);
+
+        Proposal result = service.handleText(userId, "спасибо", AssistantChannel.TELEGRAM);
+
+        verify(taskService, never()).createQuick(any(), any());
+        assertThat(result.status()).isEqualTo(ProposalStatus.DECLINED);
+        assertThat(result.clarification()).isEqualTo("Пожалуйста!");
+    }
+
+    @Test
+    void handleText_declineDoesNotInterceptOrdinaryCommand() {
+        // Обычная команда с действиями по-прежнему идёт через сохранение
+        // предложения — no_action её не перехватывает.
+        when(userService.getTimezone(userId)).thenReturn(zone);
+        var action = new ru.taskflow.assistant.api.dto.ProposedAction(1, ru.taskflow.assistant.api.AssistantActionType.COMPLETE,
+                UUID.randomUUID(), java.util.Map.of(), "закрыть задачу", true);
+        AgentOutcome outcome = emptyWindowOutcome(List.of(action), null, null, false);
+        when(agentLoop.run(userId, "закрой молоко", zone, AssistantEntryPoint.CHAT)).thenReturn(outcome);
+
+        ProposalJpaEntity entity = new ProposalJpaEntity();
+        when(proposalFactory.from(eq(userId), eq("закрой молоко"), eq(AssistantChannel.TELEGRAM), eq("TEXT"), eq(outcome)))
+                .thenReturn(entity);
+        when(proposalRepository.save(entity)).thenReturn(entity);
+        Proposal expectedDto = new Proposal(UUID.randomUUID(), "CODE1234", userId, ProposalStatus.PENDING,
+                "закрой молоко", null, List.of(), now, now.plusHours(24));
+        when(proposalMapper.toDto(entity)).thenReturn(expectedDto);
+
+        Proposal result = service.handleText(userId, "закрой молоко", AssistantChannel.TELEGRAM);
+
+        assertThat(result).isEqualTo(expectedDto);
+        verify(taskService, never()).createQuick(any(), any());
+    }
+
+    // Отказ отличим в данных от несостоявшегося обращения (llmFailed) и от
+    // молчания модели (silentModelResponse, isEmpty без declineReason) — три
+    // разных статуса/поля, не эвристика по тексту.
+    @Test
+    void handleText_declineIsDistinguishableFromLlmFailedAndFromSilentResponse() {
+        when(userService.getTimezone(userId)).thenReturn(zone);
+
+        when(agentLoop.run(userId, "отказ", zone, AssistantEntryPoint.CHAT))
+                .thenReturn(declinedOutcome(DeclineReason.UNCLEAR, "Не понял, уточните.", 1500, 30));
+        Proposal declined = service.handleText(userId, "отказ", AssistantChannel.TELEGRAM);
+
+        when(agentLoop.run(userId, "молчание", zone, AssistantEntryPoint.CHAT))
+                .thenReturn(emptyWindowOutcomeWithTokens(1500, 30));
+        Proposal silent = service.handleText(userId, "молчание", AssistantChannel.TELEGRAM);
+
+        when(taskService.createQuick(eq(userId), any())).thenReturn(taskResponse());
+        when(agentLoop.run(userId, "сбой", zone, AssistantEntryPoint.CHAT))
+                .thenReturn(emptyWindowOutcome(List.of(), null, null, true));
+        Proposal failed = service.handleText(userId, "сбой", AssistantChannel.TELEGRAM);
+
+        // declined: собственный статус и declineReason.
+        assertThat(declined.status()).isEqualTo(ProposalStatus.DECLINED);
+        assertThat(declined.declineReason()).isEqualTo(DeclineReason.UNCLEAR);
+        // silent: тот же FAILED, что и настоящий сбой, но без declineReason
+        // и с ненулевым расходом — по нему отличимо от llmFailed.
+        assertThat(silent.status()).isEqualTo(ProposalStatus.FAILED);
+        assertThat(silent.declineReason()).isNull();
+        assertThat(silent.inputTokens()).isEqualTo(1500);
+        // llmFailed: FAILED и нулевой расход — обращения не было вовсе.
+        assertThat(failed.status()).isEqualTo(ProposalStatus.FAILED);
+        assertThat(failed.declineReason()).isNull();
+        assertThat(failed.inputTokens()).isZero();
     }
 
     @Test

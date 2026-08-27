@@ -224,6 +224,18 @@ class AssistantPromptBuilderTest {
                 .contains("новых названий групп не придумывай");
     }
 
+    // Блок Б: единственная новая строка правила — вызывать no_action вместо
+    // propose_actions на вопросах о данных, репликах без содержания и
+    // неразборчивых формулировках.
+    @Test
+    void build_instructsToUseNoActionForNonCommands() {
+        var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());
+
+        assertThat(parts.systemPrompt()).contains("no_action");
+        assertThat(parts.systemPrompt()).contains("вопрос о данных");
+        assertThat(parts.systemPrompt()).contains("реплика без содержания");
+    }
+
     @Test
     void build_handlesNoGroupsYet() {
         var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());

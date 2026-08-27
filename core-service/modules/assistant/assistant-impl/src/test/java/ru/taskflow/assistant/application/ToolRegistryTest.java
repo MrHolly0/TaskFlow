@@ -12,10 +12,10 @@ class ToolRegistryTest {
     private final ToolRegistry registry = new ToolRegistry();
 
     @Test
-    void toolDefinitions_containsTwoTools() {
+    void toolDefinitions_containsThreeTools() {
         List<Map<String, Object>> definitions = registry.toolDefinitions();
 
-        assertThat(definitions).hasSize(2);
+        assertThat(definitions).hasSize(3);
         assertThat(definitions).allSatisfy(d -> assertThat(d).containsKey("function"));
     }
 
@@ -28,7 +28,8 @@ class ToolRegistryTest {
 
         assertThat(names).containsExactlyInAnyOrder(
                 ToolRegistry.PROPOSE_ACTIONS,
-                ToolRegistry.SEARCH_TASKS
+                ToolRegistry.SEARCH_TASKS,
+                ToolRegistry.NO_ACTION
         );
     }
 
@@ -59,6 +60,39 @@ class ToolRegistryTest {
         assertThat(registry.isControl(ToolRegistry.ASK_USER)).isTrue();
         assertThat(registry.isControl(ToolRegistry.SEARCH_TASKS)).isFalse();
         assertThat(registry.isControl(ToolRegistry.PROPOSE_ACTIONS)).isFalse();
+    }
+
+    @Test
+    void isNoAction_trueOnlyForNoAction() {
+        assertThat(registry.isNoAction(ToolRegistry.NO_ACTION)).isTrue();
+        assertThat(registry.isNoAction(ToolRegistry.PROPOSE_ACTIONS)).isFalse();
+        assertThat(registry.isNoAction(ToolRegistry.SEARCH_TASKS)).isFalse();
+    }
+
+    @Test
+    void toolDefinitions_noActionListsClosedReasonSet() {
+        var noAction = registry.toolDefinitions().stream()
+                .filter(t -> ToolRegistry.NO_ACTION.equals(functionName(t)))
+                .findFirst().orElseThrow();
+
+        Map<String, Object> properties = parameters(noAction);
+        assertThat(properties).containsOnlyKeys("reason", "answer");
+
+        Map<String, Object> reasonParam = (Map<String, Object>) properties.get("reason");
+        assertThat((List<String>) reasonParam.get("enum"))
+                .containsExactlyInAnyOrder("question", "chitchat", "unclear");
+    }
+
+    @Test
+    void toolDefinitions_noActionRequiresReasonAndAnswer() {
+        var noAction = registry.toolDefinitions().stream()
+                .filter(t -> ToolRegistry.NO_ACTION.equals(functionName(t)))
+                .findFirst().orElseThrow();
+
+        Map<String, Object> function = (Map<String, Object>) noAction.get("function");
+        Map<String, Object> parameters = (Map<String, Object>) function.get("parameters");
+
+        assertThat((List<String>) parameters.get("required")).containsExactlyInAnyOrder("reason", "answer");
     }
 
     @Test

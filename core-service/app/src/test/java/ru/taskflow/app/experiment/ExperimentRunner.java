@@ -187,6 +187,15 @@ class ExperimentRunner {
         // «модель ответила без действий» (statusFailed && !zeroTokens)
         // больше не создаёт задачу — proposal.actions() уже отражает
         // фактически произошедшее без досочинения.
+        //
+        // Блок Б5: явный отказ (no_action, status=DECLINED) отдельного учёта
+        // здесь не требует — не FAILED, значит llmFailed=false и в матчер
+        // уходит proposal.actions() (пустой список для no_action), тот же
+        // путь, что и для обычного PENDING. Для NEGATIVE-строк, ожидающих
+        // ноль действий, это уже верное бездействие: ActionMatcher.fullyCorrect()
+        // требует missingCount==0 && extraCount==0, оба нули на пустом
+        // actual при пустом expected — строка не выбрасывается из статистики,
+        // просто попадает в общий путь без деградационной пометки.
         List<ProposedAction> effectiveActions = proposal.actions();
 
         ActionMatcher.MatchResult match = llmFailed

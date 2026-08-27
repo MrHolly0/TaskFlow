@@ -3,6 +3,7 @@ package ru.taskflow.assistant.application;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import ru.taskflow.assistant.api.AssistantActionType;
+import ru.taskflow.assistant.api.DeclineReason;
 import ru.taskflow.task.api.TaskService;
 
 import java.util.List;
@@ -340,5 +341,55 @@ class ToolCallParserTest {
 
         assertThat(result.ambiguous()).isFalse();
         assertThat(result.ambiguityReason()).isNull();
+    }
+
+    // --- Блок Б: no_action ---
+
+    @Test
+    void parse_extractsNoAction() {
+        var result = parser.parse(List.of(call("no_action",
+                "{\"reason\":\"question\",\"answer\":\"На завтра задач нет.\"}")), window);
+
+        assertThat(result.isDeclined()).isTrue();
+        assertThat(result.declineReason()).isEqualTo(DeclineReason.QUESTION);
+        assertThat(result.declineAnswer()).isEqualTo("На завтра задач нет.");
+        assertThat(result.actions()).isEmpty();
+    }
+
+    @Test
+    void parse_noActionReasonIsCaseInsensitive() {
+        var result = parser.parse(List.of(call("no_action",
+                "{\"reason\":\"CHITCHAT\",\"answer\":\"Пожалуйста!\"}")), window);
+
+        assertThat(result.declineReason()).isEqualTo(DeclineReason.CHITCHAT);
+    }
+
+    @Test
+    void parse_rejectsNoActionWithUnknownReason() {
+        var result = parser.parse(List.of(call("no_action",
+                "{\"reason\":\"maybe\",\"answer\":\"что-то\"}")), window);
+
+        assertThat(result.isDeclined()).isFalse();
+        assertThat(result.rejections()).hasSize(1);
+        assertThat(result.rejections().getFirst()).contains("maybe");
+    }
+
+    @Test
+    void parse_keepsOnlyFirstNoAction() {
+        var result = parser.parse(List.of(
+                call("no_action", "{\"reason\":\"question\",\"answer\":\"первый\"}"),
+                call("no_action", "{\"reason\":\"chitchat\",\"answer\":\"второй\"}")), window);
+
+        assertThat(result.declineAnswer()).isEqualTo("первый");
+        assertThat(result.rejections()).hasSize(1);
+    }
+
+    @Test
+    void parse_noActionDefaultsAbsent() {
+        var result = parser.parse(List.of(proposeActions(completeItem("T1"))), window);
+
+        assertThat(result.isDeclined()).isFalse();
+        assertThat(result.declineReason()).isNull();
+        assertThat(result.declineAnswer()).isNull();
     }
 }

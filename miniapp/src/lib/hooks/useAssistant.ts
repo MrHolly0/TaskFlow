@@ -23,7 +23,7 @@ const getClient = () => {
   return client;
 };
 
-export type ProposalStatus = 'PENDING' | 'APPLIED' | 'PARTIALLY_APPLIED' | 'REJECTED' | 'EXPIRED' | 'FAILED';
+export type ProposalStatus = 'PENDING' | 'APPLIED' | 'PARTIALLY_APPLIED' | 'REJECTED' | 'EXPIRED' | 'FAILED' | 'DECLINED';
 
 export interface ProposedAction {
   ordinal: number;

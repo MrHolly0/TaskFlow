@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import ru.taskflow.assistant.api.AssistantActionType;
+import ru.taskflow.assistant.api.DeclineReason;
 import ru.taskflow.assistant.api.dto.ProposedAction;
 
 import java.util.ArrayList;
@@ -46,6 +47,8 @@ public class ToolCallParser {
         boolean ambiguous = false;
         String ambiguityReason = null;
         UUID rejectedTarget = null;
+        DeclineReason declineReason = null;
+        String declineAnswer = null;
 
         for (ToolCall call : calls) {
             Map<String, Object> args;
@@ -131,6 +134,21 @@ public class ToolCallParser {
                 continue;
             }
 
+            if (toolRegistry.isNoAction(call.name())) {
+                if (declineReason != null) {
+                    rejections.add("повторный отказ отклонён: " + call.name());
+                    continue;
+                }
+                DeclineReason parsedReason = parseDeclineReason(stringArg(args, "reason"));
+                if (parsedReason == null) {
+                    rejections.add(call.name() + ": неизвестная причина отказа: " + args.get("reason"));
+                    continue;
+                }
+                declineReason = parsedReason;
+                declineAnswer = stringArg(args, "answer");
+                continue;
+            }
+
             rejections.add("неизвестный инструмент: " + call.name());
         }
 
@@ -139,7 +157,7 @@ public class ToolCallParser {
         }
 
         return new ParsedToolCalls(actions, rejections, clarification, clarificationOptions, searchQuery,
-                ambiguous, ambiguityReason, rejectedTarget);
+                ambiguous, ambiguityReason, rejectedTarget, declineReason, declineAnswer);
     }
 
     // Ровно один вариант выбран по умолчанию — переключатели в интерфейсе,
@@ -159,6 +177,19 @@ public class ToolCallParser {
         }
         try {
             return AssistantActionType.valueOf(raw.toString().trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    // Закрытый список (Б1): свободный текст здесь не превращает провалы
+    // NEGATIVE в измеримые доли, только фиксированные значения.
+    private DeclineReason parseDeclineReason(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return DeclineReason.valueOf(raw.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             return null;
         }

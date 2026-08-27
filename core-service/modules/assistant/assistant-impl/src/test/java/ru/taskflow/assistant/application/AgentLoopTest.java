@@ -3,6 +3,7 @@ package ru.taskflow.assistant.application;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import ru.taskflow.assistant.api.AssistantActionType;
+import ru.taskflow.assistant.api.DeclineReason;
 import ru.taskflow.nlp.api.LlmToolCall;
 import ru.taskflow.nlp.api.LlmToolRequest;
 import ru.taskflow.nlp.api.LlmToolResponse;
@@ -109,6 +110,11 @@ class AgentLoopTest {
     private LlmToolCall askUserCall() {
         return new LlmToolCall("call-ask", "ask_user",
                 "{\"question\":\"какую задачу закрыть?\",\"options\":[\"первую\",\"вторую\"]}");
+    }
+
+    private LlmToolCall noActionCall(String reason, String answer) {
+        return new LlmToolCall("call-no-action", "no_action",
+                "{\"reason\":\"" + reason + "\",\"answer\":\"" + answer + "\"}");
     }
 
     // Модель делает ровно один вызов инструмента за ответ — двоякость и оба
@@ -304,6 +310,73 @@ class AgentLoopTest {
         assertThat(outcome.clarification()).isEqualTo("какую задачу закрыть?");
         assertThat(outcome.clarificationOptions()).containsExactly("первую", "вторую");
         assertThat(outcome.passes()).isEqualTo(1);
+    }
+
+    // Блок Б: «покажи задачи на завтра» — вопрос о данных, не команда.
+    // no_action заменяет действие, а не дополняет его — actions пуст.
+    @Test
+    void run_returnsDeclineWhenModelCallsNoActionInFirstPass() {
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(
+                toolResponse(List.of(noActionCall("question", "На завтра задач нет.")), null));
+
+        var outcome = loopWithFixedClock().run(userId, "покажи задачи на завтра", zone);
+
+        assertThat(outcome.actions()).isEmpty();
+        assertThat(outcome.declineReason()).isEqualTo(DeclineReason.QUESTION);
+        assertThat(outcome.assistantText()).isEqualTo("На завтра задач нет.");
+        assertThat(outcome.passes()).isEqualTo(1);
+        assertThat(outcome.llmFailed()).isFalse();
+        verify(gateway, times(1)).callWithTools(any());
+    }
+
+    @Test
+    void run_returnsDeclineForChitchat() {
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(
+                toolResponse(List.of(noActionCall("chitchat", "Пожалуйста!")), null));
+
+        var outcome = loopWithFixedClock().run(userId, "спасибо", zone);
+
+        assertThat(outcome.actions()).isEmpty();
+        assertThat(outcome.declineReason()).isEqualTo(DeclineReason.CHITCHAT);
+        assertThat(outcome.assistantText()).isEqualTo("Пожалуйста!");
+    }
+
+    // Модель может отказаться и после поиска — «покажи задачи на завтра»,
+    // если сперва свериться со списком через search_tasks (Б5).
+    @Test
+    void run_returnsDeclineAfterSearchInSecondPass() {
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(
+                toolResponse(List.of(searchCall("завтра")), null),
+                toolResponse(List.of(noActionCall("question", "На завтра задач нет.")), null));
+        when(taskService.search(userId, "завтра", false, 20)).thenReturn(List.of());
+
+        var outcome = loopWithFixedClock().run(userId, "покажи задачи на завтра", zone);
+
+        assertThat(outcome.actions()).isEmpty();
+        assertThat(outcome.declineReason()).isEqualTo(DeclineReason.QUESTION);
+        assertThat(outcome.assistantText()).isEqualTo("На завтра задач нет.");
+        assertThat(outcome.passes()).isEqualTo(2);
+        // расход второго прохода не должен теряться при отказе (та же логика,
+        // что и для обычного пути через withSecondPassLatency)
+        assertThat(outcome.inputTokens()).isEqualTo(20);
+        assertThat(outcome.outputTokens()).isEqualTo(10);
+    }
+
+    @Test
+    void run_declineReasonSurvivesLatencyOverlay() {
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(
+                toolResponse(List.of(noActionCall("unclear", "Не понял, уточните.")), null));
+
+        var outcome = loop(advancingClock()).run(userId, "непонятно что", zone);
+
+        // withLatencies() перестраивает AgentOutcome поверх результата
+        // runFirstPass — declineReason не должен теряться при этой перестройке.
+        assertThat(outcome.declineReason()).isEqualTo(DeclineReason.UNCLEAR);
+        assertThat(outcome.totalLatencyMs()).isPositive();
     }
 
     @Test
