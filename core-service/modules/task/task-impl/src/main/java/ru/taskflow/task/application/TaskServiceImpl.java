@@ -457,6 +457,14 @@ public class TaskServiceImpl implements TaskService {
         auditService.record(userId, taskId, AuditEventType.DELETED, null);
     }
 
+    @Override
+    @Transactional
+    public void clearRecurrence(UUID userId, UUID taskId) {
+        taskRepository.findByIdAndUserId(taskId, userId)
+                .orElseThrow(() -> new TaskNotFoundException(taskId));
+        recurrenceRepository.findById(taskId).ifPresent(recurrenceRepository::delete);
+    }
+
     private List<TagJpaEntity> resolveOrCreateTags(UUID userId, List<String> tagNames) {
         var existing = tagRepository.findAllByUserIdAndNameIn(userId, tagNames);
         var existingNames = existing.stream().map(TagJpaEntity::getName).toList();

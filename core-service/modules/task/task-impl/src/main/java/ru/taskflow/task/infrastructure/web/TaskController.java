@@ -90,6 +90,16 @@ public class TaskController {
         taskService.complete(user.userId(), id);
     }
 
+    @DeleteMapping("/{id}/recurrence")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "Снять повтор", description = "Останавливает порождение новых вхождений при следующем закрытии задачи")
+    public void clearRecurrence(
+            @PathVariable java.util.UUID id,
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) {
+        taskService.clearRecurrence(user.userId(), id);
+    }
+
     @PostMapping("/{id}/reminders")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Добавить напоминание", description = "Планирует напоминание на конкретное время независимо от срока задачи")

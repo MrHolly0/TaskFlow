@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { IconSearch, IconPlus, IconClock, IconInbox, IconBell } from '@tabler/icons-react';
+import { IconSearch, IconPlus, IconClock, IconInbox, IconBell, IconRepeat } from '@tabler/icons-react';
 import { Status } from '@/lib/store';
 import { formatDeadline, formatReminderTime, endOfZonedDay, cn } from '@/lib/utils';
 import { getStatusLabel } from '@/lib/store';
-import { useTasksList } from '@/lib/hooks/useTasks';
+import { useTasksList, RecurrenceRule } from '@/lib/hooks/useTasks';
 import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
 import { useMinuteTick } from '@/lib/hooks/useMinuteTick';
 import { Button } from '@/app/components/ui/button';
@@ -23,6 +23,7 @@ interface Task {
   groupId?: string;
   groupName?: string;
   reminders?: { id: string; fireAt: string; status: string }[];
+  recurrence?: RecurrenceRule;
 }
 
 type Context = 'now' | 'today' | 'week' | 'all';
@@ -189,6 +190,11 @@ export function AllTasksPage() {
                     )}
                     {task.groupName && <span>{task.groupName}</span>}
                     {task.estimateMinutes && <span>~{task.estimateMinutes} мин</span>}
+                    {task.recurrence && (
+                      <span className="flex items-center gap-1" title="Повторяется">
+                        <IconRepeat className="h-3 w-3" />
+                      </span>
+                    )}
                     {task.reminders && task.reminders.length > 0 && (
                       <span className="flex items-center gap-1">
                         <IconBell className="h-3 w-3" />

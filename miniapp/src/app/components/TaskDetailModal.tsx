@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { IconTrash, IconClock, IconBell, IconBellPlus, IconX } from '@tabler/icons-react';
+import { IconTrash, IconClock, IconBell, IconBellPlus, IconX, IconRepeat } from '@tabler/icons-react';
 import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { Priority, Status } from '@/lib/store';
 import {
@@ -9,6 +9,8 @@ import {
   useTaskReminders,
   useAddReminder,
   useCancelReminder,
+  useClearRecurrence,
+  RecurrenceRule,
 } from '@/lib/hooks/useTasks';
 import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
 import { buildReminderPresets, isPastReminderTime } from '@/lib/reminderPresets';
@@ -44,6 +46,26 @@ const STATUS_OPTIONS: { value: Status; label: string }[] = [
   { value: 'CANCELLED', label: 'Отменено' },
 ];
 
+const NO_RECURRENCE = '__none__';
+
+const RECURRENCE_OPTIONS: { value: string; label: string }[] = [
+  { value: NO_RECURRENCE, label: 'Без повтора' },
+  { value: 'DAILY', label: 'Каждый день' },
+  { value: 'WEEKLY', label: 'Каждую неделю' },
+  { value: 'WEEKDAYS', label: 'По будням' },
+  { value: 'MONTHLY', label: 'Каждый месяц' },
+];
+
+const WEEKDAY_OPTIONS: { value: string; label: string }[] = [
+  { value: 'MONDAY', label: 'Пн' },
+  { value: 'TUESDAY', label: 'Вт' },
+  { value: 'WEDNESDAY', label: 'Ср' },
+  { value: 'THURSDAY', label: 'Чт' },
+  { value: 'FRIDAY', label: 'Пт' },
+  { value: 'SATURDAY', label: 'Сб' },
+  { value: 'SUNDAY', label: 'Вс' },
+];
+
 export interface TaskInput {
   id: string;
   title: string;
@@ -56,6 +78,7 @@ export interface TaskInput {
   groupId?: string;
   estimatedTime?: number;
   estimateMinutes?: number;
+  recurrence?: RecurrenceRule;
 }
 
 interface TaskDetailModalProps {
@@ -165,6 +188,7 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
   const { timezone, isReady: timezoneReady } = useUserTimezone();
   const { data: reminders = [] } = useTaskReminders(task?.id, open);
   const { mutate: cancelReminder } = useCancelReminder();
+  const { mutateAsync: clearRecurrence } = useClearRecurrence();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -176,6 +200,11 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
   const [estimatedTime, setEstimatedTime] = useState('');
   const [saving, setSaving] = useState(false);
   const [showAddReminder, setShowAddReminder] = useState(false);
+  const [recurrenceType, setRecurrenceType] = useState(NO_RECURRENCE);
+  const [recurrenceInterval, setRecurrenceInterval] = useState('1');
+  const [recurrenceDays, setRecurrenceDays] = useState<string[]>([]);
+  const [recurrenceDayOfMonth, setRecurrenceDayOfMonth] = useState('');
+  const [recurrenceEndsAt, setRecurrenceEndsAt] = useState('');
 
   useEffect(() => {
     if (task) {
@@ -194,8 +223,20 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
         const found = groups.find(g => g.name === groupLabel);
         setSelectedGroupId(found?.id ?? '');
       }
+      const recurrence = task.recurrence;
+      setRecurrenceType(recurrence?.type ?? NO_RECURRENCE);
+      setRecurrenceInterval(recurrence?.intervalN ? String(recurrence.intervalN) : '1');
+      setRecurrenceDays(recurrence?.daysOfWeek ?? []);
+      setRecurrenceDayOfMonth(recurrence?.dayOfMonth ? String(recurrence.dayOfMonth) : '');
     }
   }, [task?.id, groups.length]);
+
+  // Тот же приём, что и с дедлайном чуть ниже: зависит от часового пояса.
+  useEffect(() => {
+    if (task && timezoneReady) {
+      setRecurrenceEndsAt(isoToZonedDate(task.recurrence?.endsAt, timezone));
+    }
+  }, [task?.id, timezoneReady, timezone]);
 
   // Отдельный эффект — срок зависит от часового пояса из настроек, который
   // может подгрузиться позже остального. Пока не готов, поля остаются пустыми,
@@ -209,10 +250,33 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
 
   const taskId = task?.id;
 
+  const buildRecurrence = (): RecurrenceRule | undefined => {
+    if (recurrenceType === NO_RECURRENCE) return undefined;
+    return {
+      type: recurrenceType,
+      intervalN: recurrenceType === 'DAILY' || recurrenceType === 'WEEKLY'
+        ? parseInt(recurrenceInterval) || 1
+        : undefined,
+      daysOfWeek: recurrenceType === 'WEEKLY' && recurrenceDays.length > 0 ? recurrenceDays : undefined,
+      dayOfMonth: recurrenceType === 'MONTHLY' ? parseInt(recurrenceDayOfMonth) || undefined : undefined,
+      endsAt: recurrenceEndsAt ? zonedInputToIso(recurrenceEndsAt, '23:59', timezone) : undefined,
+    };
+  };
+
+  const toggleRecurrenceDay = (day: string) => {
+    setRecurrenceDays((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]));
+  };
+
   const handleSave = async () => {
     if (!taskId) return;
     setSaving(true);
     try {
+      // recurrence в UpdateTaskRequest — null/undefined значит "не менять", как
+      // и остальные необязательные поля, поэтому снятие повтора — отдельный
+      // вызов, а не часть основного patch.
+      if (recurrenceType === NO_RECURRENCE && task?.recurrence) {
+        await clearRecurrence(taskId);
+      }
       await updateTask({
         id: taskId,
         title: title.trim() || undefined,
@@ -222,6 +286,7 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
         deadline: deadlineDate ? zonedInputToIso(deadlineDate, deadlineTime || '20:59', timezone) : undefined,
         groupId: selectedGroupId || undefined,
         estimateMinutes: estimatedTime ? parseInt(estimatedTime) : undefined,
+        recurrence: buildRecurrence(),
       });
       onClose();
     } catch {
@@ -379,6 +444,86 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
                 className="h-10"
               />
             </div>
+          </div>
+
+          {/* Повтор — следующее вхождение порождается при закрытии, не по расписанию заранее */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+              <IconRepeat className="h-3.5 w-3.5" />
+              Повтор
+            </label>
+            <Select value={recurrenceType} onValueChange={setRecurrenceType}>
+              <SelectTrigger className="h-10">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {RECURRENCE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {(recurrenceType === 'DAILY' || recurrenceType === 'WEEKLY') && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>Каждые</span>
+                <Input
+                  type="number"
+                  min="1"
+                  value={recurrenceInterval}
+                  onChange={(e) => setRecurrenceInterval(e.target.value)}
+                  className="h-9 w-16 text-center"
+                />
+                <span>{recurrenceType === 'DAILY' ? 'дн.' : 'нед.'}</span>
+              </div>
+            )}
+
+            {recurrenceType === 'WEEKLY' && (
+              <div className="flex flex-wrap gap-1.5">
+                {WEEKDAY_OPTIONS.map((d) => (
+                  <button
+                    key={d.value}
+                    type="button"
+                    onClick={() => toggleRecurrenceDay(d.value)}
+                    className={cn(
+                      'h-8 w-9 rounded-md text-xs font-medium border transition-colors',
+                      recurrenceDays.includes(d.value)
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'border-border/60 text-muted-foreground hover:bg-accent/40'
+                    )}
+                  >
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {recurrenceType === 'MONTHLY' && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>День месяца</span>
+                <Input
+                  type="number"
+                  min="1"
+                  max="31"
+                  value={recurrenceDayOfMonth}
+                  onChange={(e) => setRecurrenceDayOfMonth(e.target.value)}
+                  className="h-9 w-16 text-center"
+                />
+              </div>
+            )}
+
+            {recurrenceType !== NO_RECURRENCE && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span className="flex-shrink-0">Закончить</span>
+                <Input
+                  type="date"
+                  value={recurrenceEndsAt}
+                  onChange={(e) => setRecurrenceEndsAt(e.target.value)}
+                  className="h-9 text-sm"
+                />
+              </div>
+            )}
           </div>
 
           {/* Reminders (Б1/Б2) — независимы от срока, могут стоять и на задаче без дедлайна */}

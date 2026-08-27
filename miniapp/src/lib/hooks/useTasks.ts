@@ -9,6 +9,16 @@ export interface ReminderResponse {
   status: string;
 }
 
+// daysOfWeek — имена значений java.time.DayOfWeek ("MONDAY".."SUNDAY"), как
+// их отдаёт Jackson по умолчанию, а не числа ISO-8601.
+export interface RecurrenceRule {
+  type: string;
+  intervalN?: number;
+  daysOfWeek?: string[];
+  dayOfMonth?: number;
+  endsAt?: string;
+}
+
 interface Task {
   id: string;
   title: string;
@@ -27,6 +37,7 @@ interface Task {
   completedAt?: string;
   startedAt?: string;
   plannedDateSetAt?: string;
+  recurrence?: RecurrenceRule;
   reminders?: ReminderResponse[];
 }
 
@@ -225,6 +236,7 @@ export interface UpdateTaskRequest {
   plannedDate?: string | null;
   estimateMinutes?: number | null;
   groupId?: string | null;
+  recurrence?: RecurrenceRule | null;
 }
 
 export const useUpdateTask = () => {
@@ -308,6 +320,18 @@ export const useCancelReminder = () => {
     },
     onSuccess: (_data, { taskId }) => {
       queryClient.invalidateQueries({ queryKey: ['tasks', taskId, 'reminders'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+};
+
+export const useClearRecurrence = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (taskId: string) => {
+      await getClient().delete(`/tasks/${taskId}/recurrence`);
+    },
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
   });

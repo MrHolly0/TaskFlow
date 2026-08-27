@@ -818,6 +818,40 @@ class TaskServiceTest {
         assertThat(entity.getPlannedDateSetAt()).isNotNull();
     }
 
+    // --- Блок А3: снять повтор ---
+
+    @Test
+    void clearRecurrence_deletesExistingRule() {
+        var entity = taskEntity();
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        var recurrence = recurrenceEntity(RecurrenceType.DAILY, 1, null, null, null);
+        when(recurrenceRepository.findById(taskId)).thenReturn(Optional.of(recurrence));
+
+        taskService.clearRecurrence(userId, taskId);
+
+        verify(recurrenceRepository).delete(recurrence);
+    }
+
+    @Test
+    void clearRecurrence_isNoOpWhenNoneExists() {
+        var entity = taskEntity();
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(recurrenceRepository.findById(taskId)).thenReturn(Optional.empty());
+
+        taskService.clearRecurrence(userId, taskId);
+
+        verify(recurrenceRepository, never()).delete(any());
+    }
+
+    @Test
+    void clearRecurrence_throwsNotFound_whenTaskMissing() {
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> taskService.clearRecurrence(userId, taskId))
+                .isInstanceOf(TaskNotFoundException.class);
+        verifyNoInteractions(recurrenceRepository);
+    }
+
     private TaskJpaEntity taskEntity() {
         var e = new TaskJpaEntity();
         e.setUserId(userId);
