@@ -1,9 +1,17 @@
 import { useState, useEffect } from 'react';
-import { IconTrash, IconClock } from '@tabler/icons-react';
+import { IconTrash, IconClock, IconBell, IconBellPlus, IconX } from '@tabler/icons-react';
 import { toZonedTime, fromZonedTime } from 'date-fns-tz';
 import { Priority, Status } from '@/lib/store';
-import { useUpdateTask, useDeleteTask, useGroups } from '@/lib/hooks/useTasks';
+import {
+  useUpdateTask,
+  useDeleteTask,
+  useGroups,
+  useTaskReminders,
+  useAddReminder,
+  useCancelReminder,
+} from '@/lib/hooks/useTasks';
 import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
+import { buildReminderPresets, isPastReminderTime } from '@/lib/reminderPresets';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { Textarea } from '@/app/components/ui/textarea';
@@ -20,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/app/components/ui/select';
-import { cn } from '@/lib/utils';
+import { cn, formatReminderTime } from '@/lib/utils';
 
 const PRIORITY_OPTIONS: { value: Priority; label: string; color: string }[] = [
   { value: 'URGENT', label: 'Срочно', color: 'text-red-500' },
@@ -80,11 +88,83 @@ function zonedInputToIso(date: string, time: string, timezone: string): string {
   return fromZonedTime(wallClock, timezone).toISOString();
 }
 
+function AddReminderForm({
+  taskId,
+  timezone,
+  onDone,
+}: {
+  taskId: string;
+  timezone: string;
+  onDone: () => void;
+}) {
+  const { mutateAsync: addReminder, isPending } = useAddReminder();
+  const [date, setDate] = useState('');
+  const [time, setTime] = useState('');
+  const [error, setError] = useState('');
+
+  const presets = buildReminderPresets(new Date(), timezone);
+
+  const submit = async (fireAt: Date) => {
+    if (isPastReminderTime(fireAt)) {
+      setError('Это время уже прошло');
+      return;
+    }
+    await addReminder({ taskId, fireAt: fireAt.toISOString() });
+    onDone();
+  };
+
+  const handleManualSubmit = () => {
+    if (!date || !time) return;
+    submit(new Date(zonedInputToIso(date, time, timezone)));
+  };
+
+  return (
+    <div className="space-y-2 rounded-lg border border-border/60 p-3">
+      <div className="flex flex-wrap gap-1.5">
+        {presets.map((p) => (
+          <Button
+            key={p.key}
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            disabled={isPending}
+            onClick={() => submit(p.fireAt)}
+          >
+            {p.label}
+          </Button>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <Input type="date" value={date} onChange={(e) => { setDate(e.target.value); setError(''); }} className="h-9 text-sm" />
+        <Input
+          type="time"
+          value={time}
+          onChange={(e) => { setTime(e.target.value); setError(''); }}
+          className="h-9 text-sm"
+          disabled={!date}
+        />
+      </div>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      <div className="flex gap-2">
+        <Button type="button" size="sm" className="h-8" disabled={!date || !time || isPending} onClick={handleManualSubmit}>
+          Добавить
+        </Button>
+        <Button type="button" variant="ghost" size="sm" className="h-8" onClick={onDone}>
+          Отмена
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
   const { mutateAsync: updateTask } = useUpdateTask();
   const { mutate: deleteTask } = useDeleteTask();
   const { data: groups = [] } = useGroups();
   const { timezone, isReady: timezoneReady } = useUserTimezone();
+  const { data: reminders = [] } = useTaskReminders(task?.id, open);
+  const { mutate: cancelReminder } = useCancelReminder();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -95,9 +175,11 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
   const [deadlineTime, setDeadlineTime] = useState('');
   const [estimatedTime, setEstimatedTime] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showAddReminder, setShowAddReminder] = useState(false);
 
   useEffect(() => {
     if (task) {
+      setShowAddReminder(false);
       setTitle(task.title);
       setDescription(task.description ?? '');
       setPriority((task.priority as Priority) ?? 'MEDIUM');
@@ -297,6 +379,50 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
                 className="h-10"
               />
             </div>
+          </div>
+
+          {/* Reminders (Б1/Б2) — независимы от срока, могут стоять и на задаче без дедлайна */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Напоминания
+            </label>
+            {reminders.length > 0 && (
+              <div className="space-y-1.5">
+                {reminders.map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-3 py-2"
+                  >
+                    <span className="text-sm flex items-center gap-1.5">
+                      <IconBell className="h-3.5 w-3.5 text-muted-foreground" />
+                      {formatReminderTime(r.fireAt, timezone)}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      onClick={() => taskId && cancelReminder({ taskId, reminderId: r.id })}
+                    >
+                      <IconX className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {taskId && showAddReminder ? (
+              <AddReminderForm taskId={taskId} timezone={timezone} onDone={() => setShowAddReminder(false)} />
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 gap-1.5"
+                onClick={() => setShowAddReminder(true)}
+              >
+                <IconBellPlus className="h-4 w-4" />
+                Напомнить
+              </Button>
+            )}
           </div>
 
           {/* Actions */}

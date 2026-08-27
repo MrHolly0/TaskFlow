@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { IconSearch, IconPlus, IconClock, IconInbox } from '@tabler/icons-react';
+import { IconSearch, IconPlus, IconClock, IconInbox, IconBell } from '@tabler/icons-react';
 import { Status } from '@/lib/store';
-import { formatDeadline, endOfZonedDay, cn } from '@/lib/utils';
+import { formatDeadline, formatReminderTime, endOfZonedDay, cn } from '@/lib/utils';
 import { getStatusLabel } from '@/lib/store';
 import { useTasksList } from '@/lib/hooks/useTasks';
 import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
@@ -22,6 +22,7 @@ interface Task {
   estimateMinutes?: number;
   groupId?: string;
   groupName?: string;
+  reminders?: { id: string; fireAt: string; status: string }[];
 }
 
 type Context = 'now' | 'today' | 'week' | 'all';
@@ -188,6 +189,12 @@ export function AllTasksPage() {
                     )}
                     {task.groupName && <span>{task.groupName}</span>}
                     {task.estimateMinutes && <span>~{task.estimateMinutes} мин</span>}
+                    {task.reminders && task.reminders.length > 0 && (
+                      <span className="flex items-center gap-1">
+                        <IconBell className="h-3 w-3" />
+                        {formatReminderTime(task.reminders[0].fireAt, timezone)}
+                      </span>
+                    )}
                   </div>
                 </div>
 

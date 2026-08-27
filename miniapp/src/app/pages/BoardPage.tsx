@@ -26,8 +26,9 @@ import {
   IconSwipe,
   IconChevronLeft,
   IconChevronRight,
+  IconBell,
 } from '@tabler/icons-react';
-import { formatDeadline, cn } from '@/lib/utils';
+import { formatDeadline, formatReminderTime, cn } from '@/lib/utils';
 import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
 import { useMinuteTick } from '@/lib/hooks/useMinuteTick';
 import { Badge } from '@/app/components/ui/badge';
@@ -128,6 +129,13 @@ function DraggableTaskCard({
               )}
               {task.group && (
                 <span className="text-xs text-muted-foreground">{task.group}</span>
+              )}
+              {/* Значок напоминания (Б3) — только ближайшее время, без счётчиков и без красного */}
+              {task.nextReminderAt && timezoneReady && (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <IconBell className="h-3 w-3" />
+                  {formatReminderTime(task.nextReminderAt, timezone)}
+                </span>
               )}
             </div>
           </div>
@@ -340,6 +348,7 @@ function toTask(t: any): Task {
     estimatedTime: t.estimateMinutes,
     createdAt: t.createdAt,
     completedAt: t.completedAt,
+    nextReminderAt: t.reminders?.[0]?.fireAt,
   };
 }
 

@@ -35,6 +35,7 @@ export interface Task {
   estimatedTime?: number;
   createdAt: string;
   completedAt?: string;
+  nextReminderAt?: string;
 }
 
 export interface Group {

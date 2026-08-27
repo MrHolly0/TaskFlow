@@ -3,6 +3,12 @@ import axios from 'axios';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
 
+export interface ReminderResponse {
+  id: string;
+  fireAt: string;
+  status: string;
+}
+
 interface Task {
   id: string;
   title: string;
@@ -18,6 +24,7 @@ interface Task {
   createdAt: string;
   updatedAt: string;
   completedAt?: string;
+  reminders?: ReminderResponse[];
 }
 
 interface FocusResponse {
@@ -256,6 +263,43 @@ export const useDeleteGroup = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['groups'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+};
+
+export const useTaskReminders = (taskId: string | undefined, enabled: boolean) => {
+  return useQuery({
+    queryKey: ['tasks', taskId, 'reminders'],
+    queryFn: async () => {
+      const response = await getClient().get<ReminderResponse[]>(`/tasks/${taskId}/reminders`);
+      return response.data;
+    },
+    enabled: enabled && !!taskId,
+  });
+};
+
+export const useAddReminder = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ taskId, fireAt }: { taskId: string; fireAt: string }) => {
+      await getClient().post(`/tasks/${taskId}/reminders`, { fireAt });
+    },
+    onSuccess: (_data, { taskId }) => {
+      queryClient.invalidateQueries({ queryKey: ['tasks', taskId, 'reminders'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+};
+
+export const useCancelReminder = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ taskId, reminderId }: { taskId: string; reminderId: string }) => {
+      await getClient().delete(`/tasks/${taskId}/reminders/${reminderId}`);
+    },
+    onSuccess: (_data, { taskId }) => {
+      queryClient.invalidateQueries({ queryKey: ['tasks', taskId, 'reminders'] });
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
   });

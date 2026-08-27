@@ -96,6 +96,18 @@ function getDaysWord(days: number): string {
   return 'дней';
 }
 
+/** Короткая метка времени напоминания в поясе пользователя — общая для карточки задачи и значка в списке/на доске. */
+export function formatReminderTime(fireAt: string, timezone: string): string {
+  const zoned = toZonedTime(fireAt, timezone);
+  const zonedNow = toZonedTime(new Date(), timezone);
+  const time = `${String(zoned.getHours()).padStart(2, '0')}:${String(zoned.getMinutes()).padStart(2, '0')}`;
+  const dayDiff = differenceInCalendarDays(zoned, zonedNow);
+
+  if (dayDiff === 0) return `сегодня, ${time}`;
+  if (dayDiff === 1) return `завтра, ${time}`;
+  return `${zoned.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}, ${time}`;
+}
+
 export function getPriorityColor(priority: Priority): string {
   const colors = {
     LOW: 'text-muted-foreground',
