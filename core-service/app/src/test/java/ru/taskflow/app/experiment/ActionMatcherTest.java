@@ -5,6 +5,7 @@ import ru.taskflow.assistant.api.AssistantActionType;
 import ru.taskflow.assistant.api.dto.ProposedAction;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
@@ -139,5 +140,97 @@ class ActionMatcherTest {
 
         assertThat(result.matched().getFirst().attributeMismatches()).anyMatch(m -> m.contains("приоритет"));
         assertThat(result.matched().getFirst().attributeMismatches()).noneMatch(m -> m.contains("группа"));
+    }
+
+    // --- Блок В: время напоминания ---
+
+    private ProposedAction remind(UUID targetId, String reminderAt) {
+        Map<String, Object> payload = reminderAt == null ? Map.of() : Map.of("reminder_at", reminderAt);
+        return new ProposedAction(1, AssistantActionType.REMIND, targetId, payload, "Напомнить — задача", true);
+    }
+
+    @Test
+    void match_countsExactReminderTimeAsFullyCorrect() {
+        var actual = List.of(remind(milkTaskId, "2026-08-22T09:00:00+03:00"));
+        var expected = outcome(1, new ExpectedAction("remind", null, "S1", null, null, null, null, 1, 9, null));
+
+        var result = matcher.match(actual, expected, Map.of("S1", milkTaskId), today, zone);
+
+        assertThat(result.fullyCorrect()).isTrue();
+    }
+
+    @Test
+    void match_flagsWrongReminderHourAsMismatch() {
+        var actual = List.of(remind(milkTaskId, "2026-08-22T10:00:00+03:00"));
+        var expected = outcome(1, new ExpectedAction("remind", null, "S1", null, null, null, null, 1, 9, null));
+
+        var result = matcher.match(actual, expected, Map.of("S1", milkTaskId), today, zone);
+
+        assertThat(result.fullyCorrect()).isFalse();
+        assertThat(result.matched().getFirst().attributeMismatches()).anyMatch(m -> m.contains("час напоминания"));
+    }
+
+    @Test
+    void match_verifiesOffsetFromTargetTaskRealDeadline() {
+        // Реальный дедлайн, не продекларированный в датасете offsetDays/Hour —
+        // задача заведена "на сейчас + N дней", минуты/секунды не круглые.
+        var targetDeadline = OffsetDateTime.parse("2026-08-22T14:37:00+03:00");
+        var actual = List.of(remind(milkTaskId, "2026-08-22T14:07:00+03:00"));
+        var expected = outcome(1, new ExpectedAction("remind", null, "S1", null, null, null, null, null, null, 30));
+
+        var result = matcher.match(actual, expected, Map.of("S1", milkTaskId), Map.of("S1", targetDeadline), today, zone);
+
+        assertThat(result.fullyCorrect()).isTrue();
+    }
+
+    @Test
+    void match_flagsWrongOffsetFromTargetDeadline() {
+        var targetDeadline = OffsetDateTime.parse("2026-08-22T14:37:00+03:00");
+        var actual = List.of(remind(milkTaskId, "2026-08-22T13:00:00+03:00"));
+        var expected = outcome(1, new ExpectedAction("remind", null, "S1", null, null, null, null, null, null, 30));
+
+        var result = matcher.match(actual, expected, Map.of("S1", milkTaskId), Map.of("S1", targetDeadline), today, zone);
+
+        assertThat(result.fullyCorrect()).isFalse();
+        assertThat(result.matched().getFirst().attributeMismatches()).anyMatch(m -> m.contains("отступ от срока"));
+    }
+
+    @Test
+    void match_reminderOffsetToleratesSubMinuteJitterFromSetupCreation() {
+        // Дедлайн создан на "сейчас + N дней" — секунды не круглые. Модель видит
+        // окно контекста, отрендеренное до минуты, и не может их угадать —
+        // сверка не должна наказывать за то, чего модели не видно.
+        var targetDeadline = OffsetDateTime.parse("2026-08-22T14:37:42+03:00");
+        var actual = List.of(remind(milkTaskId, "2026-08-22T14:07:00+03:00"));
+        var expected = outcome(1, new ExpectedAction("remind", null, "S1", null, null, null, null, null, null, 30));
+
+        var result = matcher.match(actual, expected, Map.of("S1", milkTaskId), Map.of("S1", targetDeadline), today, zone);
+
+        assertThat(result.fullyCorrect()).isTrue();
+    }
+
+    @Test
+    void match_flagsMissingTargetDeadlineForOffsetCheck() {
+        var actual = List.of(remind(milkTaskId, "2026-08-22T14:07:00+03:00"));
+        var expected = outcome(1, new ExpectedAction("remind", null, "S1", null, null, null, null, null, null, 30));
+
+        // Дедлайн цели не передан — сверить нечем.
+        var result = matcher.match(actual, expected, Map.of("S1", milkTaskId), Map.of(), today, zone);
+
+        assertThat(result.fullyCorrect()).isFalse();
+        assertThat(result.matched().getFirst().attributeMismatches()).anyMatch(m -> m.contains("не удалось сверить"));
+    }
+
+    @Test
+    void match_defaultOverloadIgnoresReminderTimeChecks() {
+        // Старый 5-аргументный вызов (без setupRefToDeadline) по-прежнему
+        // работает — совместимость со всеми вызовами до блока В.
+        var actual = List.of(remind(milkTaskId, "2026-08-22T09:00:00+03:00"));
+        var expected = outcome(1, new ExpectedAction("remind", null, "S1", null, null, null, null, null, null, 30));
+
+        var result = matcher.match(actual, expected, Map.of("S1", milkTaskId), today, zone);
+
+        assertThat(result.matchedCount()).isEqualTo(1);
+        assertThat(result.matched().getFirst().attributeMismatches()).anyMatch(m -> m.contains("не удалось сверить"));
     }
 }

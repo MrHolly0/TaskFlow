@@ -6,6 +6,7 @@ import ru.taskflow.assistant.api.dto.ProposedAction;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -32,6 +33,19 @@ public final class ActionMatcher {
 
     public MatchResult match(List<ProposedAction> actual, ExpectedOutcome expected,
                               Map<String, UUID> setupRefToTaskId, LocalDate today, ZoneId zone) {
+        return match(actual, expected, setupRefToTaskId, Map.of(), today, zone);
+    }
+
+    /**
+     * setupRefToDeadline — реальный (не продекларированный в датасете) дедлайн
+     * задач, заведённых перед обращением: SetupTaskSpec.deadlineOffsetDays даёт
+     * только день, а не момент (задача создаётся в TaskService на "сейчас +
+     * N дней", секунды и минуты не фиксированы) — отступ от срока (Б3/В)
+     * можно сверить только по факту, а не по продекларированному offsetDays/Hour.
+     */
+    public MatchResult match(List<ProposedAction> actual, ExpectedOutcome expected,
+                              Map<String, UUID> setupRefToTaskId, Map<String, OffsetDateTime> setupRefToDeadline,
+                              LocalDate today, ZoneId zone) {
         List<ExpectedAction> expectedActions = expected.actions();
         boolean[] claimed = new boolean[actual.size()];
         List<MatchedPair> matched = new ArrayList<>();
@@ -56,7 +70,7 @@ public final class ActionMatcher {
             }
             claimed[foundIndex] = true;
             matched.add(new MatchedPair(actual.get(foundIndex), expectedAction,
-                    attributeMismatches(actual.get(foundIndex), expectedAction, today, zone)));
+                    attributeMismatches(actual.get(foundIndex), expectedAction, setupRefToDeadline, today, zone)));
         }
 
         List<String> extra = new ArrayList<>();
@@ -101,6 +115,7 @@ public final class ActionMatcher {
     }
 
     private List<String> attributeMismatches(ProposedAction action, ExpectedAction expected,
+                                              Map<String, OffsetDateTime> setupRefToDeadline,
                                               LocalDate today, ZoneId zone) {
         List<String> mismatches = new ArrayList<>();
 
@@ -129,7 +144,57 @@ public final class ActionMatcher {
                 mismatches.add("группа: ожидалось %s, получено %s".formatted(expected.group(), actualGroup));
             }
         }
+        if (expected.reminderOffsetDays() != null) {
+            LocalDate expectedDate = today.plusDays(expected.reminderOffsetDays());
+            OffsetDateTime reminderAt = reminderAtOf(action);
+            LocalDate actualDate = reminderAt == null ? null : reminderAt.atZoneSameInstant(zone).toLocalDate();
+            if (!expectedDate.equals(actualDate)) {
+                mismatches.add("дата напоминания: ожидалось %s, получено %s".formatted(expectedDate, actualDate));
+            }
+        }
+        if (expected.reminderHour() != null) {
+            OffsetDateTime reminderAt = reminderAtOf(action);
+            Integer actualHour = reminderAt == null ? null : reminderAt.atZoneSameInstant(zone).getHour();
+            if (!expected.reminderHour().equals(actualHour)) {
+                mismatches.add("час напоминания: ожидалось %d, получено %s".formatted(expected.reminderHour(), actualHour));
+            }
+        }
+        if (expected.reminderMinutesBeforeTargetDeadline() != null) {
+            mismatches.addAll(reminderOffsetMismatch(action, expected, setupRefToDeadline));
+        }
         return mismatches;
+    }
+
+    // Сверка по факту (реальный дедлайн заведённой задачи), не по offsetDays/Hour
+    // из датасета — см. javadoc у перегрузки match() с setupRefToDeadline.
+    // Минутная точность (truncatedTo MINUTES) намеренно грубее секунды: модель
+    // видит дедлайн в окне контекста отрендеренным до минуты (dd.MM HH:mm),
+    // сверка секундами наказывала бы за точность, которой у модели нет.
+    private List<String> reminderOffsetMismatch(ProposedAction action, ExpectedAction expected,
+                                                 Map<String, OffsetDateTime> setupRefToDeadline) {
+        OffsetDateTime targetDeadline = expected.targetRef() == null ? null : setupRefToDeadline.get(expected.targetRef());
+        OffsetDateTime reminderAt = reminderAtOf(action);
+        if (targetDeadline == null || reminderAt == null) {
+            return List.of("отступ от срока: не удалось сверить (нет дедлайна цели или reminder_at)");
+        }
+        OffsetDateTime expectedReminderAt = targetDeadline.minusMinutes(expected.reminderMinutesBeforeTargetDeadline());
+        if (!expectedReminderAt.truncatedTo(ChronoUnit.MINUTES).isEqual(reminderAt.truncatedTo(ChronoUnit.MINUTES))) {
+            return List.of("отступ от срока: ожидалось %s (%d мин. до дедлайна цели), получено %s"
+                    .formatted(expectedReminderAt, expected.reminderMinutesBeforeTargetDeadline(), reminderAt));
+        }
+        return List.of();
+    }
+
+    private OffsetDateTime reminderAtOf(ProposedAction action) {
+        Object raw = action.payload().get("reminder_at");
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return OffsetDateTime.parse(raw.toString());
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private String titleOf(ProposedAction action) {

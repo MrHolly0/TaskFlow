@@ -136,6 +136,10 @@ class ExperimentRunner {
 
     private ExperimentRunResult runOneRow(UUID userId, DatasetRow row, int attempt, ActionMatcher matcher) {
         Map<String, UUID> setupRefToTaskId = new HashMap<>();
+        // Реальный дедлайн заведённых задач, не продекларированный offsetDays —
+        // нужен для сверки отступа от срока у remind (блок В), см. javadoc
+        // ActionMatcher.match(..., setupRefToDeadline, ...).
+        Map<String, OffsetDateTime> setupRefToDeadline = new HashMap<>();
         try {
             for (SetupTaskSpec spec : row.setupTasks()) {
                 TaskResponse created = taskService.create(userId, new CreateTaskRequest(
@@ -145,12 +149,15 @@ class ExperimentRunner {
                                 : OffsetDateTime.now(ZONE).plusDays(spec.deadlineOffsetDays()),
                         null, spec.group(), null, null, TaskSource.MANUAL));
                 setupRefToTaskId.put(spec.ref(), created.id());
+                if (created.deadline() != null) {
+                    setupRefToDeadline.put(spec.ref(), created.deadline());
+                }
             }
 
             Proposal proposal = assistantService.handleText(userId, row.text(), AssistantChannel.WEB,
                     AssistantEntryPoint.CHAT);
 
-            return toResult(row, attempt, proposal, setupRefToTaskId, matcher);
+            return toResult(row, attempt, proposal, setupRefToTaskId, setupRefToDeadline, matcher);
         } catch (Exception e) {
             return errorResult(row, attempt, e);
         } finally {
@@ -159,7 +166,8 @@ class ExperimentRunner {
     }
 
     private ExperimentRunResult toResult(DatasetRow row, int attempt, Proposal proposal,
-                                          Map<String, UUID> setupRefToTaskId, ActionMatcher matcher) {
+                                          Map<String, UUID> setupRefToTaskId,
+                                          Map<String, OffsetDateTime> setupRefToDeadline, ActionMatcher matcher) {
         boolean statusFailed = proposal.status() == ProposalStatus.FAILED;
         // Живой дефект (эксперимент Б, 50×3 21.08.2026): исчерпание дневного
         // лимита токенов у поставщика (TPD, не TPM — см. отчёт) внутри
@@ -199,8 +207,8 @@ class ExperimentRunner {
         List<ProposedAction> effectiveActions = proposal.actions();
 
         ActionMatcher.MatchResult match = llmFailed
-                ? matcher.match(List.of(), row.expected(), setupRefToTaskId, LocalDate.now(ZONE), ZONE)
-                : matcher.match(effectiveActions, row.expected(), setupRefToTaskId, LocalDate.now(ZONE), ZONE);
+                ? matcher.match(List.of(), row.expected(), setupRefToTaskId, setupRefToDeadline, LocalDate.now(ZONE), ZONE)
+                : matcher.match(effectiveActions, row.expected(), setupRefToTaskId, setupRefToDeadline, LocalDate.now(ZONE), ZONE);
 
         boolean deterministic = isDeterministicAmbiguity(proposal.ambiguityReason());
         boolean modelMarked = proposal.exclusive() && !deterministic;
