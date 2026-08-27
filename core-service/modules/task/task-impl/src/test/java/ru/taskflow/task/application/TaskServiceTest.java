@@ -421,7 +421,7 @@ class TaskServiceTest {
                 .thenReturn(List.of(entity));
         when(taskMapper.toResponse(entity)).thenReturn(response);
 
-        var result = taskService.getUpcomingFocusTasks(userId);
+        var result = taskService.getUpcomingFocusTasks(userId, null);
 
         assertThat(result.tasks()).containsExactly(response);
     }
@@ -433,9 +433,48 @@ class TaskServiceTest {
                 .thenReturn(entities);
         when(taskMapper.toResponse(any())).thenReturn(mockResponse(taskId, "задача"));
 
-        var result = taskService.getUpcomingFocusTasks(userId);
+        var result = taskService.getUpcomingFocusTasks(userId, null);
 
         assertThat(result.tasks()).hasSize(3);
+    }
+
+    // --- Пункт Б: отбор фокуса по доступному времени ---
+
+    @Test
+    void getFocusTasks_withoutAvailableMinutes_includesTasksRegardlessOfEstimate() {
+        var withEstimate = taskEntity();
+        withEstimate.setEstimateMinutes(120);
+        when(taskRepository.findFocusTasks(eq(userId), eq(TaskStatus.DONE), any(OffsetDateTime.class)))
+                .thenReturn(List.of(withEstimate));
+        when(taskMapper.toResponse(withEstimate)).thenReturn(mockResponse(taskId, "задача"));
+
+        var result = taskService.getFocusTasks(userId, null);
+
+        assertThat(result.tasks()).hasSize(1);
+    }
+
+    @Test
+    void getFocusTasks_withAvailableMinutes_excludesTaskThatDoesNotFit() {
+        var longTask = taskEntity();
+        longTask.setEstimateMinutes(120);
+        when(taskRepository.findFocusTasks(eq(userId), eq(TaskStatus.DONE), any(OffsetDateTime.class)))
+                .thenReturn(List.of(longTask));
+
+        var result = taskService.getFocusTasks(userId, 15);
+
+        assertThat(result.tasks()).isEmpty();
+    }
+
+    @Test
+    void getFocusTasks_withAvailableMinutes_neverExcludesTaskWithoutEstimate() {
+        var noEstimate = taskEntity();
+        when(taskRepository.findFocusTasks(eq(userId), eq(TaskStatus.DONE), any(OffsetDateTime.class)))
+                .thenReturn(List.of(noEstimate));
+        when(taskMapper.toResponse(noEstimate)).thenReturn(mockResponse(taskId, "задача"));
+
+        var result = taskService.getFocusTasks(userId, 15);
+
+        assertThat(result.tasks()).hasSize(1);
     }
 
     // --- Пункт А: день исполнения не участвует в просрочке ---

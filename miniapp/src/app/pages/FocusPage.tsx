@@ -174,11 +174,18 @@ function FocusTaskCard({ task, index, timezone, onComplete, onSnooze, onStart, o
   );
 }
 
+const TIME_BUDGET_OPTIONS: { label: string; minutes: number }[] = [
+  { label: '15 мин', minutes: 15 },
+  { label: '30 мин', minutes: 30 },
+  { label: '1 час', minutes: 60 },
+];
+
 export function FocusPage() {
   const userName = useDisplayName();
-  const { data: focusTasks = [], isLoading, error } = useFocusTasks();
+  const [availableMinutes, setAvailableMinutes] = useState<number | undefined>(undefined);
+  const { data: focusTasks = [], isLoading, error } = useFocusTasks(availableMinutes);
   const todayDone = !isLoading && focusTasks.length === 0;
-  const { data: upcomingTasks = [], isLoading: upcomingLoading } = useUpcomingFocusTasks(todayDone);
+  const { data: upcomingTasks = [], isLoading: upcomingLoading } = useUpcomingFocusTasks(todayDone, availableMinutes);
   const { data: allTasks = [] } = useTasksList();
   const { mutate: completeTask } = useCompleteTask();
   const { mutate: updateTask } = useUpdateTask();
@@ -311,6 +318,25 @@ export function FocusPage() {
         </div>
 
         <EmailBindBanner />
+
+        {!showingUpcoming && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm text-muted-foreground">Сколько времени есть?</span>
+            {TIME_BUDGET_OPTIONS.map((option) => (
+              <Button
+                key={option.minutes}
+                variant={availableMinutes === option.minutes ? 'default' : 'outline'}
+                size="sm"
+                className="h-7 px-3 text-xs"
+                onClick={() =>
+                  setAvailableMinutes(availableMinutes === option.minutes ? undefined : option.minutes)
+                }
+              >
+                {option.label}
+              </Button>
+            ))}
+          </div>
+        )}
 
         {showingUpcoming && (
           <p className="text-sm text-muted-foreground -mt-2">

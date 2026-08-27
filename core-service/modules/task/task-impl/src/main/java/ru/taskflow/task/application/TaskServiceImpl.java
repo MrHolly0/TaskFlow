@@ -349,10 +349,11 @@ public class TaskServiceImpl implements TaskService {
      * @return ответ с задачами для фокуса
      */
     @Override
-    public FocusResponse getFocusTasks(UUID userId) {
+    public FocusResponse getFocusTasks(UUID userId, Integer availableMinutes) {
         var endOfToday = endOfToday();
         var tasks = taskRepository.findFocusTasks(userId, TaskStatus.DONE, endOfToday)
                 .stream()
+                .filter(t -> fitsAvailableTime(t, availableMinutes))
                 .limit(3)
                 .map(taskMapper::toResponse)
                 .toList();
@@ -365,14 +366,24 @@ public class TaskServiceImpl implements TaskService {
      * «сегодня всё сделано», и только по запросу подтягивает то, что дальше.
      */
     @Override
-    public FocusResponse getUpcomingFocusTasks(UUID userId) {
+    public FocusResponse getUpcomingFocusTasks(UUID userId, Integer availableMinutes) {
         var endOfToday = endOfToday();
         var tasks = taskRepository.findUpcomingFocusTasks(userId, TaskStatus.DONE, endOfToday)
                 .stream()
+                .filter(t -> fitsAvailableTime(t, availableMinutes))
                 .limit(3)
                 .map(taskMapper::toResponse)
                 .toList();
         return new FocusResponse(tasks);
+    }
+
+    // Отбор до limit(3), не после: иначе время могло бы отфильтровать
+    // подходящую задачу, которую уже отрезал .limit по неподходящим впереди неё.
+    // Без оценки длительности задача участвует всегда — у большинства задач её нет.
+    private boolean fitsAvailableTime(TaskJpaEntity task, Integer availableMinutes) {
+        return availableMinutes == null
+                || task.getEstimateMinutes() == null
+                || task.getEstimateMinutes() <= availableMinutes;
     }
 
     private OffsetDateTime endOfToday() {

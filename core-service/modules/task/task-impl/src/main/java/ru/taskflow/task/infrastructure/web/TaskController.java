@@ -141,17 +141,19 @@ public class TaskController {
     @GetMapping("/focus")
     @Operation(summary = "Режим фокуса", description = "Возвращает 1–3 приоритетные задачи с ближайшим дедлайном")
     public FocusResponse getFocusTasks(
-            @AuthenticationPrincipal AuthenticatedUser user
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam(required = false) Integer availableMinutes
     ) {
-        return taskService.getFocusTasks(user.userId());
+        return taskService.getFocusTasks(user.userId(), availableMinutes);
     }
 
     @GetMapping("/focus/upcoming")
     @Operation(summary = "Режим фокуса — что дальше", description = "Возвращает 1–3 задачи с дедлайном позже сегодняшнего, для просмотра после закрытия плана на сегодня")
     public FocusResponse getUpcomingFocusTasks(
-            @AuthenticationPrincipal AuthenticatedUser user
+            @AuthenticationPrincipal AuthenticatedUser user,
+            @RequestParam(required = false) Integer availableMinutes
     ) {
-        return taskService.getUpcomingFocusTasks(user.userId());
+        return taskService.getUpcomingFocusTasks(user.userId(), availableMinutes);
     }
 
     @GetMapping("/digest")

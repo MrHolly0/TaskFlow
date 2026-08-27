@@ -50,9 +50,14 @@ public interface TaskService {
 
     void delete(UUID userId, UUID taskId);
 
-    FocusResponse getFocusTasks(UUID userId);
+    /**
+     * @param availableMinutes сколько времени сейчас есть, опционально — если задано,
+     *                         отбор пропускает задачи с оценкой длительности больше него;
+     *                         задачи без оценки участвуют всегда, независимо от значения
+     */
+    FocusResponse getFocusTasks(UUID userId, Integer availableMinutes);
 
-    FocusResponse getUpcomingFocusTasks(UUID userId);
+    FocusResponse getUpcomingFocusTasks(UUID userId, Integer availableMinutes);
 
     DigestResponse getDigest(UUID userId, LocalDate date);
 

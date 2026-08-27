@@ -70,22 +70,26 @@ const getClient = () => {
   return client;
 };
 
-export const useFocusTasks = () => {
+export const useFocusTasks = (availableMinutes?: number) => {
   return useQuery({
-    queryKey: ['tasks', 'focus'],
+    queryKey: ['tasks', 'focus', availableMinutes ?? null],
     queryFn: async () => {
-      const response = await getClient().get<FocusResponse>('/tasks/focus');
+      const response = await getClient().get<FocusResponse>('/tasks/focus', {
+        params: availableMinutes ? { availableMinutes } : undefined,
+      });
       return response.data.tasks;
     },
     staleTime: 1000 * 60 * 2, // 2 min
   });
 };
 
-export const useUpcomingFocusTasks = (enabled: boolean) => {
+export const useUpcomingFocusTasks = (enabled: boolean, availableMinutes?: number) => {
   return useQuery({
-    queryKey: ['tasks', 'focus', 'upcoming'],
+    queryKey: ['tasks', 'focus', 'upcoming', availableMinutes ?? null],
     queryFn: async () => {
-      const response = await getClient().get<FocusResponse>('/tasks/focus/upcoming');
+      const response = await getClient().get<FocusResponse>('/tasks/focus/upcoming', {
+        params: availableMinutes ? { availableMinutes } : undefined,
+      });
       return response.data.tasks;
     },
     enabled,
