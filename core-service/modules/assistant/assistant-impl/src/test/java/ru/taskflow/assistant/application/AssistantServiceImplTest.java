@@ -154,19 +154,25 @@ class AssistantServiceImplTest {
     }
 
     @Test
-    void handleText_savesRawTextTaskWhenOutcomeEmpty() {
+    void handleText_doesNotCreateTaskWhenModelRespondedWithNothing() {
+        // «спасибо» — модель ответила (токены реальные, llmFailed=false), но не
+        // предложила ни действий, ни уточнения: измеренный результат, не сбой
+        // (блок А) — не должна становиться задачей «спасибо».
         when(userService.getTimezone(userId)).thenReturn(zone);
         AgentOutcome outcome = emptyWindowOutcomeWithTokens(1500, 200);
-        when(agentLoop.run(userId, "непонятно что", zone, AssistantEntryPoint.CHAT)).thenReturn(outcome);
-        when(taskService.createQuick(eq(userId), any())).thenReturn(taskResponse());
+        when(agentLoop.run(userId, "спасибо", zone, AssistantEntryPoint.CHAT)).thenReturn(outcome);
 
-        Proposal result = service.handleText(userId, "непонятно что", AssistantChannel.TELEGRAM);
+        Proposal result = service.handleText(userId, "спасибо", AssistantChannel.TELEGRAM);
 
-        verify(taskService).createQuick(eq(userId), any());
+        verify(taskService, never()).createQuick(any(), any());
         verify(proposalRepository, never()).save(any());
+        // recordDegradedCreation не вызывается — счётчик деградаций не растёт там,
+        // где модель ответила
+        verify(auditService, never()).record(any(), any(), any(), any());
         assertThat(result.status()).isEqualTo(ProposalStatus.FAILED);
-        // модель ответила (llmFailed=false), просто без действий — расход не нулевой,
-        // это отличает осознанный отказ действовать от недоступности инфраструктуры
+        assertThat(result.actions()).isEmpty();
+        // расход не нулевой — это отличает осознанный отказ действовать от
+        // недоступности инфраструктуры (llmFailed, тест ниже)
         assertThat(result.inputTokens()).isEqualTo(1500);
         assertThat(result.outputTokens()).isEqualTo(200);
     }

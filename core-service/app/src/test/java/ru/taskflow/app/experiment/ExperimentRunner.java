@@ -14,7 +14,6 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import ru.taskflow.assistant.api.AssistantChannel;
 import ru.taskflow.assistant.api.AssistantEntryPoint;
 import ru.taskflow.assistant.api.AssistantService;
-import ru.taskflow.assistant.api.AssistantActionType;
 import ru.taskflow.assistant.api.ProposalStatus;
 import ru.taskflow.assistant.api.dto.Proposal;
 import ru.taskflow.assistant.api.dto.ProposedAction;
@@ -182,12 +181,13 @@ class ExperimentRunner {
         // системы действовать, молча исчезают из выборки. Признак настоящего
         // сбоя остаётся один — нулевой расход.
         boolean llmFailed = zeroTokens;
-        // degrade() не возвращает пустое предложение молча: он создаёт задачу из
-        // сырого текста через createQuick. Предложение при этом пустое, поэтому
-        // без поправки стенд считал бы «ноль действий» и засчитывал строку как
-        // верную там, где ожидалось бездействие, — то есть хвалил бы систему за
-        // созданный мусор. Восстанавливаем фактически произошедшее создание.
-        List<ProposedAction> effectiveActions = degradedCreate(statusFailed, zeroTokens, proposal);
+        // До правки блока А (см. итоги-эксперимента.md) degrade() создавал
+        // задачу из сырого текста молча и для этого пути тоже — здесь
+        // требовалась реконструкция фактического действия. После правки
+        // «модель ответила без действий» (statusFailed && !zeroTokens)
+        // больше не создаёт задачу — proposal.actions() уже отражает
+        // фактически произошедшее без досочинения.
+        List<ProposedAction> effectiveActions = proposal.actions();
 
         ActionMatcher.MatchResult match = llmFailed
                 ? matcher.match(List.of(), row.expected(), setupRefToTaskId, LocalDate.now(ZONE), ZONE)
@@ -217,21 +217,6 @@ class ExperimentRunner {
                 proposal.status() == null ? null : proposal.status().name(),
                 llmFailed, degradationNote(statusFailed, zeroTokens, proposal)
         );
-    }
-
-    /**
-     * Действия, фактически изменившие данные пользователя. Совпадают с
-     * предложенными, кроме пути деградации: там предложение пустое, но задача
-     * из сырого текста уже создана. Признак пути — FAILED при ненулевом
-     * расходе токенов (нулевой расход означает, что обращения не было вовсе).
-     */
-    private List<ProposedAction> degradedCreate(boolean statusFailed, boolean zeroTokens, Proposal proposal) {
-        if (!statusFailed || zeroTokens) {
-            return proposal.actions();
-        }
-        String title = proposal.sourceText() == null ? "" : proposal.sourceText();
-        return List.of(new ProposedAction(1, AssistantActionType.CREATE, null,
-                Map.of("title", title, "type", "create"), "Создать — " + title, true));
     }
 
     private String degradationNote(boolean statusFailed, boolean zeroTokens, Proposal proposal) {

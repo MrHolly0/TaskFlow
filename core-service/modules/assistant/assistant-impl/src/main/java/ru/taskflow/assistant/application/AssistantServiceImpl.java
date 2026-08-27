@@ -36,14 +36,16 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * Ведущий принцип части 2в: сказанное пользователем не теряется никогда. Отказ LLM
- * и пустой ответ модели деградируют одинаково по поведению — реплика в обоих случаях
- * превращается в отдельную задачу через createQuick, а не пропадает вместе с
- * несостоявшимся предложением. Но в отчётности они различимы: degrade() переносит в
- * Proposal токены и задержки из AgentOutcome, если он есть (обращение к модели
- * состоялось, просто без действий), и нули, если его нет (обращения не было вовсе —
- * например, речь не распозналась до запуска AgentLoop). Иначе измерение путает отказ
- * инфраструктуры с осознанным отказом модели действовать.
+ * Ведущий принцип части 2в: сказанное пользователем не теряется никогда — но это
+ * относится только к настоящему сбою обращения (сеть, тайм-аут, нулевой расход
+ * токенов), не к осознанному отказу модели действовать. Обращение не состоялось —
+ * реплика превращается в отдельную задачу через createQuick, degrade() переносит в
+ * Proposal нулевые токены и задержки (обращения не было — например, речь не
+ * распозналась до запуска AgentLoop). Модель ответила, но не предложила ничего —
+ * это измеренный результат, а не сбой: silentModelResponse() не создаёт задачу и
+ * не пишет её в аудит, но переносит в Proposal реальный расход из AgentOutcome.
+ * Иначе измерение путает отказ инфраструктуры с осознанным отказом модели
+ * действовать («спасибо» становится задачей «спасибо»).
  */
 @Service
 @RequiredArgsConstructor
@@ -53,6 +55,8 @@ public class AssistantServiceImpl implements AssistantService {
     private static final int MAX_TITLE_LENGTH = 512;
     private static final String DEGRADATION_EXPLANATION =
             "Не удалось разобрать сообщение — сохранил его как отдельную задачу целиком.";
+    private static final String SILENT_MODEL_EXPLANATION =
+            "Не нашёл, что предложить по этой реплике.";
     private static final String VOICE_TRANSCRIPTION_FAILED_TEXT =
             "Голосовое сообщение (не удалось распознать речь)";
 
@@ -88,8 +92,11 @@ public class AssistantServiceImpl implements AssistantService {
 
     private Proposal toProposal(UUID userId, String text, AssistantChannel channel, String inputKind,
                                  AgentOutcome outcome, TaskSource degradedSource) {
-        if (outcome.llmFailed() || isEmpty(outcome)) {
+        if (outcome.llmFailed()) {
             return degrade(userId, text, degradedSource, outcome);
+        }
+        if (isEmpty(outcome)) {
+            return silentModelResponse(userId, text, outcome);
         }
 
         ProposalJpaEntity entity = proposalFactory.from(userId, text, channel, inputKind, outcome);
@@ -237,12 +244,11 @@ public class AssistantServiceImpl implements AssistantService {
     }
 
     /**
-     * outcome — null, только если обращения к модели не было вовсе (например,
-     * распознавание речи упало до запуска AgentLoop): тогда токены и задержки
-     * честно нулевые. Если обращение состоялось (модель ответила без действий
-     * или llmFailed), outcome несёт реальный расход — переносим его в Proposal,
-     * иначе стенд измерения примет содержательный ответ модели за деградацию
-     * инфраструктуры.
+     * Только настоящий сбой обращения: outcome — null, если обращения к модели
+     * не было вовсе (например, распознавание речи упало до запуска AgentLoop),
+     * иначе — llmFailed (сеть, тайм-аут). В обоих случаях расход честно
+     * нулевой. Случай «модель ответила, но не предложила ничего» сюда больше
+     * не попадает — см. silentModelResponse().
      */
     private Proposal degrade(UUID userId, String text, TaskSource source, AgentOutcome outcome) {
         String title = text.length() > MAX_TITLE_LENGTH ? text.substring(0, MAX_TITLE_LENGTH) : text;
@@ -260,6 +266,23 @@ public class AssistantServiceImpl implements AssistantService {
         return new Proposal(null, null, userId, ProposalStatus.FAILED, text, DEGRADATION_EXPLANATION, List.of(),
                 now, now, false, null, List.of(), inputTokens, outputTokens, totalLatencyMs, firstPassLatencyMs,
                 secondPassLatencyMs, modelPasses);
+    }
+
+    /**
+     * Модель ответила (расход токенов реальный, llmFailed=false), но не
+     * предложила ни действий, ни уточнения, ни текста — «спасибо», «привет»
+     * и подобное. Это измеренный результат работы модели, а не сбой:
+     * задачу из реплики не создаём и recordDegradedCreation не вызываем, в
+     * отличие от настоящего сбоя обращения (см. degrade()). До появления у
+     * модели явного способа отказаться (следующий заход) пустой ответ —
+     * единственный сигнал этого исхода.
+     */
+    private Proposal silentModelResponse(UUID userId, String text, AgentOutcome outcome) {
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        return new Proposal(null, null, userId, ProposalStatus.FAILED, text, SILENT_MODEL_EXPLANATION, List.of(),
+                now, now, false, null, List.of(), outcome.inputTokens(), outcome.outputTokens(),
+                outcome.totalLatencyMs(), outcome.firstPassLatencyMs(), outcome.secondPassLatencyMs(),
+                outcome.passes());
     }
 
     private void recordDegradedCreation(UUID userId, UUID taskId) {
