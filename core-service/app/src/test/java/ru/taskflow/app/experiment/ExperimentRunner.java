@@ -232,6 +232,7 @@ class ExperimentRunner {
                 "AMBIGUOUS".equals(row.category()), proposal.exclusive(), modelMarked, deterministic,
                 proposal.ambiguityReason(),
                 proposal.status() == null ? null : proposal.status().name(),
+                proposal.declineReason() == null ? null : proposal.declineReason().name(),
                 llmFailed, degradationNote(statusFailed, zeroTokens, proposal)
         );
     }
@@ -258,7 +259,7 @@ class ExperimentRunner {
                 ExperimentRunResult.NOT_MEASURED, ExperimentRunResult.NOT_MEASURED,
                 0, 0, 0, false, 0, 0, "",
                 "AMBIGUOUS".equals(row.category()), false, false, false, null,
-                null, true, "исключение: " + e.getClass().getSimpleName() + ": " + e.getMessage()
+                null, null, true, "исключение: " + e.getClass().getSimpleName() + ": " + e.getMessage()
         );
     }
 

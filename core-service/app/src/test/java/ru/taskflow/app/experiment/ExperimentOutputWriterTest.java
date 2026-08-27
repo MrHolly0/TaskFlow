@@ -19,7 +19,7 @@ class ExperimentOutputWriterTest {
                 150, 40, 1, false, 1,
                 0, "",
                 false, false, false, false, null,
-                "PENDING", false, null);
+                "PENDING", null, false, null);
     }
 
     @Test
@@ -65,6 +65,45 @@ class ExperimentOutputWriterTest {
         var restored = mapper.readValue(file.toFile(),
                 new com.fasterxml.jackson.core.type.TypeReference<List<ExperimentRunResult>>() {});
         assertThat(restored).containsExactly(original);
+    }
+
+    // declineReason — закрытый список причин отказа (question/chitchat/unclear),
+    // заводился ровно ради разбивки no_action на доли (пункт 3); пусто, если
+    // отказа не было — sampleResult() уже проверяет этот (пустой) случай выше.
+    private ExperimentRunResult sampleDeclinedResult(String id) {
+        return new ExperimentRunResult(id, "NEGATIVE", 1, "спасибо",
+                0, 0, true, true, 0, 0, 0, "", "", "", "", "",
+                1200, 900, ExperimentRunResult.NOT_MEASURED, ExperimentRunResult.NOT_MEASURED,
+                1800, 30, 1, false, 0,
+                0, "",
+                false, false, false, false, null,
+                "DECLINED", "CHITCHAT", false, null);
+    }
+
+    @Test
+    void writeJson_roundTripsDeclineReasonWhenPresent(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("results.json");
+        var original = sampleDeclinedResult("R003");
+
+        ExperimentOutputWriter.writeJson(List.of(original), file);
+
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var restored = mapper.readValue(file.toFile(),
+                new com.fasterxml.jackson.core.type.TypeReference<List<ExperimentRunResult>>() {});
+        assertThat(restored).containsExactly(original);
+        assertThat(restored.getFirst().declineReason()).isEqualTo("CHITCHAT");
+    }
+
+    @Test
+    void writeCsv_includesDeclineReasonColumn(@TempDir Path dir) {
+        Path file = dir.resolve("results.csv");
+
+        ExperimentOutputWriter.writeCsv(List.of(sampleDeclinedResult("R003")), file);
+
+        List<String> header = List.of(readLines(file).getFirst().split(","));
+        int declineReasonIndex = header.indexOf("declineReason");
+        assertThat(declineReasonIndex).isNotNegative();
+        assertThat(readLines(file).get(1).split(",")[declineReasonIndex]).isEqualTo("CHITCHAT");
     }
 
     private List<String> readLines(Path file) {

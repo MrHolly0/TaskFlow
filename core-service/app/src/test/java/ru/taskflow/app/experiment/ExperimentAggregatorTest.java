@@ -21,7 +21,7 @@ class ExperimentAggregatorTest {
                 inTokens, outTokens, 1, false, actual,
                 0, "",
                 "AMBIGUOUS".equals(category), choiceOffered, modelMarked, deterministic, null,
-                "PENDING", false, null);
+                "PENDING", null, false, null);
     }
 
     private ExperimentRunResult degraded(String category, String id) {
@@ -33,7 +33,7 @@ class ExperimentAggregatorTest {
                 1, false, 0,
                 0, "",
                 "AMBIGUOUS".equals(category), false, false, false, null,
-                "PENDING", true, "деградация: нулевой расход токенов");
+                "PENDING", null, true, "деградация: нулевой расход токенов");
     }
 
     @Test

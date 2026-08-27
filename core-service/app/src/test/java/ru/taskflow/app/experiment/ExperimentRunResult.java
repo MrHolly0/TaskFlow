@@ -57,6 +57,9 @@ public record ExperimentRunResult(
 
         // прочее
         String proposalStatus,
+        // question / chitchat / unclear — только когда модель вызвала no_action;
+        // пусто, если отказа не было (в т.ч. для llmFailed и обычного PENDING).
+        String declineReason,
         boolean llmFailed,
         String error
 ) {
