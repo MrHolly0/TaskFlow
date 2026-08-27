@@ -313,6 +313,224 @@ class TaskServiceTest {
         verify(taskReminderService).cancelForTask(taskId);
     }
 
+    // --- Блок А2: следующее вхождение при закрытии ---
+
+    @Test
+    void complete_withoutRecurrence_doesNotCreateNextOccurrence() {
+        var entity = taskEntity();
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(recurrenceRepository.findById(taskId)).thenReturn(Optional.empty());
+
+        taskService.complete(userId, taskId);
+
+        verify(taskRepository, times(1)).save(any());
+    }
+
+    @Test
+    void complete_withDailyRecurrence_anchorsOnScheduledDeadline_notOnActualCompletionTime() {
+        var deadline = OffsetDateTime.parse("2026-01-01T10:00:00Z");
+        var entity = taskEntity();
+        entity.setDeadline(deadline);
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.findById(taskId))
+                .thenReturn(Optional.of(recurrenceEntity(RecurrenceType.DAILY, 1, null, null, null)));
+
+        // Задача закрыта на много дней позже срока — опоздание не должно влиять на дату следующего вхождения.
+        taskService.complete(userId, taskId);
+
+        var captor = ArgumentCaptor.forClass(TaskJpaEntity.class);
+        verify(taskRepository, times(2)).save(captor.capture());
+        TaskJpaEntity nextOccurrence = captor.getAllValues().get(1);
+        assertThat(nextOccurrence.getDeadline()).isEqualTo(deadline.plusDays(1));
+    }
+
+    @Test
+    void complete_withWeeklyRecurrenceAndDaysOfWeek_picksNextMatchingWeekday() {
+        // Пятница — следующее совпадение из {вторник, четверг} — вторник через 4 дня.
+        var deadline = OffsetDateTime.parse("2026-01-02T10:00:00Z"); // пятница
+        var entity = taskEntity();
+        entity.setDeadline(deadline);
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.findById(taskId)).thenReturn(Optional.of(
+                recurrenceEntity(RecurrenceType.WEEKLY, 1, "2,4", null, null)));
+
+        taskService.complete(userId, taskId);
+
+        var captor = ArgumentCaptor.forClass(TaskJpaEntity.class);
+        verify(taskRepository, times(2)).save(captor.capture());
+        assertThat(captor.getAllValues().get(1).getDeadline()).isEqualTo(deadline.plusDays(4));
+    }
+
+    @Test
+    void complete_withWeekdaysRecurrence_skipsWeekend() {
+        var friday = OffsetDateTime.parse("2026-01-02T10:00:00Z");
+        var entity = taskEntity();
+        entity.setDeadline(friday);
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.findById(taskId))
+                .thenReturn(Optional.of(recurrenceEntity(RecurrenceType.WEEKDAYS, 1, null, null, null)));
+
+        taskService.complete(userId, taskId);
+
+        var captor = ArgumentCaptor.forClass(TaskJpaEntity.class);
+        verify(taskRepository, times(2)).save(captor.capture());
+        assertThat(captor.getAllValues().get(1).getDeadline()).isEqualTo(friday.plusDays(3));
+    }
+
+    @Test
+    void complete_withMonthlyRecurrence_clampsDayOfMonthToShorterMonth() {
+        var jan31 = OffsetDateTime.parse("2026-01-31T10:00:00Z");
+        var entity = taskEntity();
+        entity.setDeadline(jan31);
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.findById(taskId))
+                .thenReturn(Optional.of(recurrenceEntity(RecurrenceType.MONTHLY, 1, null, 31, null)));
+
+        taskService.complete(userId, taskId);
+
+        var captor = ArgumentCaptor.forClass(TaskJpaEntity.class);
+        verify(taskRepository, times(2)).save(captor.capture());
+        assertThat(captor.getAllValues().get(1).getDeadline()).isEqualTo(OffsetDateTime.parse("2026-02-28T10:00:00Z"));
+    }
+
+    @Test
+    void complete_recurrenceEndsAt_stopsChainWhenNextDateIsAfterEnd() {
+        var deadline = OffsetDateTime.parse("2026-01-01T10:00:00Z");
+        var endsAt = OffsetDateTime.parse("2026-01-01T23:59:59Z");
+        var entity = taskEntity();
+        entity.setDeadline(deadline);
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(recurrenceRepository.findById(taskId))
+                .thenReturn(Optional.of(recurrenceEntity(RecurrenceType.DAILY, 1, null, null, endsAt)));
+
+        taskService.complete(userId, taskId);
+
+        verify(taskRepository, times(1)).save(any());
+    }
+
+    @Test
+    void update_toCancelled_doesNotCreateNextOccurrence() {
+        var entity = taskEntity();
+        entity.setDeadline(OffsetDateTime.parse("2026-01-01T10:00:00Z"));
+        var request = new UpdateTaskRequest(null, null, null, TaskStatus.CANCELLED, null, null, null, null, null);
+
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskRepository.save(any())).thenReturn(entity);
+        when(taskMapper.toResponse(entity)).thenReturn(mockResponse(taskId, "задача"));
+        when(recurrenceRepository.findById(taskId)).thenReturn(Optional.empty());
+
+        taskService.update(userId, taskId, request);
+
+        verify(taskRepository, times(1)).save(any());
+    }
+
+    @Test
+    void complete_inheritsContentFields_notDeadlineOrSource() {
+        var group = new GroupJpaEntity();
+        group.setId(UUID.randomUUID());
+        var entity = taskEntity();
+        entity.setDeadline(OffsetDateTime.parse("2026-01-01T10:00:00Z"));
+        entity.setDescription("подробности");
+        entity.setPriority(TaskPriority.HIGH);
+        entity.setGroup(group);
+        entity.setEstimateMinutes(45);
+        entity.setSource(ru.taskflow.task.api.TaskSource.MANUAL);
+
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.findById(taskId))
+                .thenReturn(Optional.of(recurrenceEntity(RecurrenceType.DAILY, 1, null, null, null)));
+
+        taskService.complete(userId, taskId);
+
+        var captor = ArgumentCaptor.forClass(TaskJpaEntity.class);
+        verify(taskRepository, times(2)).save(captor.capture());
+        TaskJpaEntity next = captor.getAllValues().get(1);
+        assertThat(next.getTitle()).isEqualTo(entity.getTitle());
+        assertThat(next.getDescription()).isEqualTo("подробности");
+        assertThat(next.getPriority()).isEqualTo(TaskPriority.HIGH);
+        assertThat(next.getGroup()).isEqualTo(group);
+        assertThat(next.getEstimateMinutes()).isEqualTo(45);
+        assertThat(next.getSource()).isEqualTo(ru.taskflow.task.api.TaskSource.RECURRENCE);
+    }
+
+    @Test
+    void complete_newOccurrence_getsRelativeReminderThroughPlanForDeadline() {
+        var entity = taskEntity();
+        entity.setDeadline(OffsetDateTime.parse("2026-01-01T10:00:00Z"));
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.findById(taskId))
+                .thenReturn(Optional.of(recurrenceEntity(RecurrenceType.DAILY, 1, null, null, null)));
+
+        taskService.complete(userId, taskId);
+
+        var captor = ArgumentCaptor.forClass(TaskJpaEntity.class);
+        verify(taskReminderService).planForDeadline(eq(userId), captor.capture());
+        assertThat(captor.getValue()).isNotSameAs(entity);
+        assertThat(captor.getValue().getDeadline()).isEqualTo(OffsetDateTime.parse("2026-01-02T10:00:00Z"));
+    }
+
+    @Test
+    void complete_anchorsOnPlannedDate_whenNoDeadline() {
+        var plannedDate = OffsetDateTime.parse("2026-01-01T09:00:00Z");
+        var entity = taskEntity();
+        entity.setPlannedDate(plannedDate);
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.findById(taskId))
+                .thenReturn(Optional.of(recurrenceEntity(RecurrenceType.DAILY, 1, null, null, null)));
+
+        taskService.complete(userId, taskId);
+
+        var captor = ArgumentCaptor.forClass(TaskJpaEntity.class);
+        verify(taskRepository, times(2)).save(captor.capture());
+        TaskJpaEntity next = captor.getAllValues().get(1);
+        assertThat(next.getPlannedDate()).isEqualTo(plannedDate.plusDays(1));
+        assertThat(next.getDeadline()).isNull();
+    }
+
+    @Test
+    void complete_noAnchorAtAll_stillCreatesNextOccurrenceWithoutDate() {
+        var entity = taskEntity();
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.findById(taskId))
+                .thenReturn(Optional.of(recurrenceEntity(RecurrenceType.DAILY, 1, null, null, null)));
+
+        taskService.complete(userId, taskId);
+
+        var captor = ArgumentCaptor.forClass(TaskJpaEntity.class);
+        verify(taskRepository, times(2)).save(captor.capture());
+        TaskJpaEntity next = captor.getAllValues().get(1);
+        assertThat(next.getDeadline()).isNull();
+        assertThat(next.getPlannedDate()).isNull();
+    }
+
+    private RecurrenceJpaEntity recurrenceEntity(RecurrenceType type, int intervalN, String daysOfWeek,
+                                                  Integer dayOfMonth, OffsetDateTime endsAt) {
+        var e = new RecurrenceJpaEntity();
+        e.setTaskId(taskId);
+        e.setType(type);
+        e.setIntervalN(intervalN);
+        e.setDaysOfWeek(daysOfWeek);
+        e.setDayOfMonth(dayOfMonth);
+        e.setEndsAt(endsAt);
+        return e;
+    }
+
     @Test
     void delete_marksAsDeleted() {
         var entity = taskEntity();

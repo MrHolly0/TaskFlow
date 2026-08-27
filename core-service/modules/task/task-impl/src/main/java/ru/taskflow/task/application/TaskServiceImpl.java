@@ -346,6 +346,93 @@ public class TaskServiceImpl implements TaskService {
         taskRepository.save(task);
         taskReminderService.cancelForTask(taskId);
         auditService.record(userId, taskId, AuditEventType.STATUS_CHANGED, Map.of("status", "DONE"));
+
+        recurrenceRepository.findById(taskId).ifPresent(recurrence -> createNextOccurrence(userId, task, recurrence));
+    }
+
+    /**
+     * Следующее вхождение считается от запланированной даты закрытой задачи
+     * (deadline, а если его нет — plannedDate), а не от момента фактического
+     * закрытия — иначе повтор «съезжает» при каждом опоздании (А2). Ни один
+     * из двух дат нет — вхождение всё равно создаётся, просто без даты, как и
+     * любая другая бессрочная задача.
+     *
+     * Напоминания не наследуются: у нового вхождения свой deadline, и если он
+     * задан, planForDeadline назначает такое же относительное напоминание,
+     * каким оно было бы у любой новой задачи с этим сроком — этого достаточно
+     * для «то же самое, за N минут до срока» из задания. Абсолютные
+     * напоминания старого вхождения (createStandaloneReminder/REMIND) сюда не
+     * копируются: они привязаны к конкретному моменту конкретного вхождения.
+     */
+    private void createNextOccurrence(UUID userId, TaskJpaEntity completedTask, RecurrenceJpaEntity recurrence) {
+        OffsetDateTime anchor = completedTask.getDeadline() != null
+                ? completedTask.getDeadline()
+                : completedTask.getPlannedDate();
+        OffsetDateTime nextAnchor = anchor != null ? nextOccurrence(anchor, recurrence) : null;
+
+        if (nextAnchor != null && recurrence.getEndsAt() != null && nextAnchor.isAfter(recurrence.getEndsAt())) {
+            return;
+        }
+
+        var next = new TaskJpaEntity();
+        next.setUserId(userId);
+        next.setTitle(completedTask.getTitle());
+        next.setDescription(completedTask.getDescription());
+        next.setPriority(completedTask.getPriority());
+        next.setGroup(completedTask.getGroup());
+        next.setEstimateMinutes(completedTask.getEstimateMinutes());
+        next.setTags(new ArrayList<>(completedTask.getTags()));
+        next.setSource(TaskSource.RECURRENCE);
+        if (completedTask.getDeadline() != null) {
+            next.setDeadline(nextAnchor);
+        } else if (completedTask.getPlannedDate() != null) {
+            next.setPlannedDate(nextAnchor);
+        }
+
+        TaskJpaEntity savedNext = taskRepository.save(next);
+        auditService.record(userId, savedNext.getId(), AuditEventType.CREATED, null);
+        taskReminderService.planForDeadline(userId, savedNext);
+        saveRecurrence(savedNext, toRule(recurrence));
+    }
+
+    private OffsetDateTime nextOccurrence(OffsetDateTime anchor, RecurrenceJpaEntity recurrence) {
+        int intervalN = Math.max(recurrence.getIntervalN(), 1);
+        return switch (recurrence.getType()) {
+            case DAILY -> anchor.plusDays(intervalN);
+            case WEEKLY -> {
+                List<DayOfWeek> days = decodeDaysOfWeek(recurrence.getDaysOfWeek());
+                yield (days == null || days.isEmpty()) ? anchor.plusWeeks(intervalN) : nextMatchingDayOfWeek(anchor, days);
+            }
+            case WEEKDAYS -> nextWeekday(anchor);
+            case MONTHLY -> nextMonthly(anchor, recurrence.getDayOfMonth());
+            case CUSTOM -> throw new IllegalStateException("правило CUSTOM не должно было сохраниться");
+        };
+    }
+
+    private OffsetDateTime nextMatchingDayOfWeek(OffsetDateTime anchor, List<DayOfWeek> days) {
+        for (int i = 1; i <= 7; i++) {
+            OffsetDateTime candidate = anchor.plusDays(i);
+            if (days.contains(candidate.getDayOfWeek())) {
+                return candidate;
+            }
+        }
+        throw new IllegalStateException("не удалось подобрать день недели для повтора");
+    }
+
+    private OffsetDateTime nextWeekday(OffsetDateTime anchor) {
+        OffsetDateTime candidate = anchor.plusDays(1);
+        return switch (candidate.getDayOfWeek()) {
+            case SATURDAY -> candidate.plusDays(2);
+            case SUNDAY -> candidate.plusDays(1);
+            default -> candidate;
+        };
+    }
+
+    private OffsetDateTime nextMonthly(OffsetDateTime anchor, Integer dayOfMonth) {
+        LocalDate firstOfNextMonth = anchor.toLocalDate().withDayOfMonth(1).plusMonths(1);
+        int day = Math.min(dayOfMonth, YearMonth.from(firstOfNextMonth).lengthOfMonth());
+        LocalDate nextDate = firstOfNextMonth.withDayOfMonth(day);
+        return OffsetDateTime.of(nextDate, anchor.toLocalTime(), anchor.getOffset());
     }
 
     /**
