@@ -63,3 +63,5 @@ databaseChangeLog:
       file: db/changelog/031-task-planned-date.yaml
   - include:
       file: db/changelog/032-task-progress-signals.yaml
+  - include:
+      file: db/changelog/033-task-source-assistant-split.yaml

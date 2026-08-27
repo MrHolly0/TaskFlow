@@ -75,19 +75,19 @@ public class AssistantServiceImpl implements AssistantService {
     public Proposal handleText(UUID userId, String text, AssistantChannel channel, AssistantEntryPoint entryPoint) {
         ZoneId zone = userService.getTimezone(userId);
         AgentOutcome outcome = agentLoop.run(userId, text, zone, entryPoint);
-        return toProposal(userId, text, channel, "TEXT", outcome, sourceFor(channel));
+        return toProposal(userId, text, channel, "TEXT", outcome, degradedSourceFor(channel));
     }
 
     @Override
     public Proposal handleVoice(UUID userId, byte[] audio, AssistantChannel channel, AssistantEntryPoint entryPoint) {
         String text = nlpGatewayService.transcribe(audio);
         if (isBlank(text)) {
-            return degrade(userId, VOICE_TRANSCRIPTION_FAILED_TEXT, TaskSource.BOT_VOICE, null);
+            return degrade(userId, VOICE_TRANSCRIPTION_FAILED_TEXT, TaskSource.ASSISTANT_BOT_VOICE_DEGRADED, null);
         }
 
         ZoneId zone = userService.getTimezone(userId);
         AgentOutcome outcome = agentLoop.run(userId, text, zone, entryPoint);
-        return toProposal(userId, text, channel, "VOICE", outcome, TaskSource.BOT_VOICE);
+        return toProposal(userId, text, channel, "VOICE", outcome, TaskSource.ASSISTANT_BOT_VOICE_DEGRADED);
     }
 
     private Proposal toProposal(UUID userId, String text, AssistantChannel channel, String inputKind,
@@ -242,8 +242,8 @@ public class AssistantServiceImpl implements AssistantService {
         return value == null || value.isBlank();
     }
 
-    private TaskSource sourceFor(AssistantChannel channel) {
-        return channel == AssistantChannel.WEB ? TaskSource.WEB : TaskSource.BOT_TEXT;
+    private TaskSource degradedSourceFor(AssistantChannel channel) {
+        return channel == AssistantChannel.WEB ? TaskSource.ASSISTANT_WEB_DEGRADED : TaskSource.ASSISTANT_BOT_TEXT_DEGRADED;
     }
 
     /**

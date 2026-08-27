@@ -219,9 +219,9 @@ public class ProposalApplier {
 
     private TaskSource sourceOf(ProposalJpaEntity proposal) {
         if ("WEB".equals(proposal.getSourceChannel())) {
-            return TaskSource.WEB;
+            return TaskSource.ASSISTANT_WEB;
         }
-        return "VOICE".equals(proposal.getInputKind()) ? TaskSource.BOT_VOICE : TaskSource.BOT_TEXT;
+        return "VOICE".equals(proposal.getInputKind()) ? TaskSource.ASSISTANT_BOT_VOICE : TaskSource.ASSISTANT_BOT_TEXT;
     }
 
     private ProposalStatus resolveStatus(int appliedCount, int totalCount) {

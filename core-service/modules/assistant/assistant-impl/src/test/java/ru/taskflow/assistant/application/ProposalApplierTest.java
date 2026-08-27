@@ -340,7 +340,7 @@ class ProposalApplierTest {
 
         var captor = org.mockito.ArgumentCaptor.forClass(CreateTaskRequest.class);
         verify(taskService).createQuick(eq(userId), captor.capture());
-        assertThat(captor.getValue().source()).isEqualTo(TaskSource.BOT_VOICE);
+        assertThat(captor.getValue().source()).isEqualTo(TaskSource.ASSISTANT_BOT_VOICE);
     }
 
     @Test

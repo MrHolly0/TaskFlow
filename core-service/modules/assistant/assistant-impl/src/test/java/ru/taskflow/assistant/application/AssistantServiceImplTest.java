@@ -151,7 +151,7 @@ class AssistantServiceImplTest {
         ArgumentCaptor<CreateTaskRequest> captor = ArgumentCaptor.forClass(CreateTaskRequest.class);
         verify(taskService).createQuick(eq(userId), captor.capture());
         assertThat(captor.getValue().title()).isEqualTo("хм");
-        assertThat(captor.getValue().source()).isEqualTo(TaskSource.BOT_TEXT);
+        assertThat(captor.getValue().source()).isEqualTo(TaskSource.ASSISTANT_BOT_TEXT_DEGRADED);
         verify(proposalRepository, never()).save(any());
         assertThat(result.status()).isEqualTo(ProposalStatus.FAILED);
         assertThat(result.sourceText()).isEqualTo("хм");
@@ -455,7 +455,7 @@ class AssistantServiceImplTest {
 
         ArgumentCaptor<CreateTaskRequest> captor = ArgumentCaptor.forClass(CreateTaskRequest.class);
         verify(taskService).createQuick(eq(userId), captor.capture());
-        assertThat(captor.getValue().source()).isEqualTo(TaskSource.BOT_VOICE);
+        assertThat(captor.getValue().source()).isEqualTo(TaskSource.ASSISTANT_BOT_VOICE_DEGRADED);
         verify(agentLoop, never()).run(any(), any(), any(), any());
         verify(proposalRepository, never()).save(any());
         assertThat(result.status()).isEqualTo(ProposalStatus.FAILED);
