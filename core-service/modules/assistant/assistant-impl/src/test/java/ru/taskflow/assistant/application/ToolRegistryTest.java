@@ -80,7 +80,35 @@ class ToolRegistryTest {
 
         Map<String, Object> reasonParam = (Map<String, Object>) properties.get("reason");
         assertThat((List<String>) reasonParam.get("enum"))
-                .containsExactlyInAnyOrder("question", "chitchat", "unclear");
+                .containsExactlyInAnyOrder("question", "chitchat", "unclear", "past");
+    }
+
+    // Пункт 2: напоминание на прошедший момент — свой закрытый повод, не create.
+    @Test
+    void toolDefinitions_noActionDescribesPastReminderCase() {
+        var noAction = registry.toolDefinitions().stream()
+                .filter(t -> ToolRegistry.NO_ACTION.equals(functionName(t)))
+                .findFirst().orElseThrow();
+
+        Map<String, Object> function = (Map<String, Object>) noAction.get("function");
+        String description = (String) function.get("description");
+
+        assertThat(description).contains("past");
+        assertThat(description).contains("уже прошло");
+    }
+
+    @Test
+    void toolDefinitions_reminderAtFieldPointsToPastReasonInsteadOfGuessing() {
+        var proposeActions = registry.toolDefinitions().stream()
+                .filter(t -> ToolRegistry.PROPOSE_ACTIONS.equals(functionName(t)))
+                .findFirst().orElseThrow();
+
+        Map<String, Object> actionsParam = (Map<String, Object>) parameters(proposeActions).get("actions");
+        Map<String, Object> items = (Map<String, Object>) actionsParam.get("items");
+        Map<String, Object> itemProperties = (Map<String, Object>) items.get("properties");
+        Map<String, Object> reminderAt = (Map<String, Object>) itemProperties.get("reminder_at");
+
+        assertThat((String) reminderAt.get("description")).contains("reason=past");
     }
 
     // Пункт 1: описание unclear в самом инструменте не должно быть шире, чем

@@ -219,6 +219,22 @@ class AssistantServiceImplTest {
         assertThat(result.clarification()).isEqualTo("Пожалуйста!");
     }
 
+    // Пункт 2: напоминание на прошедший момент не создаёт задачу вместо себя.
+    @Test
+    void handleText_declinedPastReminderDoesNotCreateTask() {
+        when(userService.getTimezone(userId)).thenReturn(zone);
+        AgentOutcome outcome = declinedOutcome(DeclineReason.PAST, "Это время уже прошло.", 1700, 35);
+        when(agentLoop.run(userId, "напомни про курсовую вчера в 10 утра", zone, AssistantEntryPoint.CHAT))
+                .thenReturn(outcome);
+
+        Proposal result = service.handleText(userId, "напомни про курсовую вчера в 10 утра", AssistantChannel.TELEGRAM);
+
+        verify(taskService, never()).createQuick(any(), any());
+        assertThat(result.status()).isEqualTo(ProposalStatus.DECLINED);
+        assertThat(result.declineReason()).isEqualTo(DeclineReason.PAST);
+        assertThat(result.clarification()).isEqualTo("Это время уже прошло.");
+    }
+
     @Test
     void handleText_declineDoesNotInterceptOrdinaryCommand() {
         // Обычная команда с действиями по-прежнему идёт через сохранение

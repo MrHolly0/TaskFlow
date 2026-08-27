@@ -392,6 +392,16 @@ class ToolCallParserTest {
         assertThat(result.declineReason()).isEqualTo(DeclineReason.CHITCHAT);
     }
 
+    // Пункт 2: напоминание на прошедший момент — отдельная, четвёртая причина.
+    @Test
+    void parse_extractsPastReason() {
+        var result = parser.parse(List.of(call("no_action",
+                "{\"reason\":\"past\",\"answer\":\"Это время уже прошло.\"}")), window);
+
+        assertThat(result.declineReason()).isEqualTo(DeclineReason.PAST);
+        assertThat(result.declineAnswer()).isEqualTo("Это время уже прошло.");
+    }
+
     @Test
     void parse_rejectsNoActionWithUnknownReason() {
         var result = parser.parse(List.of(call("no_action",

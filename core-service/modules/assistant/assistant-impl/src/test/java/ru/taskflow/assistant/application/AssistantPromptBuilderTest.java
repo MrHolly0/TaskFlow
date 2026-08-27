@@ -256,6 +256,17 @@ class AssistantPromptBuilderTest {
         assertThat(parts.systemPrompt()).contains("Проверяй эту неоднозначность отдельно и раньше правил 2 и 6");
     }
 
+    // Пункт 2: напоминание на прошедший момент — no_action(reason=past), не
+    // переосмысленное создание задачи без напоминания.
+    @Test
+    void build_instructsToDeclinePastReminderInsteadOfCreatingTask() {
+        var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());
+
+        assertThat(parts.systemPrompt()).contains("reason=past");
+        assertThat(parts.systemPrompt())
+                .contains("не переосмысливай просьбу как создание задачи без напоминания");
+    }
+
     @Test
     void build_handlesNoGroupsYet() {
         var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());

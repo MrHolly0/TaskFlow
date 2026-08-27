@@ -353,6 +353,21 @@ class AgentLoopTest {
         assertThat(outcome.assistantText()).isEqualTo("Пожалуйста!");
     }
 
+    // Пункт 2: напоминание на прошедший момент — RM-13/14/15, живой прогон
+    // 27.08 показал модель вместо этого предлагала create.
+    @Test
+    void run_returnsDeclineForPastReminderTime() {
+        when(contextBuilder.build(userId)).thenReturn(window());
+        when(gateway.callWithTools(any())).thenReturn(
+                toolResponse(List.of(noActionCall("past", "Это время уже прошло.")), null));
+
+        var outcome = loopWithFixedClock().run(userId, "напомни про курсовую вчера в 10 утра", zone);
+
+        assertThat(outcome.actions()).isEmpty();
+        assertThat(outcome.declineReason()).isEqualTo(DeclineReason.PAST);
+        assertThat(outcome.assistantText()).isEqualTo("Это время уже прошло.");
+    }
+
     // Модель может отказаться и после поиска — «покажи задачи на завтра»,
     // если сперва свериться со списком через search_tasks (Б5).
     @Test
