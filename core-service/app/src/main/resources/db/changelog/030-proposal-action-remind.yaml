@@ -1,0 +1,17 @@
+databaseChangeLog:
+  - changeSet:
+      id: 030-proposal-action-remind
+      author: taskflow
+      comment: >
+        Блок В добавил в контракт ассистента действие remind и значение REMIND
+        в AssistantActionType, но проверочное ограничение chk_action_type из
+        миграции 008 перечисляет типы списком и о новом не знает. Модель
+        предлагает напоминание корректно, падает вставка предложения:
+        DataIntegrityViolationException на chk_action_type. Модульные тесты
+        этого не ловят — репозиторий в них подменён, нужен настоящий Postgres.
+        Обнаружено прогоном 27.08: 21 обращение из 54 на наборе напоминаний.
+      changes:
+        - sql:
+            sql: "ALTER TABLE assistant_proposal_actions DROP CONSTRAINT chk_action_type;"
+        - sql:
+            sql: "ALTER TABLE assistant_proposal_actions ADD CONSTRAINT chk_action_type CHECK (type IN ('CREATE','COMPLETE','RESCHEDULE','UPDATE','CANCEL','REMIND'));"

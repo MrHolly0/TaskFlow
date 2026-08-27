@@ -57,3 +57,5 @@ databaseChangeLog:
       file: db/changelog/028-standalone-reminders.yaml
   - include:
       file: db/changelog/029-scheduled-notification-reminder-id.yaml
+  - include:
+      file: db/changelog/030-proposal-action-remind.yaml
