@@ -188,9 +188,33 @@ const TIME_BUDGET_OPTIONS: { label: string; minutes: number }[] = [
   { label: '1 час', minutes: 60 },
 ];
 
+// Подсветка «Сколько времени есть?» — локально у пользователя, серверного
+// поля нет: до первого выбора, потом молча гаснет насовсем (В7).
+const TIME_BUDGET_USED_KEY = 'taskflow_time_budget_used';
+
+function readTimeBudgetUsed(): boolean {
+  try {
+    return localStorage.getItem(TIME_BUDGET_USED_KEY) === '1';
+  } catch {
+    return true; // недоступно хранилище — не навязываем подсветку
+  }
+}
+
 export function FocusPage() {
   const userName = useDisplayName();
   const [availableMinutes, setAvailableMinutes] = useState<number | undefined>(undefined);
+  const [timeBudgetUsed, setTimeBudgetUsed] = useState(readTimeBudgetUsed);
+
+  const markTimeBudgetUsed = () => {
+    if (timeBudgetUsed) return;
+    setTimeBudgetUsed(true);
+    try {
+      localStorage.setItem(TIME_BUDGET_USED_KEY, '1');
+    } catch {
+      // недоступно — переживёт до следующей загрузки, не критично
+    }
+  };
+
   const { data: focusTasks = [], isLoading, error } = useFocusTasks(availableMinutes);
   const todayDone = !isLoading && focusTasks.length === 0;
   const { data: upcomingTasks = [], isLoading: upcomingLoading } = useUpcomingFocusTasks(todayDone, availableMinutes);
@@ -340,22 +364,36 @@ export function FocusPage() {
         <EmailBindBanner />
 
         {!showingUpcoming && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm text-muted-foreground">Сколько времени есть?</span>
+          <motion.div
+            initial={timeBudgetUsed ? false : { scale: 1.05, opacity: 0.6 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.5, ease: 'easeOut' }}
+            className={cn(
+              'flex flex-wrap items-center gap-2 rounded-lg -mx-2 px-2 py-1.5 transition-colors',
+              !timeBudgetUsed && 'bg-primary/5 ring-1 ring-primary/25'
+            )}
+          >
+            <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+              Сколько времени есть?
+              {!timeBudgetUsed && (
+                <span className="h-1.5 w-1.5 rounded-full bg-primary flex-shrink-0" aria-hidden="true" />
+              )}
+            </span>
             {TIME_BUDGET_OPTIONS.map((option) => (
               <Button
                 key={option.minutes}
                 variant={availableMinutes === option.minutes ? 'default' : 'outline'}
                 size="sm"
                 className="h-7 px-3 text-xs"
-                onClick={() =>
-                  setAvailableMinutes(availableMinutes === option.minutes ? undefined : option.minutes)
-                }
+                onClick={() => {
+                  markTimeBudgetUsed();
+                  setAvailableMinutes(availableMinutes === option.minutes ? undefined : option.minutes);
+                }}
               >
                 {option.label}
               </Button>
             ))}
-          </div>
+          </motion.div>
         )}
 
         {showingUpcoming && (
