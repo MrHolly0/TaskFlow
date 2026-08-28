@@ -143,14 +143,14 @@ function AddReminderForm({
 
   return (
     <div className="space-y-2 rounded-lg border border-border/60 p-3">
-      <div className="flex flex-wrap gap-1.5">
+      <div className="grid grid-cols-2 gap-1.5">
         {presets.map((p) => (
           <Button
             key={p.key}
             type="button"
             variant="outline"
             size="sm"
-            className="h-8 text-xs"
+            className="h-8 text-xs w-full"
             disabled={isPending}
             onClick={() => submit(p.fireAt)}
           >
@@ -308,16 +308,17 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent
         className={cn(
-          'sm:max-w-lg w-full overflow-y-auto',
+          'sm:max-w-lg w-full p-0 gap-0 flex flex-col',
           'top-4 translate-y-0 max-h-[calc(100dvh-2rem)]',
           'sm:top-[50%] sm:translate-y-[-50%] sm:max-h-[90dvh]'
         )}
       >
-        <DialogHeader>
+        <DialogHeader className="px-6 pt-6">
           <DialogTitle className="sr-only">Задача</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3">
+        {/* Прокручивается только содержимое — панель действий ниже закреплена (В1) */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 space-y-3">
           {/* Title */}
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -406,6 +407,55 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
                 disabled={!deadlineDate}
               />
             </div>
+          </div>
+
+          {/* Напоминания (Б1/Б2) — сразу под дедлайном: то же самое время, что и он,
+              а не отдельная тема в конце формы. Независимы от срока, могут стоять
+              и на задаче без дедлайна. */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Напоминания
+              </label>
+              {!(taskId && showAddReminder) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1.5 text-xs"
+                  onClick={() => setShowAddReminder(true)}
+                >
+                  <IconBellPlus className="h-3.5 w-3.5" />
+                  Напомнить
+                </Button>
+              )}
+            </div>
+            {reminders.length > 0 && (
+              <div className="space-y-1.5">
+                {reminders.map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-3 py-2"
+                  >
+                    <span className="text-sm flex items-center gap-1.5">
+                      <IconBell className="h-3.5 w-3.5 text-muted-foreground" />
+                      {formatReminderTime(r.fireAt, timezone)}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      onClick={() => taskId && cancelReminder({ taskId, reminderId: r.id })}
+                    >
+                      <IconX className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {taskId && showAddReminder && (
+              <AddReminderForm taskId={taskId} timezone={timezone} onDone={() => setShowAddReminder(false)} />
+            )}
           </div>
 
           {/* Group + Estimate row */}
@@ -525,65 +575,21 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
               </div>
             )}
           </div>
+        </div>
 
-          {/* Reminders (Б1/Б2) — независимы от срока, могут стоять и на задаче без дедлайна */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Напоминания
-            </label>
-            {reminders.length > 0 && (
-              <div className="space-y-1.5">
-                {reminders.map((r) => (
-                  <div
-                    key={r.id}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-3 py-2"
-                  >
-                    <span className="text-sm flex items-center gap-1.5">
-                      <IconBell className="h-3.5 w-3.5 text-muted-foreground" />
-                      {formatReminderTime(r.fireAt, timezone)}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                      onClick={() => taskId && cancelReminder({ taskId, reminderId: r.id })}
-                    >
-                      <IconX className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {taskId && showAddReminder ? (
-              <AddReminderForm taskId={taskId} timezone={timezone} onDone={() => setShowAddReminder(false)} />
-            ) : (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-9 gap-1.5"
-                onClick={() => setShowAddReminder(true)}
-              >
-                <IconBellPlus className="h-4 w-4" />
-                Напомнить
-              </Button>
-            )}
-          </div>
-
-          {/* Actions */}
-          <div className="flex items-center gap-2 pt-1">
-            <Button onClick={handleSave} disabled={saving} className="flex-1 h-10">
-              {saving ? 'Сохраняем...' : 'Сохранить'}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-10 w-10 text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex-shrink-0"
-              onClick={handleDelete}
-            >
-              <IconTrash className="h-4 w-4" />
-            </Button>
-          </div>
+        {/* Панель действий закреплена внизу модалки — видна без прокрутки (В1) */}
+        <div className="flex-shrink-0 flex items-center gap-2 px-6 py-4 border-t border-border/60">
+          <Button onClick={handleSave} disabled={saving} className="flex-1 h-10">
+            {saving ? 'Сохраняем...' : 'Сохранить'}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-10 w-10 text-muted-foreground hover:text-destructive hover:bg-destructive/10 flex-shrink-0"
+            onClick={handleDelete}
+          >
+            <IconTrash className="h-4 w-4" />
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
