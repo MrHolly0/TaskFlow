@@ -162,6 +162,15 @@ public final class ActionMatcher {
         if (expected.reminderMinutesBeforeTargetDeadline() != null) {
             mismatches.addAll(reminderOffsetMismatch(action, expected, setupRefToDeadline));
         }
+        if (expected.reminderMinutesBeforeTargetDeadlineMin() != null || expected.reminderMinutesBeforeTargetDeadlineMax() != null) {
+            mismatches.addAll(reminderOffsetRangeMismatch(action, expected, setupRefToDeadline));
+        }
+        if (expected.reminderHourMin() != null || expected.reminderHourMax() != null) {
+            mismatches.addAll(reminderHourRangeMismatch(action, expected, zone));
+        }
+        if (Boolean.TRUE.equals(expected.expectNoReminder())) {
+            mismatches.addAll(noReminderMismatch(action));
+        }
         return mismatches;
     }
 
@@ -183,6 +192,59 @@ public final class ActionMatcher {
                     .formatted(expectedReminderAt, expected.reminderMinutesBeforeTargetDeadline(), reminderAt));
         }
         return List.of();
+    }
+
+    // Диапазон вместо точного числа (блок Г) — модель сама подбирает отступ,
+    // «за 15–40 минут» проверяемо, «ровно в 17:30» нет. Открытый конец
+    // диапазона (только Min или только Max) не проверяется — это осознанный
+    // выбор датасета, не пропуск.
+    private List<String> reminderOffsetRangeMismatch(ProposedAction action, ExpectedAction expected,
+                                                       Map<String, OffsetDateTime> setupRefToDeadline) {
+        OffsetDateTime targetDeadline = expected.targetRef() == null ? null : setupRefToDeadline.get(expected.targetRef());
+        OffsetDateTime reminderAt = reminderAtOf(action);
+        if (targetDeadline == null || reminderAt == null) {
+            return List.of("отступ от срока: не удалось сверить (нет дедлайна цели или reminder_at)");
+        }
+        long actualMinutesBefore = ChronoUnit.MINUTES.between(reminderAt, targetDeadline);
+        Integer min = expected.reminderMinutesBeforeTargetDeadlineMin();
+        Integer max = expected.reminderMinutesBeforeTargetDeadlineMax();
+        if ((min != null && actualMinutesBefore < min) || (max != null && actualMinutesBefore > max)) {
+            return List.of("отступ от срока: ожидалось %s–%s мин. до дедлайна цели, получено %d"
+                    .formatted(min == null ? "…" : min, max == null ? "…" : max, actualMinutesBefore));
+        }
+        return List.of();
+    }
+
+    // Для напоминаний без срока-цели ("рабочие часы") — диапазон часа
+    // локального времени, та же логика открытых границ.
+    private List<String> reminderHourRangeMismatch(ProposedAction action, ExpectedAction expected, ZoneId zone) {
+        OffsetDateTime reminderAt = reminderAtOf(action);
+        if (reminderAt == null) {
+            return List.of("час напоминания: не удалось сверить (нет reminder_at)");
+        }
+        int actualHour = reminderAt.atZoneSameInstant(zone).getHour();
+        Integer min = expected.reminderHourMin();
+        Integer max = expected.reminderHourMax();
+        if ((min != null && actualHour < min) || (max != null && actualHour > max)) {
+            return List.of("час напоминания: ожидалось %s–%s, получено %d"
+                    .formatted(min == null ? "…" : min, max == null ? "…" : max, actualHour));
+        }
+        return List.of();
+    }
+
+    // "Решила не предлагать" отличимо от "забыла предложить" (блок Г) —
+    // reminder_at пуст и no_reminder_needed=true у самого действия, а не
+    // просто отсутствие reminder_at само по себе (то неотличимо от забыла).
+    private List<String> noReminderMismatch(ProposedAction action) {
+        List<String> mismatches = new ArrayList<>();
+        if (reminderAtOf(action) != null) {
+            mismatches.add("напоминание: ожидалось отсутствие, получено " + reminderAtOf(action));
+        }
+        if (!Boolean.TRUE.equals(action.payload().get("no_reminder_needed"))) {
+            mismatches.add("напоминание: reminder_at пуст, но no_reminder_needed не выставлен — "
+                    + "неотличимо от того, что модель забыла решить");
+        }
+        return mismatches;
     }
 
     private OffsetDateTime reminderAtOf(ProposedAction action) {

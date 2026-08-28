@@ -233,4 +233,120 @@ class ActionMatcherTest {
         assertThat(result.matchedCount()).isEqualTo(1);
         assertThat(result.matched().getFirst().attributeMismatches()).anyMatch(m -> m.contains("не удалось сверить"));
     }
+
+    // --- Блок Г: диапазон времени напоминания и явный отказ от него ---
+
+    private ExpectedAction expectedOffsetRange(Integer min, Integer max) {
+        return new ExpectedAction("remind", null, "S1", null, null, null, null, null, null, null,
+                min, max, null, null, null);
+    }
+
+    @Test
+    void match_offsetWithinRangeIsFullyCorrect() {
+        var targetDeadline = OffsetDateTime.parse("2026-08-22T18:00:00+03:00");
+        var actual = List.of(remind(milkTaskId, "2026-08-22T17:35:00+03:00")); // 25 мин до срока
+        var expected = outcome(1, expectedOffsetRange(15, 40));
+
+        var result = matcher.match(actual, expected, Map.of("S1", milkTaskId), Map.of("S1", targetDeadline), today, zone);
+
+        assertThat(result.fullyCorrect()).isTrue();
+    }
+
+    @Test
+    void match_offsetOutsideRangeIsMismatch() {
+        var targetDeadline = OffsetDateTime.parse("2026-08-22T18:00:00+03:00");
+        var actual = List.of(remind(milkTaskId, "2026-08-22T16:00:00+03:00")); // 2 часа до срока
+        var expected = outcome(1, expectedOffsetRange(15, 40));
+
+        var result = matcher.match(actual, expected, Map.of("S1", milkTaskId), Map.of("S1", targetDeadline), today, zone);
+
+        assertThat(result.fullyCorrect()).isFalse();
+        assertThat(result.matched().getFirst().attributeMismatches()).anyMatch(m -> m.contains("отступ от срока"));
+    }
+
+    @Test
+    void match_offsetRangeWithOpenLowerBound_onlyChecksUpperBound() {
+        var targetDeadline = OffsetDateTime.parse("2026-08-22T18:00:00+03:00");
+        var actual = List.of(remind(milkTaskId, "2026-08-22T17:30:00+03:00")); // 30 мин до срока — не позже верхней границы
+        var expected = outcome(1, expectedOffsetRange(null, 60));
+
+        var result = matcher.match(actual, expected, Map.of("S1", milkTaskId), Map.of("S1", targetDeadline), today, zone);
+
+        assertThat(result.fullyCorrect()).isTrue();
+    }
+
+    private ExpectedAction expectedHourRange(Integer min, Integer max) {
+        return new ExpectedAction("create", "банк", null, null, null, null, null, null, null, null,
+                null, null, min, max, null);
+    }
+
+    @Test
+    void match_reminderHourWithinRangeIsFullyCorrect() {
+        var actual = List.of(create("позвонить в банк", null));
+        var withReminder = new ProposedAction(1, AssistantActionType.CREATE, null,
+                Map.of("title", "позвонить в банк", "reminder_at", "2026-08-22T11:00:00+03:00"),
+                "Создать — позвонить в банк", true);
+        var expected = outcome(1, expectedHourRange(9, 18));
+
+        var result = matcher.match(List.of(withReminder), expected, Map.of(), today, zone);
+
+        assertThat(result.fullyCorrect()).isTrue();
+    }
+
+    @Test
+    void match_reminderHourOutsideRangeIsMismatch() {
+        var withReminder = new ProposedAction(1, AssistantActionType.CREATE, null,
+                Map.of("title", "позвонить в банк", "reminder_at", "2026-08-22T21:00:00+03:00"),
+                "Создать — позвонить в банк", true);
+        var expected = outcome(1, expectedHourRange(9, 18));
+
+        var result = matcher.match(List.of(withReminder), expected, Map.of(), today, zone);
+
+        assertThat(result.fullyCorrect()).isFalse();
+        assertThat(result.matched().getFirst().attributeMismatches()).anyMatch(m -> m.contains("час напоминания"));
+    }
+
+    private ExpectedAction expectedNoReminder() {
+        return new ExpectedAction("create", "корм", null, null, null, null, null, null, null, null,
+                null, null, null, null, true);
+    }
+
+    @Test
+    void match_explicitNoReminderNeeded_isFullyCorrect() {
+        var action = new ProposedAction(1, AssistantActionType.CREATE, null,
+                Map.of("title", "купить корм", "no_reminder_needed", true),
+                "Создать — купить корм", true);
+
+        var result = matcher.match(List.of(action), outcome(1, expectedNoReminder()), Map.of(), today, zone);
+
+        assertThat(result.fullyCorrect()).isTrue();
+    }
+
+    @Test
+    void match_missingNoReminderNeededFlag_isIndistinguishableFromForgetting_soFlaggedAsMismatch() {
+        // reminder_at пуст, но no_reminder_needed тоже не выставлен — по данным
+        // нельзя отличить "решила не надо" от "забыла решить" (требование блока Г).
+        var action = new ProposedAction(1, AssistantActionType.CREATE, null,
+                Map.of("title", "купить корм"),
+                "Создать — купить корм", true);
+
+        var result = matcher.match(List.of(action), outcome(1, expectedNoReminder()), Map.of(), today, zone);
+
+        assertThat(result.fullyCorrect()).isFalse();
+        assertThat(result.matched().getFirst().attributeMismatches())
+                .anyMatch(m -> m.contains("забыла решить"));
+    }
+
+    @Test
+    void match_reminderProposedWhenNoneExpected_isMismatch() {
+        var action = new ProposedAction(1, AssistantActionType.CREATE, null,
+                Map.of("title", "купить корм", "reminder_at", "2026-08-22T09:00:00+03:00", "no_reminder_needed", true),
+                "Создать — купить корм", true);
+
+        var result = matcher.match(List.of(action), outcome(1, expectedNoReminder()), Map.of(), today, zone);
+
+        assertThat(result.fullyCorrect()).isFalse();
+        assertThat(result.matched().getFirst().attributeMismatches())
+                .anyMatch(m -> m.contains("ожидалось отсутствие"));
+    }
 }
