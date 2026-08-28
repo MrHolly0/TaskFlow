@@ -349,4 +349,79 @@ class ActionMatcherTest {
         assertThat(result.matched().getFirst().attributeMismatches())
                 .anyMatch(m -> m.contains("ожидалось отсутствие"));
     }
+
+    // --- Блок В: диапазон дня исполнения (planned_date) и явный отказ от него ---
+
+    private ExpectedAction expectedPlannedDateRange(Integer minDays, Integer maxDays) {
+        return new ExpectedAction("create", null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, minDays, maxDays, null);
+    }
+
+    private ExpectedAction expectedNoPlannedDate() {
+        return new ExpectedAction("create", "шкаф", null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, true);
+    }
+
+    @Test
+    void match_plannedDateWithinRangeIsFullyCorrect() {
+        var action = create("разобрать документы", null);
+        var withPlannedDate = new ProposedAction(1, AssistantActionType.CREATE, null,
+                Map.of("title", "разобрать документы", "planned_date", "2026-08-23T09:00:00+03:00"),
+                "Создать — разобрать документы", true);
+        var expected = outcome(1, expectedPlannedDateRange(0, 3));
+
+        var result = matcher.match(List.of(withPlannedDate), expected, Map.of(), today, zone);
+
+        assertThat(result.fullyCorrect()).isTrue();
+    }
+
+    @Test
+    void match_plannedDateOutsideRangeIsMismatch() {
+        var withPlannedDate = new ProposedAction(1, AssistantActionType.CREATE, null,
+                Map.of("title", "разобрать документы", "planned_date", "2026-09-01T09:00:00+03:00"),
+                "Создать — разобрать документы", true);
+        var expected = outcome(1, expectedPlannedDateRange(0, 3));
+
+        var result = matcher.match(List.of(withPlannedDate), expected, Map.of(), today, zone);
+
+        assertThat(result.fullyCorrect()).isFalse();
+        assertThat(result.matched().getFirst().attributeMismatches()).anyMatch(m -> m.contains("день исполнения"));
+    }
+
+    @Test
+    void match_explicitNoPlannedDateNeeded_isFullyCorrect() {
+        var action = new ProposedAction(1, AssistantActionType.CREATE, null,
+                Map.of("title", "разобрать шкаф", "no_planned_date_needed", true),
+                "Создать — разобрать шкаф", true);
+
+        var result = matcher.match(List.of(action), outcome(1, expectedNoPlannedDate()), Map.of(), today, zone);
+
+        assertThat(result.fullyCorrect()).isTrue();
+    }
+
+    @Test
+    void match_missingNoPlannedDateNeededFlag_isIndistinguishableFromForgetting_soFlaggedAsMismatch() {
+        var action = new ProposedAction(1, AssistantActionType.CREATE, null,
+                Map.of("title", "разобрать шкаф"),
+                "Создать — разобрать шкаф", true);
+
+        var result = matcher.match(List.of(action), outcome(1, expectedNoPlannedDate()), Map.of(), today, zone);
+
+        assertThat(result.fullyCorrect()).isFalse();
+        assertThat(result.matched().getFirst().attributeMismatches())
+                .anyMatch(m -> m.contains("забыла решить"));
+    }
+
+    @Test
+    void match_plannedDateProposedWhenNoneExpected_isMismatch() {
+        var action = new ProposedAction(1, AssistantActionType.CREATE, null,
+                Map.of("title", "разобрать шкаф", "planned_date", "2026-08-22T09:00:00+03:00"),
+                "Создать — разобрать шкаф", true);
+
+        var result = matcher.match(List.of(action), outcome(1, expectedNoPlannedDate()), Map.of(), today, zone);
+
+        assertThat(result.fullyCorrect()).isFalse();
+        assertThat(result.matched().getFirst().attributeMismatches())
+                .anyMatch(m -> m.contains("ожидалось отсутствие"));
+    }
 }

@@ -171,7 +171,58 @@ public final class ActionMatcher {
         if (Boolean.TRUE.equals(expected.expectNoReminder())) {
             mismatches.addAll(noReminderMismatch(action));
         }
+        if (expected.plannedDateOffsetDaysMin() != null || expected.plannedDateOffsetDaysMax() != null) {
+            mismatches.addAll(plannedDateOffsetRangeMismatch(action, expected, today, zone));
+        }
+        if (Boolean.TRUE.equals(expected.expectNoPlannedDate())) {
+            mismatches.addAll(noPlannedDateMismatch(action));
+        }
         return mismatches;
+    }
+
+    // День исполнения (блок В) — тот же приём диапазона, что и у отступа
+    // напоминания, но от дня прогона: у planned_date нет цели-дедлайна,
+    // это атрибут самой создаваемой задачи, а не отступ от чего-то ещё.
+    private List<String> plannedDateOffsetRangeMismatch(ProposedAction action, ExpectedAction expected,
+                                                          LocalDate today, ZoneId zone) {
+        OffsetDateTime plannedDate = plannedDateAtOf(action);
+        if (plannedDate == null) {
+            return List.of("день исполнения: не удалось сверить (нет planned_date)");
+        }
+        long actualOffsetDays = ChronoUnit.DAYS.between(today, plannedDate.atZoneSameInstant(zone).toLocalDate());
+        Integer min = expected.plannedDateOffsetDaysMin();
+        Integer max = expected.plannedDateOffsetDaysMax();
+        if ((min != null && actualOffsetDays < min) || (max != null && actualOffsetDays > max)) {
+            return List.of("день исполнения: ожидалось смещение %s–%s дн. от сегодня, получено %d"
+                    .formatted(min == null ? "…" : min, max == null ? "…" : max, actualOffsetDays));
+        }
+        return List.of();
+    }
+
+    // "Решила не предлагать" отличимо от "забыла предложить" для дня
+    // исполнения — та же логика, что и noReminderMismatch.
+    private List<String> noPlannedDateMismatch(ProposedAction action) {
+        List<String> mismatches = new ArrayList<>();
+        if (plannedDateAtOf(action) != null) {
+            mismatches.add("день исполнения: ожидалось отсутствие, получено " + plannedDateAtOf(action));
+        }
+        if (!Boolean.TRUE.equals(action.payload().get("no_planned_date_needed"))) {
+            mismatches.add("день исполнения: planned_date пуст, но no_planned_date_needed не выставлен — "
+                    + "неотличимо от того, что модель забыла решить");
+        }
+        return mismatches;
+    }
+
+    private OffsetDateTime plannedDateAtOf(ProposedAction action) {
+        Object raw = action.payload().get("planned_date");
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return OffsetDateTime.parse(raw.toString());
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     // Сверка по факту (реальный дедлайн заведённой задачи), не по offsetDays/Hour
