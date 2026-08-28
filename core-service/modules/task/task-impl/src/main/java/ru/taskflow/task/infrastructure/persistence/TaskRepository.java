@@ -1,6 +1,7 @@
 package ru.taskflow.task.infrastructure.persistence;
 
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -10,7 +11,9 @@ import ru.taskflow.task.api.TaskPriority;
 import ru.taskflow.task.api.TaskStatus;
 
 import java.time.OffsetDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -18,10 +21,15 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
 
     Optional<TaskJpaEntity> findByIdAndUserId(UUID id, UUID userId);
 
+    /**
+     * LEFT JOIN FETCH коллекции (tags) не даёт Hibernate резать запрос
+     * постранично в SQL (HHH90003004) — он вытягивает весь отфильтрованный
+     * набор в память и режет его там. Страница идентификаторов ниже не
+     * выбирает коллекции, поэтому пагинация honest: реальный LIMIT/OFFSET
+     * в SQL, а не отсечение в Java после полной выборки.
+     */
     @Query("""
-            SELECT t FROM TaskJpaEntity t
-            LEFT JOIN FETCH t.group g
-            LEFT JOIN FETCH t.tags
+            SELECT t.id FROM TaskJpaEntity t
             WHERE t.userId = :userId
               AND (:groupId IS NULL OR t.group.id = :groupId)
               AND (:status IS NULL OR t.status = :status)
@@ -30,7 +38,7 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
                   SELECT 1 FROM t.tags tag WHERE tag.name = :tag
               ))
             """)
-    Page<TaskJpaEntity> findAllWithFilter(
+    Page<UUID> findIdsWithFilter(
             @Param("userId") UUID userId,
             @Param("groupId") UUID groupId,
             @Param("status") TaskStatus status,
@@ -38,6 +46,37 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
             @Param("tag") String tag,
             Pageable pageable
     );
+
+    // Второй запрос страницы: коллекции по уже отобранным id — здесь
+    // разбиения на страницы нет, поэтому JOIN FETCH ничему не мешает.
+    // Порядок ответа СУБД для IN не гарантирован — сортировка
+    // восстанавливается вызывающей стороной по порядку списка ids.
+    @Query("""
+            SELECT t FROM TaskJpaEntity t
+            LEFT JOIN FETCH t.group
+            LEFT JOIN FETCH t.tags
+            WHERE t.id IN :ids
+            """)
+    List<TaskJpaEntity> findAllByIdInWithCollections(@Param("ids") List<UUID> ids);
+
+    /**
+     * Заменяет прежний однозапросный вариант (Page[TaskJpaEntity] одним
+     * JOIN FETCH-запросом) — см. javadoc у findIdsWithFilter. Публичная
+     * сигнатура и поведение (страница задач с группой и метками,
+     * порядок сортировки сохранён) не изменились, изменился только
+     * способ выборки внутри.
+     */
+    default Page<TaskJpaEntity> findAllWithFilter(UUID userId, UUID groupId, TaskStatus status,
+                                                   TaskPriority priority, String tag, Pageable pageable) {
+        Page<UUID> idPage = findIdsWithFilter(userId, groupId, status, priority, tag, pageable);
+        if (idPage.isEmpty()) {
+            return Page.empty(pageable);
+        }
+        Map<UUID, TaskJpaEntity> byId = new LinkedHashMap<>();
+        findAllByIdInWithCollections(idPage.getContent()).forEach(t -> byId.put(t.getId(), t));
+        List<TaskJpaEntity> ordered = idPage.getContent().stream().map(byId::get).toList();
+        return new PageImpl<>(ordered, pageable, idPage.getTotalElements());
+    }
 
     @Query("""
             SELECT t FROM TaskJpaEntity t
@@ -156,10 +195,13 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
                                              @Param("now") OffsetDateTime now,
                                              Pageable pageable);
 
+    // Тот же изъян, что и у findAllWithFilter (JOIN FETCH коллекции ломает
+    // постраничное LIMIT в SQL) — здесь запрос капается сверху (SEARCH_LIMIT
+    // в TaskServiceImpl), но при широком LIKE-запросе у пользователя с
+    // большим числом задач Hibernate так же вытянул бы в память всё
+    // совпавшее по LIKE, прежде чем обрезать до capped в Java.
     @Query("""
-            SELECT t FROM TaskJpaEntity t
-            LEFT JOIN FETCH t.group
-            LEFT JOIN FETCH t.tags
+            SELECT t.id FROM TaskJpaEntity t
             WHERE t.userId = :userId
               AND t.isDeleted = false
               AND (:includeCompleted = true OR t.status NOT IN (ru.taskflow.task.api.TaskStatus.DONE, ru.taskflow.task.api.TaskStatus.CANCELLED))
@@ -167,12 +209,22 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
                    OR LOWER(t.description) LIKE LOWER(CONCAT('%', :query, '%')))
             ORDER BY t.updatedAt DESC
             """)
-    List<TaskJpaEntity> search(
+    List<UUID> searchIds(
             @Param("userId") UUID userId,
             @Param("query") String query,
             @Param("includeCompleted") boolean includeCompleted,
             Pageable pageable
     );
+
+    default List<TaskJpaEntity> search(UUID userId, String query, boolean includeCompleted, Pageable pageable) {
+        List<UUID> ids = searchIds(userId, query, includeCompleted, pageable);
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, TaskJpaEntity> byId = new LinkedHashMap<>();
+        findAllByIdInWithCollections(ids).forEach(t -> byId.put(t.getId(), t));
+        return ids.stream().map(byId::get).toList();
+    }
 
     @Modifying
     @Query(value = """

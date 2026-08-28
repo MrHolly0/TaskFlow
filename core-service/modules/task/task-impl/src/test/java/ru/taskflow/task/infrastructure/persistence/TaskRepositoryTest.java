@@ -1,6 +1,12 @@
 package ru.taskflow.task.infrastructure.persistence;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
@@ -8,6 +14,7 @@ import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -16,9 +23,11 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import ru.taskflow.task.api.RecurrenceType;
+import ru.taskflow.task.api.TaskPriority;
 import ru.taskflow.task.api.TaskStatus;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -55,6 +64,32 @@ class TaskRepositoryTest {
 
     @Autowired
     private TestEntityManager entityManager;
+
+    // Ловим предупреждение Hibernate прямо в тесте, а не полагаемся на
+    // осмотр логов вручную — HHH90003004 значит, что запрос со страничной
+    // разбивкой и JOIN FETCH коллекции резался в памяти, а не в SQL (блок Б).
+    private ListAppender<ILoggingEvent> hibernateLog;
+
+    @BeforeEach
+    void attachHibernateLogCapture() {
+        hibernateLog = new ListAppender<>();
+        hibernateLog.start();
+        ((ch.qos.logback.classic.Logger) LoggerFactory.getLogger("org.hibernate")).addAppender(hibernateLog);
+    }
+
+    @AfterEach
+    void detachHibernateLogCapture() {
+        ((ch.qos.logback.classic.Logger) LoggerFactory.getLogger("org.hibernate")).detachAppender(hibernateLog);
+    }
+
+    private void assertNoInMemoryPaginationWarning() {
+        boolean warned = hibernateLog.list.stream()
+                .filter(e -> e.getLevel().isGreaterOrEqual(Level.WARN))
+                .anyMatch(e -> e.getFormattedMessage().contains("HHH90003004"));
+        assertThat(warned)
+                .overridingErrorMessage("Hibernate резал страницу в памяти (HHH90003004) вместо SQL LIMIT/OFFSET")
+                .isFalse();
+    }
 
     @Test
     void search_findsMatchInDescription() {
@@ -152,5 +187,149 @@ class TaskRepositoryTest {
         task.setTitle(title);
         task.setDescription(description);
         return task;
+    }
+
+    // --- Блок Б: постраничная выборка с JOIN FETCH коллекции ---
+
+    private TaskJpaEntity taskWithTag(UUID userId, String title, String tagName) {
+        var task = newTask(userId, title, null);
+        var tag = new TagJpaEntity();
+        tag.setUserId(userId);
+        tag.setName(tagName);
+        task.getTags().add(tag);
+        return task;
+    }
+
+    @Test
+    void findAllWithFilter_returnsPageOfRequestedSize_withMoreTasksThanPageSize() {
+        var userId = UUID.randomUUID();
+        for (int i = 0; i < 5; i++) {
+            repository.saveAndFlush(taskWithTag(userId, "задача " + i, "срочное"));
+        }
+        entityManager.clear();
+
+        var page = repository.findAllWithFilter(userId, null, null, null, null, PageRequest.of(0, 2));
+
+        assertThat(page.getContent()).hasSize(2);
+        assertThat(page.getTotalElements()).isEqualTo(5);
+        assertThat(page.getTotalPages()).isEqualTo(3);
+        assertNoInMemoryPaginationWarning();
+    }
+
+    @Test
+    void findAllWithFilter_preservesSortOrder() {
+        var userId = UUID.randomUUID();
+        repository.saveAndFlush(taskWithTag(userId, "в", "метка"));
+        repository.saveAndFlush(taskWithTag(userId, "б", "метка"));
+        repository.saveAndFlush(taskWithTag(userId, "а", "метка"));
+        entityManager.clear();
+
+        var pageable = PageRequest.of(0, 10, org.springframework.data.domain.Sort.by("title").ascending());
+        var page = repository.findAllWithFilter(userId, null, null, null, null, pageable);
+
+        assertThat(page.getContent()).extracting(TaskJpaEntity::getTitle).containsExactly("а", "б", "в");
+    }
+
+    @Test
+    void findAllWithFilter_filtersByGroup() {
+        var userId = UUID.randomUUID();
+        var group = new GroupJpaEntity();
+        group.setUserId(userId);
+        group.setName("работа");
+        entityManager.persistAndFlush(group);
+
+        var inGroup = taskWithTag(userId, "в группе", "метка");
+        inGroup.setGroup(group);
+        repository.saveAndFlush(inGroup);
+        repository.saveAndFlush(taskWithTag(userId, "без группы", "метка"));
+        entityManager.clear();
+
+        var page = repository.findAllWithFilter(userId, group.getId(), null, null, null, PageRequest.of(0, 10));
+
+        assertThat(page.getContent()).extracting(TaskJpaEntity::getTitle).containsExactly("в группе");
+    }
+
+    @Test
+    void findAllWithFilter_filtersByStatus() {
+        var userId = UUID.randomUUID();
+        var done = taskWithTag(userId, "выполнена", "метка");
+        done.setStatus(TaskStatus.DONE);
+        repository.saveAndFlush(done);
+        repository.saveAndFlush(taskWithTag(userId, "в работе", "метка"));
+        entityManager.clear();
+
+        var page = repository.findAllWithFilter(userId, null, TaskStatus.DONE, null, null, PageRequest.of(0, 10));
+
+        assertThat(page.getContent()).extracting(TaskJpaEntity::getTitle).containsExactly("выполнена");
+    }
+
+    @Test
+    void findAllWithFilter_filtersByPriority() {
+        var userId = UUID.randomUUID();
+        var urgent = taskWithTag(userId, "срочная", "метка");
+        urgent.setPriority(TaskPriority.URGENT);
+        repository.saveAndFlush(urgent);
+        repository.saveAndFlush(taskWithTag(userId, "обычная", "метка"));
+        entityManager.clear();
+
+        var page = repository.findAllWithFilter(userId, null, null, TaskPriority.URGENT, null, PageRequest.of(0, 10));
+
+        assertThat(page.getContent()).extracting(TaskJpaEntity::getTitle).containsExactly("срочная");
+    }
+
+    @Test
+    void findAllWithFilter_filtersByTag() {
+        var userId = UUID.randomUUID();
+        repository.saveAndFlush(taskWithTag(userId, "с меткой", "важное"));
+        repository.saveAndFlush(taskWithTag(userId, "с другой меткой", "неважное"));
+        entityManager.clear();
+
+        var page = repository.findAllWithFilter(userId, null, null, null, "важное", PageRequest.of(0, 10));
+
+        assertThat(page.getContent()).extracting(TaskJpaEntity::getTitle).containsExactly("с меткой");
+    }
+
+    @Test
+    void findAllWithFilter_returnsGroupAndTagsOnEachTask() {
+        var userId = UUID.randomUUID();
+        var group = new GroupJpaEntity();
+        group.setUserId(userId);
+        group.setName("дом");
+        entityManager.persistAndFlush(group);
+
+        var task = taskWithTag(userId, "полить цветы", "быт");
+        task.setGroup(group);
+        repository.saveAndFlush(task);
+        entityManager.clear();
+
+        var page = repository.findAllWithFilter(userId, null, null, null, null, PageRequest.of(0, 10));
+
+        var loaded = page.getContent().get(0);
+        assertThat(loaded.getGroup().getName()).isEqualTo("дом");
+        assertThat(loaded.getTags()).extracting(TagJpaEntity::getName).containsExactly("быт");
+    }
+
+    @Test
+    void findAllWithFilter_emptyPage_doesNotFailOnSecondQuery() {
+        var userId = UUID.randomUUID();
+
+        var page = repository.findAllWithFilter(userId, null, null, null, null, PageRequest.of(0, 10));
+
+        assertThat(page.getContent()).isEmpty();
+        assertThat(page.getTotalElements()).isZero();
+    }
+
+    @Test
+    void search_doesNotTriggerHibernateInMemoryPaginationWarning() {
+        var userId = UUID.randomUUID();
+        for (int i = 0; i < 5; i++) {
+            repository.saveAndFlush(taskWithTag(userId, "поручение " + i, "метка"));
+        }
+        entityManager.clear();
+
+        List<TaskJpaEntity> found = repository.search(userId, "поручение", false, PageRequest.of(0, 2));
+
+        assertThat(found).hasSize(2);
+        assertNoInMemoryPaginationWarning();
     }
 }
