@@ -1,8 +1,12 @@
-import { IconCheck, IconX, IconAlertTriangle } from '@tabler/icons-react';
-import { Proposal } from '@/lib/hooks/useAssistant';
+import { useState } from 'react';
+import { IconCheck, IconX, IconAlertTriangle, IconBell } from '@tabler/icons-react';
+import { Proposal, ProposedAction } from '@/lib/hooks/useAssistant';
+import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
+import { isoToZonedDate, isoToZonedTime, zonedInputToIso, isPastReminderTime } from '@/lib/reminderPresets';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
-import { cn } from '@/lib/utils';
+import { Input } from '@/app/components/ui/input';
+import { cn, formatReminderTime } from '@/lib/utils';
 
 // Спокойный тон намеренно: это не сбой, а объяснение, почему часть сказанного
 // не стала действием — без единого слова причины было бы хуже, чем сейчас.
@@ -22,10 +26,94 @@ function RejectionsNote({ rejections }: { rejections: string[] }) {
   );
 }
 
+// Г2: время напоминания у create показывается своей строкой прямо в
+// карточке подтверждения и правится тут же — без отдельного захода в
+// карточку задачи. reminderAt=null у onChange снимает напоминание.
+function ReminderLine({
+  action,
+  onChange,
+  disabled,
+}: {
+  action: ProposedAction;
+  onChange: (reminderAt: string | null) => void;
+  disabled?: boolean;
+}) {
+  const { timezone } = useUserTimezone();
+  const [editing, setEditing] = useState(false);
+  const reminderAt = typeof action.payload.reminder_at === 'string' ? action.payload.reminder_at : undefined;
+  const [date, setDate] = useState(() => isoToZonedDate(reminderAt, timezone));
+  const [time, setTime] = useState(() => isoToZonedTime(reminderAt, timezone));
+  const [error, setError] = useState('');
+
+  const startEditing = () => {
+    setDate(isoToZonedDate(reminderAt, timezone));
+    setTime(isoToZonedTime(reminderAt, timezone));
+    setError('');
+    setEditing(true);
+  };
+
+  const save = () => {
+    if (!date || !time) return;
+    const iso = zonedInputToIso(date, time, timezone);
+    if (isPastReminderTime(new Date(iso))) {
+      setError('Это время уже прошло');
+      return;
+    }
+    onChange(iso);
+    setEditing(false);
+  };
+
+  const remove = () => {
+    onChange(null);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="ml-6 mt-1 space-y-1.5 rounded-lg border border-border/60 p-2" onClick={(e) => e.stopPropagation()}>
+        <div className="grid grid-cols-2 gap-1.5">
+          <Input type="date" value={date} onChange={(e) => { setDate(e.target.value); setError(''); }} className="h-8 text-xs" />
+          <Input type="time" value={time} onChange={(e) => { setTime(e.target.value); setError(''); }} className="h-8 text-xs" disabled={!date} />
+        </div>
+        {error && <p className="text-xs text-destructive">{error}</p>}
+        <div className="flex gap-1.5">
+          <Button type="button" size="sm" className="h-7 text-xs" disabled={!date || !time || disabled} onClick={save}>
+            Сохранить
+          </Button>
+          {reminderAt && (
+            <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" disabled={disabled} onClick={remove}>
+              Убрать
+            </Button>
+          )}
+          <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditing(false)}>
+            Отмена
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); startEditing(); }}
+      className="ml-6 mt-0.5 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+    >
+      <IconBell className="h-3 w-3 flex-shrink-0" />
+      {reminderAt ? (
+        <>напомнить {formatReminderTime(reminderAt, timezone)} · <span className="underline">изменить</span></>
+      ) : (
+        <span className="underline">добавить напоминание</span>
+      )}
+    </button>
+  );
+}
+
 export function ProposalCard({
   proposal,
   onToggle,
   onSelect,
+  onReminderChange,
   onApply,
   onReject,
   applying,
@@ -35,6 +123,7 @@ export function ProposalCard({
   proposal: Proposal;
   onToggle: (ordinal: number, accepted: boolean) => void;
   onSelect: (ordinal: number) => void;
+  onReminderChange: (ordinal: number, reminderAt: string | null) => void;
   onApply: () => void;
   onReject: () => void;
   applying: boolean;
@@ -116,20 +205,26 @@ export function ProposalCard({
       <p className="text-sm font-medium">Предлагаю:</p>
       <div className="space-y-1.5">
         {proposal.actions.map((action) => (
-          <label
-            key={action.ordinal}
-            className="flex items-start gap-2 text-sm cursor-pointer select-none"
-          >
-            <input
-              type="checkbox"
-              checked={action.accepted}
-              onChange={(e) => onToggle(action.ordinal, e.target.checked)}
-              className="mt-0.5 flex-shrink-0"
-            />
-            <span className={cn('min-w-0 break-words', !action.accepted && 'text-muted-foreground line-through')}>
-              {action.summary}
-            </span>
-          </label>
+          <div key={action.ordinal}>
+            <label className="flex items-start gap-2 text-sm cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={action.accepted}
+                onChange={(e) => onToggle(action.ordinal, e.target.checked)}
+                className="mt-0.5 flex-shrink-0"
+              />
+              <span className={cn('min-w-0 break-words', !action.accepted && 'text-muted-foreground line-through')}>
+                {action.summary}
+              </span>
+            </label>
+            {action.type === 'CREATE' && action.accepted && (
+              <ReminderLine
+                action={action}
+                onChange={(reminderAt) => onReminderChange(action.ordinal, reminderAt)}
+                disabled={applying || rejecting}
+              />
+            )}
+          </div>
         ))}
       </div>
       <div className="flex gap-2 pt-1">

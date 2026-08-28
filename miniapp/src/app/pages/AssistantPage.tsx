@@ -5,6 +5,7 @@ import {
   useSendAssistantMessage,
   useSetActionAccepted,
   useSelectAlternative,
+  useUpdateActionReminder,
   useApplyProposal,
   useRejectProposal,
   Proposal,
@@ -52,6 +53,7 @@ export function AssistantPage() {
   const sendMessage = useSendAssistantMessage();
   const setActionAccepted = useSetActionAccepted();
   const selectAlternative = useSelectAlternative();
+  const updateActionReminder = useUpdateActionReminder();
   const applyProposal = useApplyProposal();
   const rejectProposal = useRejectProposal();
   const voiceMode = useEffectiveVoiceMode();
@@ -97,6 +99,16 @@ export function AssistantPage() {
     if (!proposal.id) return;
     selectAlternative.mutate(
       { proposalId: proposal.id, ordinal },
+      {
+        onSuccess: (updated) => replaceEntry(localId, { kind: 'proposal', proposal: updated, localId }),
+      }
+    );
+  };
+
+  const changeReminder = (proposal: Proposal, localId: string, ordinal: number, reminderAt: string | null) => {
+    if (!proposal.id) return;
+    updateActionReminder.mutate(
+      { proposalId: proposal.id, ordinal, reminderAt },
       {
         onSuccess: (updated) => replaceEntry(localId, { kind: 'proposal', proposal: updated, localId }),
       }
@@ -173,6 +185,7 @@ export function AssistantPage() {
                   proposal={entry.proposal}
                   onToggle={(ordinal, accepted) => toggleAction(entry.proposal, entry.localId, ordinal, accepted)}
                   onSelect={(ordinal) => selectAction(entry.proposal, entry.localId, ordinal)}
+                  onReminderChange={(ordinal, reminderAt) => changeReminder(entry.proposal, entry.localId, ordinal, reminderAt)}
                   onApply={() => apply(entry.proposal, entry.localId)}
                   onReject={() => reject(entry.proposal, entry.localId)}
                   applying={applyProposal.isPending}

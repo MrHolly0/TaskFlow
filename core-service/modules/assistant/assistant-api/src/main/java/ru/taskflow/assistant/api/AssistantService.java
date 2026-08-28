@@ -3,6 +3,7 @@ package ru.taskflow.assistant.api;
 import ru.taskflow.assistant.api.dto.ApplyResult;
 import ru.taskflow.assistant.api.dto.Proposal;
 
+import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -34,6 +35,15 @@ public interface AssistantService {
     Optional<Proposal> findLatestPending(UUID userId);
 
     Proposal setActionAccepted(UUID userId, UUID proposalId, int ordinal, boolean accepted);
+
+    /**
+     * Правка времени напоминания у отдельного действия предложения (Г2) — не
+     * требует захода в карточку задачи: reminderAt=null снимает напоминание
+     * (равносильно осознанному отказу от него), непрошедшее время заменяет
+     * прежнее. Применимо только к create и remind — у остальных типов
+     * действий напоминание не имеет смысла.
+     */
+    Proposal updateActionReminder(UUID userId, UUID proposalId, int ordinal, OffsetDateTime reminderAt);
 
     /**
      * Выбор одного варианта среди взаимоисключающих альтернатив: принимает

@@ -1,10 +1,13 @@
 package ru.taskflow.assistant.application;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.taskflow.assistant.api.AssistantActionType;
 import ru.taskflow.assistant.api.AssistantChannel;
 import ru.taskflow.assistant.api.AssistantEntryPoint;
 import ru.taskflow.assistant.api.AssistantService;
@@ -21,6 +24,7 @@ import ru.taskflow.assistant.infrastructure.persistence.ProposalRepository;
 import ru.taskflow.audit.api.AuditEventType;
 import ru.taskflow.audit.api.AuditService;
 import ru.taskflow.nlp.api.NlpGatewayService;
+import ru.taskflow.shared.exception.ValidationException;
 import ru.taskflow.task.api.TaskService;
 import ru.taskflow.task.api.TaskSource;
 import ru.taskflow.task.api.dto.CreateTaskRequest;
@@ -30,6 +34,7 @@ import ru.taskflow.user.api.UserService;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -70,6 +75,7 @@ public class AssistantServiceImpl implements AssistantService {
     private final TaskService taskService;
     private final AuditService auditService;
     private final Clock clock;
+    private final ObjectMapper objectMapper;
 
     @Override
     public Proposal handleText(UUID userId, String text, AssistantChannel channel, AssistantEntryPoint entryPoint) {
@@ -165,6 +171,68 @@ public class AssistantServiceImpl implements AssistantService {
 
         ProposalJpaEntity saved = proposalRepository.save(entity);
         return proposalMapper.toDto(saved);
+    }
+
+    @Override
+    @Transactional
+    public Proposal updateActionReminder(UUID userId, UUID proposalId, int ordinal, OffsetDateTime reminderAt) {
+        ProposalJpaEntity entity = proposalRepository.findWithActions(proposalId, userId)
+                .orElseThrow(() -> new ProposalNotFoundException(proposalId));
+
+        requirePending(entity, proposalId);
+
+        ProposalActionJpaEntity action = entity.getActions().stream()
+                .filter(a -> a.getOrdinal() == ordinal)
+                .findFirst()
+                .orElseThrow(() -> new ValidationException("действие с ordinal=" + ordinal + " не найдено"));
+
+        AssistantActionType type = AssistantActionType.valueOf(action.getType());
+        if (type != AssistantActionType.CREATE && type != AssistantActionType.REMIND) {
+            throw new ValidationException("напоминание неприменимо к действию типа " + type);
+        }
+        if (type == AssistantActionType.REMIND && reminderAt == null) {
+            throw new ValidationException("у remind напоминание обязательно");
+        }
+        if (reminderAt != null && reminderAt.isBefore(OffsetDateTime.now(clock))) {
+            throw new ValidationException("время напоминания уже прошло");
+        }
+
+        action.setPayload(withReminderAt(action.getPayload(), reminderAt));
+
+        ProposalJpaEntity saved = proposalRepository.save(entity);
+        return proposalMapper.toDto(saved);
+    }
+
+    /**
+     * no_reminder_needed здесь — тот же явный сигнал «решил, что не нужно»,
+     * что и у модели (Г1): снятие напоминания в карточке подтверждения —
+     * тоже осознанный выбор, не молчание.
+     */
+    private String withReminderAt(String payloadJson, OffsetDateTime reminderAt) {
+        Map<String, Object> payload = new LinkedHashMap<>(readPayload(payloadJson));
+        if (reminderAt == null) {
+            payload.remove("reminder_at");
+            payload.put("no_reminder_needed", true);
+        } else {
+            payload.put("reminder_at", reminderAt.toString());
+            payload.remove("no_reminder_needed");
+        }
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (Exception e) {
+            throw new ValidationException("не удалось изменить напоминание");
+        }
+    }
+
+    private Map<String, Object> readPayload(String json) {
+        if (json == null || json.isBlank()) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
+        } catch (Exception e) {
+            throw new ValidationException("не удалось прочитать действие предложения");
+        }
     }
 
     @Override

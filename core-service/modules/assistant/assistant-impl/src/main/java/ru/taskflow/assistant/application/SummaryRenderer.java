@@ -19,8 +19,10 @@ public class SummaryRenderer {
 
     public String render(AssistantActionType type, String taskTitle, Map<String, Object> payload) {
         String body = switch (type) {
+            // Блок Г2: время напоминания у create показывается своей строкой в
+            // карточке подтверждения (ProposalCard), не частью текста сводки.
             case CREATE -> "Создать — " + stringOrDefault(payload.get("title"), "без названия")
-                    + createDeadlineSuffix(payload.get("deadline")) + createReminderSuffix(payload.get("reminder_at"));
+                    + createDeadlineSuffix(payload.get("deadline"));
             case COMPLETE -> "Закрыть — " + stringOrDefault(taskTitle, "задача");
             case CANCEL -> "Отменить — " + stringOrDefault(taskTitle, "задача");
             case RESCHEDULE -> "Перенести — " + stringOrDefault(taskTitle, "задача")
@@ -52,13 +54,6 @@ public class SummaryRenderer {
             return "";
         }
         return " · до " + formatDeadline(deadline);
-    }
-
-    private String createReminderSuffix(Object reminderAt) {
-        if (reminderAt == null) {
-            return "";
-        }
-        return " · напомнить " + formatDeadline(reminderAt);
     }
 
     private String formatDeadline(Object raw) {

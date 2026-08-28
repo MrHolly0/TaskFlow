@@ -114,12 +114,14 @@ class SummaryRendererTest {
         assertThat(result).isEqualTo("Напомнить — позвонить маме → 13.08 09:00");
     }
 
+    // Блок Г2: напоминание у create ушло из текста сводки в отдельную строку
+    // карточки подтверждения — сводка его больше не упоминает.
     @Test
-    void render_createIncludesReminderWhenPresent() {
+    void render_createDoesNotIncludeReminderInSummaryText() {
         var result = renderer.render(AssistantActionType.CREATE, null,
                 Map.of("title", "позвонить маме", "reminder_at", "2026-08-13T09:00:00+03:00"));
 
-        assertThat(result).isEqualTo("Создать — позвонить маме · напомнить 13.08 09:00");
+        assertThat(result).isEqualTo("Создать — позвонить маме");
     }
 
     @Test

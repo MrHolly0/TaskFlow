@@ -114,6 +114,18 @@ export const useSetActionAccepted = () => {
   });
 };
 
+export const useUpdateActionReminder = () => {
+  return useMutation({
+    mutationFn: async ({ proposalId, ordinal, reminderAt }: { proposalId: string; ordinal: number; reminderAt: string | null }) => {
+      const response = await getClient().patch<Proposal>(
+        `/assistant/proposals/${proposalId}/actions/${ordinal}/reminder`,
+        { reminderAt }
+      );
+      return response.data;
+    },
+  });
+};
+
 export const useSelectAlternative = () => {
   return useMutation({
     mutationFn: async ({ proposalId, ordinal }: { proposalId: string; ordinal: number }) => {

@@ -29,6 +29,7 @@ import ru.taskflow.assistant.application.AssistantRateLimiter;
 import ru.taskflow.assistant.application.QuickAddPolicy;
 import ru.taskflow.assistant.infrastructure.web.dto.QuickResult;
 import ru.taskflow.assistant.infrastructure.web.dto.SetActionAcceptedRequest;
+import ru.taskflow.assistant.infrastructure.web.dto.UpdateActionReminderRequest;
 import ru.taskflow.shared.exception.NotFoundException;
 import ru.taskflow.shared.security.AuthenticatedUser;
 
@@ -117,6 +118,19 @@ public class AssistantController {
             @AuthenticationPrincipal AuthenticatedUser user
     ) {
         return assistantService.setActionAccepted(user.userId(), id, ordinal, request.accepted());
+    }
+
+    @PatchMapping("/proposals/{id}/actions/{ordinal}/reminder")
+    @Operation(summary = "Изменить или снять напоминание у отдельного действия предложения",
+            description = "reminderAt=null снимает напоминание — правка прямо в карточке подтверждения, " +
+                    "без отдельного захода в карточку задачи")
+    public Proposal updateActionReminder(
+            @PathVariable UUID id,
+            @PathVariable int ordinal,
+            @RequestBody UpdateActionReminderRequest request,
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) {
+        return assistantService.updateActionReminder(user.userId(), id, ordinal, request.reminderAt());
     }
 
     @PostMapping("/proposals/{id}/actions/{ordinal}/select")

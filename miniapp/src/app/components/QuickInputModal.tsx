@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { IconSend, IconSparkles, IconArrowLeft, IconPaperclip, IconAlertTriangle, IconMicrophone } from '@tabler/icons-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useQuickAdd, useSetActionAccepted, useSelectAlternative, useApplyProposal, useRejectProposal, Proposal } from '@/lib/hooks/useAssistant';
+import { useQuickAdd, useSetActionAccepted, useSelectAlternative, useUpdateActionReminder, useApplyProposal, useRejectProposal, Proposal } from '@/lib/hooks/useAssistant';
 import { useEffectiveVoiceMode } from '@/lib/hooks/useVoiceMode';
 import { useVoiceRecording } from '@/lib/hooks/useVoiceRecording';
 import { ProposalCard } from '@/app/components/ProposalCard';
@@ -41,6 +41,7 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
   const quickAdd = useQuickAdd();
   const setActionAccepted = useSetActionAccepted();
   const selectAlternative = useSelectAlternative();
+  const updateActionReminder = useUpdateActionReminder();
   const applyProposal = useApplyProposal();
   const rejectProposal = useRejectProposal();
 
@@ -113,6 +114,14 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
     if (!proposal?.id) return;
     selectAlternative.mutate(
       { proposalId: proposal.id, ordinal },
+      { onSuccess: (updated) => setProposal(updated) }
+    );
+  };
+
+  const changeReminder = (ordinal: number, reminderAt: string | null) => {
+    if (!proposal?.id) return;
+    updateActionReminder.mutate(
+      { proposalId: proposal.id, ordinal, reminderAt },
       { onSuccess: (updated) => setProposal(updated) }
     );
   };
@@ -277,6 +286,7 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
                   proposal={proposal}
                   onToggle={toggleAction}
                   onSelect={selectAction}
+                  onReminderChange={changeReminder}
                   onApply={applyCurrent}
                   onReject={rejectCurrent}
                   applying={applyProposal.isPending}

@@ -1,5 +1,6 @@
 package ru.taskflow.assistant.application;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -14,6 +15,7 @@ import ru.taskflow.assistant.api.dto.ApplyResult;
 import ru.taskflow.assistant.api.dto.Proposal;
 import ru.taskflow.assistant.api.exception.ProposalNotFoundException;
 import ru.taskflow.assistant.api.exception.ProposalNotPendingException;
+import ru.taskflow.shared.exception.ValidationException;
 import ru.taskflow.assistant.infrastructure.persistence.ProposalActionJpaEntity;
 import ru.taskflow.assistant.infrastructure.persistence.ProposalFactory;
 import ru.taskflow.assistant.infrastructure.persistence.ProposalJpaEntity;
@@ -69,13 +71,14 @@ class AssistantServiceImplTest {
     private final OffsetDateTime now = OffsetDateTime.parse("2026-08-12T10:00:00+03:00");
     private final Clock clock = Clock.fixed(now.toInstant(), ZoneOffset.ofHours(3));
     private final ZoneId zone = ZoneId.of("Europe/Moscow");
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     private AssistantServiceImpl service;
 
     @BeforeEach
     void setUp() {
         service = new AssistantServiceImpl(agentLoop, nlpGatewayService, proposalFactory, proposalMapper,
-                proposalRepository, proposalApplier, userService, taskService, auditService, clock);
+                proposalRepository, proposalApplier, userService, taskService, auditService, clock, objectMapper);
     }
 
     private AgentOutcome emptyWindowOutcome(List<ru.taskflow.assistant.api.dto.ProposedAction> actions,
@@ -378,6 +381,87 @@ class AssistantServiceImplTest {
         when(proposalRepository.findWithActions(proposalId, userId)).thenReturn(Optional.of(entity));
 
         assertThatThrownBy(() -> service.setActionAccepted(userId, proposalId, 1, false))
+                .isInstanceOf(ProposalNotPendingException.class);
+    }
+
+    // --- Блок Г2: правка напоминания у отдельного действия предложения ---
+
+    @Test
+    void updateActionReminder_setsReminderOnCreateAction() {
+        UUID proposalId = UUID.randomUUID();
+        ProposalActionJpaEntity createAction = action(1, true);
+        createAction.setType("CREATE");
+        createAction.setPayload("{\"title\":\"позвонить маме\"}");
+        ProposalJpaEntity entity = proposal(ProposalStatus.PENDING, now.plusHours(24), createAction);
+        when(proposalRepository.findWithActions(proposalId, userId)).thenReturn(Optional.of(entity));
+        when(proposalRepository.save(entity)).thenReturn(entity);
+        Proposal expectedDto = new Proposal(UUID.randomUUID(), "CODE1234", userId, ProposalStatus.PENDING,
+                "текст", null, List.of(), now, now.plusHours(24));
+        when(proposalMapper.toDto(entity)).thenReturn(expectedDto);
+
+        OffsetDateTime reminderAt = now.plusHours(2);
+        Proposal result = service.updateActionReminder(userId, proposalId, 1, reminderAt);
+
+        assertThat(result).isEqualTo(expectedDto);
+        assertThat(createAction.getPayload()).contains("\"reminder_at\":\"" + reminderAt + "\"");
+        assertThat(createAction.getPayload()).doesNotContain("no_reminder_needed");
+    }
+
+    @Test
+    void updateActionReminder_nullClearsReminderAndMarksItAsDecidedNotForgotten() {
+        UUID proposalId = UUID.randomUUID();
+        ProposalActionJpaEntity createAction = action(1, true);
+        createAction.setType("CREATE");
+        createAction.setPayload("{\"title\":\"позвонить маме\",\"reminder_at\":\"2026-08-12T12:00:00+03:00\"}");
+        ProposalJpaEntity entity = proposal(ProposalStatus.PENDING, now.plusHours(24), createAction);
+        when(proposalRepository.findWithActions(proposalId, userId)).thenReturn(Optional.of(entity));
+        when(proposalRepository.save(entity)).thenReturn(entity);
+        when(proposalMapper.toDto(entity)).thenReturn(
+                new Proposal(UUID.randomUUID(), "CODE1234", userId, ProposalStatus.PENDING,
+                        "текст", null, List.of(), now, now.plusHours(24)));
+
+        service.updateActionReminder(userId, proposalId, 1, null);
+
+        assertThat(createAction.getPayload()).doesNotContain("reminder_at");
+        assertThat(createAction.getPayload()).contains("\"no_reminder_needed\":true");
+    }
+
+    @Test
+    void updateActionReminder_rejectsPastTime() {
+        UUID proposalId = UUID.randomUUID();
+        ProposalActionJpaEntity createAction = action(1, true);
+        createAction.setType("CREATE");
+        createAction.setPayload("{\"title\":\"позвонить маме\"}");
+        ProposalJpaEntity entity = proposal(ProposalStatus.PENDING, now.plusHours(24), createAction);
+        when(proposalRepository.findWithActions(proposalId, userId)).thenReturn(Optional.of(entity));
+
+        assertThatThrownBy(() -> service.updateActionReminder(userId, proposalId, 1, now.minusMinutes(1)))
+                .isInstanceOf(ValidationException.class);
+        verify(proposalRepository, never()).save(any());
+    }
+
+    @Test
+    void updateActionReminder_rejectsActionTypeWithoutReminderMeaning() {
+        UUID proposalId = UUID.randomUUID();
+        ProposalActionJpaEntity completeAction = action(1, true);
+        ProposalJpaEntity entity = proposal(ProposalStatus.PENDING, now.plusHours(24), completeAction);
+        when(proposalRepository.findWithActions(proposalId, userId)).thenReturn(Optional.of(entity));
+
+        assertThatThrownBy(() -> service.updateActionReminder(userId, proposalId, 1, now.plusHours(2)))
+                .isInstanceOf(ValidationException.class);
+        verify(proposalRepository, never()).save(any());
+    }
+
+    @Test
+    void updateActionReminder_rejectsNonPending() {
+        UUID proposalId = UUID.randomUUID();
+        ProposalActionJpaEntity createAction = action(1, true);
+        createAction.setType("CREATE");
+        createAction.setPayload("{\"title\":\"позвонить маме\"}");
+        ProposalJpaEntity entity = proposal(ProposalStatus.APPLIED, now.plusHours(24), createAction);
+        when(proposalRepository.findWithActions(proposalId, userId)).thenReturn(Optional.of(entity));
+
+        assertThatThrownBy(() -> service.updateActionReminder(userId, proposalId, 1, now.plusHours(2)))
                 .isInstanceOf(ProposalNotPendingException.class);
     }
 
