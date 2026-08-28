@@ -26,7 +26,8 @@ import java.util.UUID;
  * Сервис управления напоминаниями и уведомлениями.
  *
  * Планирует отправку напоминаний о задачах, управляет расписанием уведомлений,
- * отправляемых notification-worker через Quartz.
+ * отправляемых notification-worker: очередь в scheduled_notifications и
+ * периодический опрос по времени срабатывания, без внешнего планировщика.
  */
 @Service
 @RequiredArgsConstructor
