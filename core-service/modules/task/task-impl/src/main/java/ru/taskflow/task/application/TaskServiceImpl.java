@@ -542,13 +542,12 @@ public class TaskServiceImpl implements TaskService {
     @Override
     public FocusResponse getFocusTasks(UUID userId, Integer availableMinutes) {
         var endOfToday = endOfToday();
-        var tasks = taskRepository.findFocusTasks(userId, TaskStatus.DONE, endOfToday)
+        var entities = taskRepository.findFocusTasks(userId, TaskStatus.DONE, endOfToday)
                 .stream()
                 .filter(t -> fitsAvailableTime(t, availableMinutes))
                 .limit(3)
-                .map(taskMapper::toResponse)
                 .toList();
-        return new FocusResponse(tasks);
+        return new FocusResponse(withRemindersBatch(entities));
     }
 
     /**
@@ -559,13 +558,29 @@ public class TaskServiceImpl implements TaskService {
     @Override
     public FocusResponse getUpcomingFocusTasks(UUID userId, Integer availableMinutes) {
         var endOfToday = endOfToday();
-        var tasks = taskRepository.findUpcomingFocusTasks(userId, TaskStatus.DONE, endOfToday)
+        var entities = taskRepository.findUpcomingFocusTasks(userId, TaskStatus.DONE, endOfToday)
                 .stream()
                 .filter(t -> fitsAvailableTime(t, availableMinutes))
                 .limit(3)
-                .map(taskMapper::toResponse)
                 .toList();
-        return new FocusResponse(tasks);
+        return new FocusResponse(withRemindersBatch(entities));
+    }
+
+    // Тот же приём batch-подгрузки, что и в findAll — одна выборка на набор
+    // задач, а не запрос на каждую карточку. Режим фокуса сам ограничивает
+    // список до 3 задач до вызова, поэтому применяется уже после limit(3).
+    private List<TaskResponse> withRemindersBatch(List<TaskJpaEntity> entities) {
+        List<UUID> taskIds = entities.stream().map(TaskJpaEntity::getId).toList();
+        Map<UUID, List<ReminderResponse>> remindersByTaskId = taskIds.isEmpty()
+                ? Map.of()
+                : reminderRepository.findByTaskIdInAndStatusOrderByFireAtAsc(taskIds, ReminderStatus.PENDING).stream()
+                        .collect(Collectors.groupingBy(
+                                r -> r.getTask().getId(),
+                                Collectors.mapping(taskMapper::toReminderResponse, Collectors.toList())));
+        return entities.stream()
+                .map(entity -> withReminders(taskMapper.toResponse(entity),
+                        remindersByTaskId.getOrDefault(entity.getId(), List.of())))
+                .toList();
     }
 
     // Отбор до limit(3), не после: иначе время могло бы отфильтровать

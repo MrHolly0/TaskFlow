@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { IconFlame, IconBolt, IconSquare, IconClock, IconArrowRight, IconPencil } from '@tabler/icons-react';
+import { IconFlame, IconBolt, IconSquare, IconClock, IconBell, IconArrowRight, IconPencil } from '@tabler/icons-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { addDays } from 'date-fns';
 import { Priority } from '@/lib/store';
-import { formatDeadline, getPriorityBgColor, cn } from '@/lib/utils';
+import { formatDeadline, formatReminderTime, getPriorityBgColor, cn } from '@/lib/utils';
 import { useFocusTasks, useUpcomingFocusTasks, useCompleteTask, useUpdateTask, useTasksList } from '@/lib/hooks/useTasks';
 import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
 import { useDisplayName } from '@/lib/hooks/useSettings';
@@ -25,6 +25,7 @@ interface Task {
   plannedDate?: string;
   estimateMinutes?: number;
   groupName?: string;
+  reminders?: { id: string; fireAt: string; status: string }[];
 }
 
 function getPriorityIcon(priority: Priority) {
@@ -114,7 +115,7 @@ function FocusTaskCard({ task, index, timezone, onComplete, onSnooze, onStart, o
         </div>
 
         {/* Meta info */}
-        {(task.deadline || task.groupName || task.estimateMinutes) && (
+        {(task.deadline || task.groupName || task.estimateMinutes || task.reminders?.length) && (
           <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-muted-foreground">
             {task.deadline && (
               <div className="flex items-center gap-1.5">
@@ -130,6 +131,13 @@ function FocusTaskCard({ task, index, timezone, onComplete, onSnooze, onStart, o
             {task.estimateMinutes && (
               <div className="flex items-center gap-1">
                 <span>~{task.estimateMinutes} мин</span>
+              </div>
+            )}
+            {/* Только ближайшее напоминание, без счётчиков и без красного (Б3) */}
+            {task.reminders && task.reminders.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <IconBell className="h-3.5 w-3.5" />
+                <span>{formatReminderTime(task.reminders[0].fireAt, timezone)}</span>
               </div>
             )}
           </div>

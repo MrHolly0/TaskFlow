@@ -750,6 +750,25 @@ class TaskServiceTest {
         assertThat(result.tasks()).hasSize(1);
     }
 
+    @Test
+    void getFocusTasks_embedsReminders_notJustEmptyList() {
+        var entity = taskEntity();
+        entity.setId(taskId);
+        when(taskRepository.findFocusTasks(eq(userId), eq(TaskStatus.DONE), any(OffsetDateTime.class)))
+                .thenReturn(List.of(entity));
+        when(taskMapper.toResponse(entity)).thenReturn(mockResponse(taskId, "задача"));
+        var reminderEntity = new ReminderJpaEntity();
+        reminderEntity.setTask(entity);
+        var reminderResponse = new ReminderResponse(UUID.randomUUID(), OffsetDateTime.now(), "PENDING");
+        when(reminderRepository.findByTaskIdInAndStatusOrderByFireAtAsc(any(), eq(ReminderStatus.PENDING)))
+                .thenReturn(List.of(reminderEntity));
+        when(taskMapper.toReminderResponse(reminderEntity)).thenReturn(reminderResponse);
+
+        var result = taskService.getFocusTasks(userId, null);
+
+        assertThat(result.tasks().getFirst().reminders()).containsExactly(reminderResponse);
+    }
+
     // --- Пункт А: день исполнения не участвует в просрочке ---
 
     @Test
