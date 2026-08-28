@@ -190,4 +190,23 @@
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
   }
+
+  /* Safari/WebKit (в т.ч. Telegram Mini App на iOS) не всегда наследует
+     цвет текста для заполненного значения date/time — рисует его системным
+     блёклым цветом, неотличимым от плейсхолдера (В4). Задаём явно. */
+  input[type='date']::-webkit-datetime-edit,
+  input[type='date']::-webkit-datetime-edit-fields-wrapper,
+  input[type='date']::-webkit-datetime-edit-text,
+  input[type='date']::-webkit-datetime-edit-day-field,
+  input[type='date']::-webkit-datetime-edit-month-field,
+  input[type='date']::-webkit-datetime-edit-year-field,
+  input[type='time']::-webkit-datetime-edit,
+  input[type='time']::-webkit-datetime-edit-fields-wrapper,
+  input[type='time']::-webkit-datetime-edit-text,
+  input[type='time']::-webkit-datetime-edit-hour-field,
+  input[type='time']::-webkit-datetime-edit-minute-field,
+  input[type='time']::-webkit-datetime-edit-ampm-field {
+    color: var(--foreground);
+    opacity: 1;
+  }
 }
