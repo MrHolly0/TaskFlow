@@ -126,6 +126,18 @@ export const useUpdateActionReminder = () => {
   });
 };
 
+export const useUpdateActionPlannedDate = () => {
+  return useMutation({
+    mutationFn: async ({ proposalId, ordinal, plannedDate }: { proposalId: string; ordinal: number; plannedDate: string | null }) => {
+      const response = await getClient().patch<Proposal>(
+        `/assistant/proposals/${proposalId}/actions/${ordinal}/planned-date`,
+        { plannedDate }
+      );
+      return response.data;
+    },
+  });
+};
+
 export const useSelectAlternative = () => {
   return useMutation({
     mutationFn: async ({ proposalId, ordinal }: { proposalId: string; ordinal: number }) => {

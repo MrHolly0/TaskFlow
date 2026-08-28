@@ -108,6 +108,17 @@ export function formatReminderTime(fireAt: string, timezone: string): string {
   return `${zoned.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}, ${time}`;
 }
 
+/** День исполнения — без времени, в отличие от formatReminderTime: время внутри дня здесь не имеет смысла для пользователя. */
+export function formatPlannedDate(plannedDate: string, timezone: string): string {
+  const zoned = toZonedTime(plannedDate, timezone);
+  const zonedNow = toZonedTime(new Date(), timezone);
+  const dayDiff = differenceInCalendarDays(zoned, zonedNow);
+
+  if (dayDiff === 0) return 'сегодня';
+  if (dayDiff === 1) return 'завтра';
+  return zoned.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+}
+
 export function getPriorityColor(priority: Priority): string {
   const colors = {
     LOW: 'text-muted-foreground',

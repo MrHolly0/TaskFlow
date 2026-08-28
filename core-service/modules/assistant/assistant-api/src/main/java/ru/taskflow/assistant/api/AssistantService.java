@@ -46,6 +46,14 @@ public interface AssistantService {
     Proposal updateActionReminder(UUID userId, UUID proposalId, int ordinal, OffsetDateTime reminderAt);
 
     /**
+     * Правка дня исполнения у отдельного create-действия предложения (В2) —
+     * та же прямая пара к updateActionReminder, что и planned_date к
+     * reminder_at в контракте: plannedDate=null снимает предложенный день
+     * (равносильно осознанному отказу от него).
+     */
+    Proposal updateActionPlannedDate(UUID userId, UUID proposalId, int ordinal, OffsetDateTime plannedDate);
+
+    /**
      * Выбор одного варианта среди взаимоисключающих альтернатив: принимает
      * указанный ordinal, отклоняет все остальные действия предложения одним
      * атомарным вызовом — без гонки между двумя последовательными PATCH.

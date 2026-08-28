@@ -1,12 +1,17 @@
 import { useState } from 'react';
-import { IconCheck, IconX, IconAlertTriangle, IconBell } from '@tabler/icons-react';
+import { IconCheck, IconX, IconAlertTriangle, IconBell, IconCalendar } from '@tabler/icons-react';
 import { Proposal, ProposedAction } from '@/lib/hooks/useAssistant';
 import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
 import { isoToZonedDate, isoToZonedTime, zonedInputToIso, isPastReminderTime } from '@/lib/reminderPresets';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
 import { Input } from '@/app/components/ui/input';
-import { cn, formatReminderTime } from '@/lib/utils';
+import { cn, formatReminderTime, formatPlannedDate } from '@/lib/utils';
+
+// Час по умолчанию для дня исполнения — пользователю незачем указывать
+// время, planned_date хранится моментом (OffsetDateTime) только потому,
+// что так устроена сущность задачи.
+const DEFAULT_PLANNED_TIME = '09:00';
 
 // Спокойный тон намеренно: это не сбой, а объяснение, почему часть сказанного
 // не стала действием — без единого слова причины было бы хуже, чем сейчас.
@@ -109,11 +114,83 @@ function ReminderLine({
   );
 }
 
+// В2: день исполнения — прямая пара к ReminderLine. planned_date хранит
+// момент, но пользователю нужен только день — время в редакторе не
+// показывается, при сохранении подставляется DEFAULT_PLANNED_TIME.
+function PlannedDateLine({
+  action,
+  onChange,
+  disabled,
+}: {
+  action: ProposedAction;
+  onChange: (plannedDate: string | null) => void;
+  disabled?: boolean;
+}) {
+  const { timezone } = useUserTimezone();
+  const [editing, setEditing] = useState(false);
+  const plannedDate = typeof action.payload.planned_date === 'string' ? action.payload.planned_date : undefined;
+  const [date, setDate] = useState(() => isoToZonedDate(plannedDate, timezone));
+
+  const startEditing = () => {
+    setDate(isoToZonedDate(plannedDate, timezone));
+    setEditing(true);
+  };
+
+  const save = () => {
+    if (!date) return;
+    const time = isoToZonedTime(plannedDate, timezone) || DEFAULT_PLANNED_TIME;
+    onChange(zonedInputToIso(date, time, timezone));
+    setEditing(false);
+  };
+
+  const remove = () => {
+    onChange(null);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="ml-6 mt-1 space-y-1.5 rounded-lg border border-border/60 p-2" onClick={(e) => e.stopPropagation()}>
+        <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-8 text-xs" />
+        <div className="flex gap-1.5">
+          <Button type="button" size="sm" className="h-7 text-xs" disabled={!date || disabled} onClick={save}>
+            Сохранить
+          </Button>
+          {plannedDate && (
+            <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" disabled={disabled} onClick={remove}>
+              Убрать
+            </Button>
+          )}
+          <Button type="button" variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditing(false)}>
+            Отмена
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); startEditing(); }}
+      className="ml-6 mt-0.5 flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+    >
+      <IconCalendar className="h-3 w-3 flex-shrink-0" />
+      {plannedDate ? (
+        <>заняться {formatPlannedDate(plannedDate, timezone)} · <span className="underline">изменить</span></>
+      ) : (
+        <span className="underline">предложить день</span>
+      )}
+    </button>
+  );
+}
+
 export function ProposalCard({
   proposal,
   onToggle,
   onSelect,
   onReminderChange,
+  onPlannedDateChange,
   onApply,
   onReject,
   applying,
@@ -124,6 +201,7 @@ export function ProposalCard({
   onToggle: (ordinal: number, accepted: boolean) => void;
   onSelect: (ordinal: number) => void;
   onReminderChange: (ordinal: number, reminderAt: string | null) => void;
+  onPlannedDateChange: (ordinal: number, plannedDate: string | null) => void;
   onApply: () => void;
   onReject: () => void;
   applying: boolean;
@@ -218,11 +296,18 @@ export function ProposalCard({
               </span>
             </label>
             {action.type === 'CREATE' && action.accepted && (
-              <ReminderLine
-                action={action}
-                onChange={(reminderAt) => onReminderChange(action.ordinal, reminderAt)}
-                disabled={applying || rejecting}
-              />
+              <>
+                <ReminderLine
+                  action={action}
+                  onChange={(reminderAt) => onReminderChange(action.ordinal, reminderAt)}
+                  disabled={applying || rejecting}
+                />
+                <PlannedDateLine
+                  action={action}
+                  onChange={(plannedDate) => onPlannedDateChange(action.ordinal, plannedDate)}
+                  disabled={applying || rejecting}
+                />
+              </>
             )}
           </div>
         ))}

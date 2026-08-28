@@ -237,6 +237,46 @@ public class AssistantServiceImpl implements AssistantService {
 
     @Override
     @Transactional
+    public Proposal updateActionPlannedDate(UUID userId, UUID proposalId, int ordinal, OffsetDateTime plannedDate) {
+        ProposalJpaEntity entity = proposalRepository.findWithActions(proposalId, userId)
+                .orElseThrow(() -> new ProposalNotFoundException(proposalId));
+
+        requirePending(entity, proposalId);
+
+        ProposalActionJpaEntity action = entity.getActions().stream()
+                .filter(a -> a.getOrdinal() == ordinal)
+                .findFirst()
+                .orElseThrow(() -> new ValidationException("действие с ordinal=" + ordinal + " не найдено"));
+
+        AssistantActionType type = AssistantActionType.valueOf(action.getType());
+        if (type != AssistantActionType.CREATE) {
+            throw new ValidationException("день исполнения неприменим к действию типа " + type);
+        }
+
+        action.setPayload(withPlannedDate(action.getPayload(), plannedDate));
+
+        ProposalJpaEntity saved = proposalRepository.save(entity);
+        return proposalMapper.toDto(saved);
+    }
+
+    private String withPlannedDate(String payloadJson, OffsetDateTime plannedDate) {
+        Map<String, Object> payload = new LinkedHashMap<>(readPayload(payloadJson));
+        if (plannedDate == null) {
+            payload.remove("planned_date");
+            payload.put("no_planned_date_needed", true);
+        } else {
+            payload.put("planned_date", plannedDate.toString());
+            payload.remove("no_planned_date_needed");
+        }
+        try {
+            return objectMapper.writeValueAsString(payload);
+        } catch (Exception e) {
+            throw new ValidationException("не удалось изменить день исполнения");
+        }
+    }
+
+    @Override
+    @Transactional
     public Proposal selectAlternative(UUID userId, UUID proposalId, int ordinal) {
         ProposalJpaEntity entity = proposalRepository.findWithActions(proposalId, userId)
                 .orElseThrow(() -> new ProposalNotFoundException(proposalId));

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { IconSend, IconSparkles, IconArrowLeft, IconPaperclip, IconAlertTriangle, IconMicrophone } from '@tabler/icons-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useQuickAdd, useSetActionAccepted, useSelectAlternative, useUpdateActionReminder, useApplyProposal, useRejectProposal, Proposal } from '@/lib/hooks/useAssistant';
+import { useQuickAdd, useSetActionAccepted, useSelectAlternative, useUpdateActionReminder, useUpdateActionPlannedDate, useApplyProposal, useRejectProposal, Proposal } from '@/lib/hooks/useAssistant';
 import { useEffectiveVoiceMode } from '@/lib/hooks/useVoiceMode';
 import { useVoiceRecording } from '@/lib/hooks/useVoiceRecording';
 import { ProposalCard } from '@/app/components/ProposalCard';
@@ -42,6 +42,7 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
   const setActionAccepted = useSetActionAccepted();
   const selectAlternative = useSelectAlternative();
   const updateActionReminder = useUpdateActionReminder();
+  const updateActionPlannedDate = useUpdateActionPlannedDate();
   const applyProposal = useApplyProposal();
   const rejectProposal = useRejectProposal();
 
@@ -122,6 +123,14 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
     if (!proposal?.id) return;
     updateActionReminder.mutate(
       { proposalId: proposal.id, ordinal, reminderAt },
+      { onSuccess: (updated) => setProposal(updated) }
+    );
+  };
+
+  const changePlannedDate = (ordinal: number, plannedDate: string | null) => {
+    if (!proposal?.id) return;
+    updateActionPlannedDate.mutate(
+      { proposalId: proposal.id, ordinal, plannedDate },
       { onSuccess: (updated) => setProposal(updated) }
     );
   };
@@ -287,6 +296,7 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
                   onToggle={toggleAction}
                   onSelect={selectAction}
                   onReminderChange={changeReminder}
+                  onPlannedDateChange={changePlannedDate}
                   onApply={applyCurrent}
                   onReject={rejectCurrent}
                   applying={applyProposal.isPending}

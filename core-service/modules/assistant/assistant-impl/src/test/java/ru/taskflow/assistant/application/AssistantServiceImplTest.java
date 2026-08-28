@@ -465,6 +465,73 @@ class AssistantServiceImplTest {
                 .isInstanceOf(ProposalNotPendingException.class);
     }
 
+    // --- Блок В2: правка дня исполнения у отдельного действия предложения ---
+
+    @Test
+    void updateActionPlannedDate_setsPlannedDateOnCreateAction() {
+        UUID proposalId = UUID.randomUUID();
+        ProposalActionJpaEntity createAction = action(1, true);
+        createAction.setType("CREATE");
+        createAction.setPayload("{\"title\":\"разобрать шкаф\"}");
+        ProposalJpaEntity entity = proposal(ProposalStatus.PENDING, now.plusHours(24), createAction);
+        when(proposalRepository.findWithActions(proposalId, userId)).thenReturn(Optional.of(entity));
+        when(proposalRepository.save(entity)).thenReturn(entity);
+        Proposal expectedDto = new Proposal(UUID.randomUUID(), "CODE1234", userId, ProposalStatus.PENDING,
+                "текст", null, List.of(), now, now.plusHours(24));
+        when(proposalMapper.toDto(entity)).thenReturn(expectedDto);
+
+        OffsetDateTime plannedDate = now.plusDays(2);
+        Proposal result = service.updateActionPlannedDate(userId, proposalId, 1, plannedDate);
+
+        assertThat(result).isEqualTo(expectedDto);
+        assertThat(createAction.getPayload()).contains("\"planned_date\":\"" + plannedDate + "\"");
+        assertThat(createAction.getPayload()).doesNotContain("no_planned_date_needed");
+    }
+
+    @Test
+    void updateActionPlannedDate_nullClearsPlannedDateAndMarksItAsDecidedNotForgotten() {
+        UUID proposalId = UUID.randomUUID();
+        ProposalActionJpaEntity createAction = action(1, true);
+        createAction.setType("CREATE");
+        createAction.setPayload("{\"title\":\"разобрать шкаф\",\"planned_date\":\"2026-08-15T00:00:00+03:00\"}");
+        ProposalJpaEntity entity = proposal(ProposalStatus.PENDING, now.plusHours(24), createAction);
+        when(proposalRepository.findWithActions(proposalId, userId)).thenReturn(Optional.of(entity));
+        when(proposalRepository.save(entity)).thenReturn(entity);
+        when(proposalMapper.toDto(entity)).thenReturn(
+                new Proposal(UUID.randomUUID(), "CODE1234", userId, ProposalStatus.PENDING,
+                        "текст", null, List.of(), now, now.plusHours(24)));
+
+        service.updateActionPlannedDate(userId, proposalId, 1, null);
+
+        assertThat(createAction.getPayload()).doesNotContain("\"planned_date\":");
+        assertThat(createAction.getPayload()).contains("\"no_planned_date_needed\":true");
+    }
+
+    @Test
+    void updateActionPlannedDate_rejectsActionTypeWithoutPlannedDateMeaning() {
+        UUID proposalId = UUID.randomUUID();
+        ProposalActionJpaEntity completeAction = action(1, true);
+        ProposalJpaEntity entity = proposal(ProposalStatus.PENDING, now.plusHours(24), completeAction);
+        when(proposalRepository.findWithActions(proposalId, userId)).thenReturn(Optional.of(entity));
+
+        assertThatThrownBy(() -> service.updateActionPlannedDate(userId, proposalId, 1, now.plusDays(1)))
+                .isInstanceOf(ValidationException.class);
+        verify(proposalRepository, never()).save(any());
+    }
+
+    @Test
+    void updateActionPlannedDate_rejectsNonPending() {
+        UUID proposalId = UUID.randomUUID();
+        ProposalActionJpaEntity createAction = action(1, true);
+        createAction.setType("CREATE");
+        createAction.setPayload("{\"title\":\"разобрать шкаф\"}");
+        ProposalJpaEntity entity = proposal(ProposalStatus.APPLIED, now.plusHours(24), createAction);
+        when(proposalRepository.findWithActions(proposalId, userId)).thenReturn(Optional.of(entity));
+
+        assertThatThrownBy(() -> service.updateActionPlannedDate(userId, proposalId, 1, now.plusDays(1)))
+                .isInstanceOf(ProposalNotPendingException.class);
+    }
+
     @Test
     void apply_rejectsExpiredProposal() {
         UUID proposalId = UUID.randomUUID();

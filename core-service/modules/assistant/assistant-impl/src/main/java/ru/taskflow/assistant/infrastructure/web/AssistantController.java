@@ -29,6 +29,7 @@ import ru.taskflow.assistant.application.AssistantRateLimiter;
 import ru.taskflow.assistant.application.QuickAddPolicy;
 import ru.taskflow.assistant.infrastructure.web.dto.QuickResult;
 import ru.taskflow.assistant.infrastructure.web.dto.SetActionAcceptedRequest;
+import ru.taskflow.assistant.infrastructure.web.dto.UpdateActionPlannedDateRequest;
 import ru.taskflow.assistant.infrastructure.web.dto.UpdateActionReminderRequest;
 import ru.taskflow.shared.exception.NotFoundException;
 import ru.taskflow.shared.security.AuthenticatedUser;
@@ -131,6 +132,19 @@ public class AssistantController {
             @AuthenticationPrincipal AuthenticatedUser user
     ) {
         return assistantService.updateActionReminder(user.userId(), id, ordinal, request.reminderAt());
+    }
+
+    @PatchMapping("/proposals/{id}/actions/{ordinal}/planned-date")
+    @Operation(summary = "Изменить или снять день исполнения у отдельного действия предложения",
+            description = "plannedDate=null снимает предложенный день — правка прямо в карточке подтверждения, " +
+                    "без отдельного захода в карточку задачи")
+    public Proposal updateActionPlannedDate(
+            @PathVariable UUID id,
+            @PathVariable int ordinal,
+            @RequestBody UpdateActionPlannedDateRequest request,
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) {
+        return assistantService.updateActionPlannedDate(user.userId(), id, ordinal, request.plannedDate());
     }
 
     @PostMapping("/proposals/{id}/actions/{ordinal}/select")
