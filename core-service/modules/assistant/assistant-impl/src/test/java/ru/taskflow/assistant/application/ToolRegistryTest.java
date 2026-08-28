@@ -98,7 +98,7 @@ class ToolRegistryTest {
     }
 
     @Test
-    void toolDefinitions_reminderAtFieldPointsToPastReasonInsteadOfGuessing() {
+    void toolDefinitions_reminderAtFieldPermitsGuessingButStillHandlesUserNamedPastTime() {
         var proposeActions = registry.toolDefinitions().stream()
                 .filter(t -> ToolRegistry.PROPOSE_ACTIONS.equals(functionName(t)))
                 .findFirst().orElseThrow();
@@ -107,8 +107,30 @@ class ToolRegistryTest {
         Map<String, Object> items = (Map<String, Object>) actionsParam.get("items");
         Map<String, Object> itemProperties = (Map<String, Object>) items.get("properties");
         Map<String, Object> reminderAt = (Map<String, Object>) itemProperties.get("reminder_at");
+        String description = (String) reminderAt.get("description");
 
-        assertThat((String) reminderAt.get("description")).contains("reason=past");
+        // Блок Г: запрет на подбор времени снят — контракт больше не говорит
+        // "не угадывай", а описывает, как выводить осмысленный отступ.
+        assertThat(description).doesNotContain("не угадывай");
+        assertThat(description).contains("вывести из сути задачи");
+        // Но названное пользователем прошедшее время по-прежнему уходит в отказ.
+        assertThat(description).contains("reason=past");
+    }
+
+    @Test
+    void toolDefinitions_noReminderNeededFieldExistsAndExplainsDistinctionFromForgetting() {
+        var proposeActions = registry.toolDefinitions().stream()
+                .filter(t -> ToolRegistry.PROPOSE_ACTIONS.equals(functionName(t)))
+                .findFirst().orElseThrow();
+
+        Map<String, Object> actionsParam = (Map<String, Object>) parameters(proposeActions).get("actions");
+        Map<String, Object> items = (Map<String, Object>) actionsParam.get("items");
+        Map<String, Object> itemProperties = (Map<String, Object>) items.get("properties");
+        Map<String, Object> noReminderNeeded = (Map<String, Object>) itemProperties.get("no_reminder_needed");
+
+        assertThat(noReminderNeeded).isNotNull();
+        assertThat(noReminderNeeded.get("type")).isEqualTo("boolean");
+        assertThat((String) noReminderNeeded.get("description")).contains("забыл решить");
     }
 
     // Пункт 1: описание unclear в самом инструменте не должно быть шире, чем
@@ -152,7 +174,8 @@ class ToolRegistryTest {
         assertThat(actionsParam.get("type")).isEqualTo("array");
         assertThat(itemPropertyNames(actionsParam)).contains(
                 "type", "task_ref", "title", "description", "priority", "deadline",
-                "new_deadline", "group", "tags", "note", "reason", "reminder_at", "ambiguous_reason");
+                "new_deadline", "group", "tags", "note", "reason", "reminder_at", "no_reminder_needed",
+                "ambiguous_reason");
     }
 
     @Test
