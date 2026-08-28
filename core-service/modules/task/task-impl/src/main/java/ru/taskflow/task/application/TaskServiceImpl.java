@@ -29,6 +29,7 @@ import ru.taskflow.task.api.exception.TaskNotFoundException;
 import ru.taskflow.task.infrastructure.persistence.*;
 
 import java.sql.Timestamp;
+import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -68,6 +69,7 @@ public class TaskServiceImpl implements TaskService {
     private final RecurrenceRepository recurrenceRepository;
     private final AuditService auditService;
     private final GroupStyleResolver groupStyleResolver;
+    private final Clock clock;
 
     /**
      * Создаёт новую задачу для пользователя.
@@ -353,9 +355,14 @@ public class TaskServiceImpl implements TaskService {
     /**
      * Следующее вхождение считается от запланированной даты закрытой задачи
      * (deadline, а если его нет — plannedDate), а не от момента фактического
-     * закрытия — иначе повтор «съезжает» при каждом опоздании (А2). Ни один
-     * из двух дат нет — вхождение всё равно создаётся, просто без даты, как и
-     * любая другая бессрочная задача.
+     * закрытия — иначе повтор «съезжает» при каждом опоздании (А2). Но один
+     * шаг от опоздавшей даты может сам оказаться в прошлом (еженедельная
+     * задача, закрытая на три недели позже, получила бы вхождение, просроченное
+     * на две) — ровно тот эффект, ради которого убирали счётчик невыполненного
+     * из фокус-режима. rollToFuture прокручивает дальше, пока не окажется в
+     * будущем, не трогая якорь расписания (день недели/месяца остаётся тем же).
+     * Ни один из двух дат нет — вхождение всё равно создаётся, просто без
+     * даты, как и любая другая бессрочная задача.
      *
      * Напоминания не наследуются: у нового вхождения свой deadline, и если он
      * задан, planForDeadline назначает такое же относительное напоминание,
@@ -368,10 +375,14 @@ public class TaskServiceImpl implements TaskService {
         OffsetDateTime anchor = completedTask.getDeadline() != null
                 ? completedTask.getDeadline()
                 : completedTask.getPlannedDate();
-        OffsetDateTime nextAnchor = anchor != null ? nextOccurrence(anchor, recurrence) : null;
 
-        if (nextAnchor != null && recurrence.getEndsAt() != null && nextAnchor.isAfter(recurrence.getEndsAt())) {
-            return;
+        OffsetDateTime nextAnchor = null;
+        if (anchor != null) {
+            nextAnchor = rollToFuture(anchor, recurrence);
+            if (nextAnchor == null) {
+                // Прокрутка упёрлась в ends_at раньше, чем дошла до будущего — цепочка закончена.
+                return;
+            }
         }
 
         var next = new TaskJpaEntity();
@@ -395,7 +406,32 @@ public class TaskServiceImpl implements TaskService {
         saveRecurrence(savedNext, toRule(recurrence));
     }
 
+    /**
+     * Шаг за шагом отсчитывает от anchor, пока результат не окажется в
+     * будущем — якорь расписания не трогается, каждый шаг идёт через
+     * nextOccurrence от предыдущего кандидата, а не пересчитывается заново от
+     * now. ends_at проверяется на каждом шаге: если очередной кандидат уже
+     * позже него, дальше крутить некуда — null, вызывающий код вхождение не
+     * создаёт. Завершается гарантированно: каждый тип продвигает кандидата
+     * минимум на день вперёд (см. nextOccurrence), а now фиксировано на
+     * момент вызова.
+     */
+    private OffsetDateTime rollToFuture(OffsetDateTime anchor, RecurrenceJpaEntity recurrence) {
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        OffsetDateTime candidate = anchor;
+        do {
+            candidate = nextOccurrence(candidate, recurrence);
+            if (recurrence.getEndsAt() != null && candidate.isAfter(recurrence.getEndsAt())) {
+                return null;
+            }
+        } while (candidate.isBefore(now));
+        return candidate;
+    }
+
     private OffsetDateTime nextOccurrence(OffsetDateTime anchor, RecurrenceJpaEntity recurrence) {
+        // saveRecurrence уже отклоняет intervalN < 1 на входе (validateRecurrence) —
+        // клампим всё равно: это и есть защита rollToFuture от зацикливания на
+        // строке, записанной в обход API, без отдельной проверки специально под неё.
         int intervalN = Math.max(recurrence.getIntervalN(), 1);
         return switch (recurrence.getType()) {
             case DAILY -> anchor.plusDays(intervalN);

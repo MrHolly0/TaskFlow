@@ -1,9 +1,9 @@
 package ru.taskflow.task.application;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
@@ -25,6 +25,8 @@ import ru.taskflow.task.api.dto.UpdateTaskRequest;
 import ru.taskflow.task.api.exception.TaskNotFoundException;
 import ru.taskflow.task.infrastructure.persistence.*;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -58,11 +60,25 @@ class TaskServiceTest {
     @Mock
     private GroupStyleResolver groupStyleResolver;
 
-    @InjectMocks
+    // Реальный Clock.fixed, не мок — прокрутке следующего вхождения (А) нужно
+    // настоящее сравнение дат, а не настраивать заглушку под каждый шаг.
+    // Зафиксирован заведомо раньше дат во всех тестах ниже (те — январь-февраль
+    // 2026), чтобы "опоздание на много периодов" можно было проверить отдельно
+    // от уже существующих тестов на один шаг.
+    private static final Instant NOW = Instant.parse("2025-06-01T00:00:00Z");
+    private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+
     private TaskServiceImpl taskService;
 
     private final UUID userId = UUID.randomUUID();
     private final UUID taskId = UUID.randomUUID();
+
+    @BeforeEach
+    void setUp() {
+        taskService = new TaskServiceImpl(taskRepository, groupRepository, tagRepository, taskMapper,
+                taskReminderService, reminderRepository, recurrenceRepository, auditService, groupStyleResolver,
+                clock);
+    }
 
     @Test
     void create_savesAndReturnsResponse() {
@@ -407,6 +423,135 @@ class TaskServiceTest {
         var endsAt = OffsetDateTime.parse("2026-01-01T23:59:59Z");
         var entity = taskEntity();
         entity.setDeadline(deadline);
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(recurrenceRepository.findById(taskId))
+                .thenReturn(Optional.of(recurrenceEntity(RecurrenceType.DAILY, 1, null, null, endsAt)));
+
+        taskService.complete(userId, taskId);
+
+        verify(taskRepository, times(1)).save(any());
+    }
+
+    // --- Блок А: прокрутка вместо одного шага при опоздании на много периодов ---
+
+    @Test
+    void complete_dailyRecurrence_lateByMultiplePeriods_rollsForwardPastNow() {
+        // NOW = 2025-06-01T00:00:00Z. anchor на 4 дня раньше и со сдвигом на 9
+        // часов, чтобы ни один промежуточный кандидат не совпал с NOW точно.
+        // Дни (T09:00): 28.05, 29.05, 30.05, 31.05, 01.06 — первый кандидат
+        // 01.06T09:00 первым оказывается не раньше NOW.
+        var anchor = OffsetDateTime.parse("2025-05-28T09:00:00Z");
+        var entity = taskEntity();
+        entity.setDeadline(anchor);
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.findById(taskId))
+                .thenReturn(Optional.of(recurrenceEntity(RecurrenceType.DAILY, 1, null, null, null)));
+
+        taskService.complete(userId, taskId);
+
+        var captor = ArgumentCaptor.forClass(TaskJpaEntity.class);
+        verify(taskRepository, times(2)).save(captor.capture());
+        assertThat(captor.getAllValues().get(1).getDeadline()).isEqualTo(OffsetDateTime.parse("2025-06-01T09:00:00Z"));
+    }
+
+    @Test
+    void complete_weeklyRecurrence_lateByMultiplePeriods_rollsForwardPastNow() {
+        // Каждую неделю от 04.05 (вс, T10:00): 11.05, 18.05, 25.05, 01.06 —
+        // первый кандидат не раньше NOW (01.06T00:00) — 01.06T10:00.
+        var anchor = OffsetDateTime.parse("2025-05-04T10:00:00Z");
+        var entity = taskEntity();
+        entity.setDeadline(anchor);
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.findById(taskId))
+                .thenReturn(Optional.of(recurrenceEntity(RecurrenceType.WEEKLY, 1, null, null, null)));
+
+        taskService.complete(userId, taskId);
+
+        var captor = ArgumentCaptor.forClass(TaskJpaEntity.class);
+        verify(taskRepository, times(2)).save(captor.capture());
+        assertThat(captor.getAllValues().get(1).getDeadline()).isEqualTo(OffsetDateTime.parse("2025-06-01T10:00:00Z"));
+    }
+
+    @Test
+    void complete_weeklyRecurrenceWithDaysOfWeek_lateByMultiplePeriods_rollsForwardPastNow_keepingWeekdayAnchor() {
+        // Вт/Чт от 20.05 (вт, T10:00): 22.05(чт), 27.05(вт), 29.05(чт), 03.06(вт) —
+        // первый не раньше NOW (01.06T00:00) — 03.06(вт), не 29.05 (тот ещё до NOW).
+        // Якорь дня недели (вторник/четверг) на каждом шаге сохраняется.
+        var anchor = OffsetDateTime.parse("2025-05-20T10:00:00Z");
+        var entity = taskEntity();
+        entity.setDeadline(anchor);
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.findById(taskId)).thenReturn(Optional.of(
+                recurrenceEntity(RecurrenceType.WEEKLY, 1, "2,4", null, null)));
+
+        taskService.complete(userId, taskId);
+
+        var captor = ArgumentCaptor.forClass(TaskJpaEntity.class);
+        verify(taskRepository, times(2)).save(captor.capture());
+        var next = captor.getAllValues().get(1).getDeadline();
+        assertThat(next).isEqualTo(OffsetDateTime.parse("2025-06-03T10:00:00Z"));
+        assertThat(next.getDayOfWeek()).isEqualTo(java.time.DayOfWeek.TUESDAY);
+    }
+
+    @Test
+    void complete_weekdaysRecurrence_lateByMultiplePeriods_rollsForwardPastNow_skippingWeekends() {
+        // От пятницы 23.05: 26.05(пн),27,28,29,30(пт),02.06(пн) — первый не
+        // раньше NOW (01.06T00:00) — 02.06(пн), с пропуском выходных 31.05-01.06.
+        var anchor = OffsetDateTime.parse("2025-05-23T10:00:00Z");
+        var entity = taskEntity();
+        entity.setDeadline(anchor);
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.findById(taskId))
+                .thenReturn(Optional.of(recurrenceEntity(RecurrenceType.WEEKDAYS, 1, null, null, null)));
+
+        taskService.complete(userId, taskId);
+
+        var captor = ArgumentCaptor.forClass(TaskJpaEntity.class);
+        verify(taskRepository, times(2)).save(captor.capture());
+        var next = captor.getAllValues().get(1).getDeadline();
+        assertThat(next).isEqualTo(OffsetDateTime.parse("2025-06-02T10:00:00Z"));
+        assertThat(next.getDayOfWeek()).isNotIn(java.time.DayOfWeek.SATURDAY, java.time.DayOfWeek.SUNDAY);
+    }
+
+    @Test
+    void complete_monthlyRecurrence_lateByMultiplePeriods_rollsForwardPastNow_keepingDayOfMonthAnchor() {
+        // Каждый месяц 15-го от 15.04: 15.05, 15.06 — первый не раньше NOW
+        // (01.06T00:00) — 15.06, майское вхождение пропущено целиком.
+        var anchor = OffsetDateTime.parse("2025-04-15T10:00:00Z");
+        var entity = taskEntity();
+        entity.setDeadline(anchor);
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
+        when(taskRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(recurrenceRepository.findById(taskId))
+                .thenReturn(Optional.of(recurrenceEntity(RecurrenceType.MONTHLY, 1, null, 15, null)));
+
+        taskService.complete(userId, taskId);
+
+        var captor = ArgumentCaptor.forClass(TaskJpaEntity.class);
+        verify(taskRepository, times(2)).save(captor.capture());
+        var next = captor.getAllValues().get(1).getDeadline();
+        assertThat(next).isEqualTo(OffsetDateTime.parse("2025-06-15T10:00:00Z"));
+        assertThat(next.getDayOfMonth()).isEqualTo(15);
+    }
+
+    @Test
+    void complete_recurrenceEndsAt_stopsChainDuringRollForward_notJustOnFirstStep() {
+        // anchor как в daily-тесте выше, но ends_at попадает между первым и
+        // вторым шагом прокрутки (после 29.05, до 30.05) — цепочка должна
+        // остановиться там, а не докрутиться до NOW.
+        var anchor = OffsetDateTime.parse("2025-05-28T09:00:00Z");
+        var endsAt = OffsetDateTime.parse("2025-05-30T00:00:00Z");
+        var entity = taskEntity();
+        entity.setDeadline(anchor);
         when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(entity));
         when(recurrenceRepository.findById(taskId))
                 .thenReturn(Optional.of(recurrenceEntity(RecurrenceType.DAILY, 1, null, null, endsAt)));
