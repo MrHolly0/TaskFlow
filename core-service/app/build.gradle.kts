@@ -36,6 +36,9 @@ dependencies {
     implementation(project(":core-service:modules:notify:notify-api"))
     implementation(project(":core-service:modules:audit:audit-api"))
     implementation(project(":core-service:modules:assistant:assistant-api"))
+    // Только для сквозных тестов (Б5/Б6 "прокрутка повторов, сквозные сценарии") —
+    // подмена NlpGatewayService через @MockBean, не для основного кода app.
+    testImplementation(project(":core-service:modules:nlp-gateway:nlp-gateway-api"))
 
     compileOnly("org.projectlombok:lombok")
     annotationProcessor("org.projectlombok:lombok")
