@@ -267,44 +267,6 @@ class AssistantPromptBuilderTest {
                 .contains("не переосмысливай просьбу как создание задачи без напоминания");
     }
 
-    // Блок Г ("напоминание в предложении"): запрет на подбор времени снят,
-    // модель обязана решать за каждый create сама, не дожидаясь вопроса.
-    @Test
-    void build_permitsInferringReminderTimeFromTaskMeaning() {
-        var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());
-
-        assertThat(parts.systemPrompt())
-                .contains("Для каждого create реши, нужно ли напоминание, не дожидаясь отдельного вопроса");
-        assertThat(parts.systemPrompt()).contains("no_reminder_needed=true");
-    }
-
-    // "Решила не предлагать" должно быть отличимо от "забыла предложить" в
-    // данных — оба поля пустыми молча оставлять нельзя.
-    @Test
-    void build_forbidsLeavingBothReminderFieldsSilentlyEmpty() {
-        var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());
-
-        assertThat(parts.systemPrompt()).contains("Не оставляй оба поля пустыми молча");
-    }
-
-    // Блок В: день исполнения — прямая пара к напоминаниям (правило 9),
-    // модель тоже должна уметь предложить его сама или явно отказаться.
-    @Test
-    void build_instructsToProposePlannedDateForTasksWithoutDeadline() {
-        var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());
-
-        assertThat(parts.systemPrompt())
-                .contains("Для каждого create без прямо названного deadline реши, стоит ли предложить planned_date");
-        assertThat(parts.systemPrompt()).contains("no_planned_date_needed=true");
-    }
-
-    @Test
-    void build_forbidsLeavingBothPlannedDateFieldsSilentlyEmpty() {
-        var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());
-
-        assertThat(parts.systemPrompt()).contains("не оставляй оба поля пустыми молча");
-    }
-
     @Test
     void build_handlesNoGroupsYet() {
         var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());

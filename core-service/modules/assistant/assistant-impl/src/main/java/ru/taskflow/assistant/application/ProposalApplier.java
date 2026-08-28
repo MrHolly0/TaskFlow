@@ -214,15 +214,6 @@ public class ProposalApplier {
         if (reminderAt != null) {
             taskService.scheduleReminder(userId, created.id(), reminderAt);
         }
-        // День исполнения (В) — тем же приёмом, что и напоминание: отдельный
-        // вызов после создания, а не поле CreateTaskRequest, чтобы не
-        // разрастить конструктор ради атрибута, который не участвует
-        // в создании самой задачи.
-        OffsetDateTime plannedDate = parseDeadline(payload.get("planned_date"));
-        if (plannedDate != null) {
-            taskService.update(userId, created.id(),
-                    new UpdateTaskRequest(null, null, null, null, null, null, null, null, null, plannedDate));
-        }
         return created.id();
     }
 

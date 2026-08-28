@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import ru.taskflow.assistant.api.AssistantActionType;
@@ -479,43 +478,6 @@ class ProposalApplierTest {
         applier.apply(userId, entity);
 
         verify(taskService, never()).scheduleReminder(any(), any(), any());
-    }
-
-    // Блок В: день исполнения — тем же приёмом, что и напоминание (см. тесты
-    // выше) — отдельный вызов update() после createQuick, а не поле
-    // CreateTaskRequest.
-    @Test
-    void apply_createWithPlannedDateUpdatesTaskAfterCreation() {
-        UUID createdId = UUID.randomUUID();
-        ProposalActionJpaEntity a1 = action(0, AssistantActionType.CREATE, null,
-                "{\"title\":\"разобрать шкаф\",\"planned_date\":\"2026-08-15T00:00:00+03:00\"}", true);
-        ProposalJpaEntity entity = proposal("TELEGRAM", "TEXT", a1);
-
-        when(actionValidator.revalidateForApply(userId, AssistantActionType.CREATE, null))
-                .thenReturn(new ActionValidator.ValidationResult(true, null, null));
-        when(taskService.createQuick(eq(userId), any())).thenReturn(taskResponse(createdId));
-
-        applier.apply(userId, entity);
-
-        verify(taskService).createQuick(eq(userId), any());
-        ArgumentCaptor<UpdateTaskRequest> captor = ArgumentCaptor.forClass(UpdateTaskRequest.class);
-        verify(taskService).update(eq(userId), eq(createdId), captor.capture());
-        assertThat(captor.getValue().plannedDate()).isEqualTo(OffsetDateTime.parse("2026-08-15T00:00:00+03:00"));
-    }
-
-    @Test
-    void apply_createWithoutPlannedDateDoesNotUpdateAfterCreation() {
-        UUID createdId = UUID.randomUUID();
-        ProposalActionJpaEntity a1 = action(0, AssistantActionType.CREATE, null, "{\"title\":\"обычная задача\"}", true);
-        ProposalJpaEntity entity = proposal("TELEGRAM", "TEXT", a1);
-
-        when(actionValidator.revalidateForApply(userId, AssistantActionType.CREATE, null))
-                .thenReturn(new ActionValidator.ValidationResult(true, null, null));
-        when(taskService.createQuick(eq(userId), any())).thenReturn(taskResponse(createdId));
-
-        applier.apply(userId, entity);
-
-        verify(taskService, never()).update(any(), any(), any());
     }
 
     @Test

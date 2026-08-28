@@ -103,9 +103,6 @@ public class ActionValidator {
         if (args.containsKey("deadline") && !isParseableDeadline(args.get("deadline"))) {
             return ValidationResult.fail("не удалось разобрать срок: " + args.get("deadline"));
         }
-        if (args.containsKey("planned_date") && !isParseableDeadline(args.get("planned_date"))) {
-            return ValidationResult.fail("не удалось разобрать день исполнения: " + args.get("planned_date"));
-        }
         if (args.containsKey("recurrence")) {
             return ValidationResult.fail("повторяющиеся задачи пока не поддерживаются");
         }

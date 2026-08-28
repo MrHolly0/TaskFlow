@@ -259,26 +259,6 @@ class ActionValidatorTest {
         assertThat(result.error()).contains("прошло");
     }
 
-    // Блок В: planned_date — тот же разбор, что и у deadline, но без
-    // отдельного запрета на прошедшее (в отличие от reminder_at) — задание
-    // такого запрета не требует.
-    @Test
-    void validate_acceptsCreateWithParseablePlannedDate() {
-        var result = validator.validate(AssistantActionType.CREATE,
-                Map.of("title", "разобрать шкаф", "planned_date", now.plusDays(2).toString()), windowWith(taskId));
-
-        assertThat(result.valid()).isTrue();
-    }
-
-    @Test
-    void validate_rejectsCreateWithUnparseablePlannedDate() {
-        var result = validator.validate(AssistantActionType.CREATE,
-                Map.of("title", "разобрать шкаф", "planned_date", "как-нибудь"), windowWith(taskId));
-
-        assertThat(result.valid()).isFalse();
-        assertThat(result.error()).contains("день исполнения");
-    }
-
     @Test
     void revalidateForApply_rejectsRemindOnCompletedTask() {
         when(taskService.findById(userId, taskId)).thenReturn(task(TaskStatus.DONE));
