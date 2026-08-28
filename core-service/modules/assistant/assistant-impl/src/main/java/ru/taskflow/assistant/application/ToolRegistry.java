@@ -57,6 +57,25 @@ public class ToolRegistry {
                                                 Map.entry("deadline", stringParam(
                                                         "Срок в формате ISO-8601 со смещением, например "
                                                                 + "2026-08-12T18:00:00+03:00 — для create")),
+                                                Map.entry("planned_date", stringParam(
+                                                        "Дата в формате ISO-8601 — предположение «когда "
+                                                                + "планирую заняться», не обязательство, в "
+                                                                + "отличие от deadline. Для create и только "
+                                                                + "когда у задачи нет прямо названного "
+                                                                + "deadline: можно предложить день самой по "
+                                                                + "смыслу задачи. Пропуск этого поля не "
+                                                                + "создаёт просрочки — она считается только "
+                                                                + "по deadline.")),
+                                                Map.entry("no_planned_date_needed", Map.of(
+                                                        "type", "boolean",
+                                                        "description", "true — сознательно решил не "
+                                                                + "предлагать день исполнения для create "
+                                                                + "(уже есть deadline, или дело без всякой "
+                                                                + "спешки). Пустые planned_date и "
+                                                                + "no_planned_date_needed неотличимы от "
+                                                                + "того, что ты забыл решить — выставляй "
+                                                                + "одно из двух всегда."
+                                                )),
                                                 Map.entry("new_deadline", stringParam(
                                                         "Новый срок в формате ISO-8601 со смещением — для reschedule")),
                                                 Map.entry("group", stringParam(

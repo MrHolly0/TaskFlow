@@ -287,6 +287,24 @@ class AssistantPromptBuilderTest {
         assertThat(parts.systemPrompt()).contains("Не оставляй оба поля пустыми молча");
     }
 
+    // Блок В: день исполнения — прямая пара к напоминаниям (правило 9),
+    // модель тоже должна уметь предложить его сама или явно отказаться.
+    @Test
+    void build_instructsToProposePlannedDateForTasksWithoutDeadline() {
+        var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());
+
+        assertThat(parts.systemPrompt())
+                .contains("Для каждого create без прямо названного deadline реши, стоит ли предложить planned_date");
+        assertThat(parts.systemPrompt()).contains("no_planned_date_needed=true");
+    }
+
+    @Test
+    void build_forbidsLeavingBothPlannedDateFieldsSilentlyEmpty() {
+        var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());
+
+        assertThat(parts.systemPrompt()).contains("не оставляй оба поля пустыми молча");
+    }
+
     @Test
     void build_handlesNoGroupsYet() {
         var parts = builder.build(emptyWindow(), "любой текст", ZONE, noGroups());

@@ -133,6 +133,39 @@ class ToolRegistryTest {
         assertThat((String) noReminderNeeded.get("description")).contains("забыл решить");
     }
 
+    @Test
+    void toolDefinitions_plannedDateFieldDistinguishesFromDeadline() {
+        var proposeActions = registry.toolDefinitions().stream()
+                .filter(t -> ToolRegistry.PROPOSE_ACTIONS.equals(functionName(t)))
+                .findFirst().orElseThrow();
+
+        Map<String, Object> actionsParam = (Map<String, Object>) parameters(proposeActions).get("actions");
+        Map<String, Object> items = (Map<String, Object>) actionsParam.get("items");
+        Map<String, Object> itemProperties = (Map<String, Object>) items.get("properties");
+        Map<String, Object> plannedDate = (Map<String, Object>) itemProperties.get("planned_date");
+        String description = (String) plannedDate.get("description");
+
+        assertThat(description).contains("не обязательство");
+        assertThat(description).contains("нет прямо названного");
+        assertThat(description).contains("не создаёт просрочки");
+    }
+
+    @Test
+    void toolDefinitions_noPlannedDateNeededFieldExistsAndExplainsDistinctionFromForgetting() {
+        var proposeActions = registry.toolDefinitions().stream()
+                .filter(t -> ToolRegistry.PROPOSE_ACTIONS.equals(functionName(t)))
+                .findFirst().orElseThrow();
+
+        Map<String, Object> actionsParam = (Map<String, Object>) parameters(proposeActions).get("actions");
+        Map<String, Object> items = (Map<String, Object>) actionsParam.get("items");
+        Map<String, Object> itemProperties = (Map<String, Object>) items.get("properties");
+        Map<String, Object> noPlannedDateNeeded = (Map<String, Object>) itemProperties.get("no_planned_date_needed");
+
+        assertThat(noPlannedDateNeeded).isNotNull();
+        assertThat(noPlannedDateNeeded.get("type")).isEqualTo("boolean");
+        assertThat((String) noPlannedDateNeeded.get("description")).contains("забыл решить");
+    }
+
     // Пункт 1: описание unclear в самом инструменте не должно быть шире, чем
     // в промпте — модель читает оба. "Короткая фраза, совпадающая..." —
     // ровно та же граница, что и в AssistantPromptBuilderTest.
@@ -173,9 +206,9 @@ class ToolRegistryTest {
         Map<String, Object> actionsParam = (Map<String, Object>) properties.get("actions");
         assertThat(actionsParam.get("type")).isEqualTo("array");
         assertThat(itemPropertyNames(actionsParam)).contains(
-                "type", "task_ref", "title", "description", "priority", "deadline",
-                "new_deadline", "group", "tags", "note", "reason", "reminder_at", "no_reminder_needed",
-                "ambiguous_reason");
+                "type", "task_ref", "title", "description", "priority", "deadline", "planned_date",
+                "no_planned_date_needed", "new_deadline", "group", "tags", "note", "reason", "reminder_at",
+                "no_reminder_needed", "ambiguous_reason");
     }
 
     @Test
