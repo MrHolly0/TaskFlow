@@ -78,6 +78,10 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
         return new PageImpl<>(ordered, pageable, idPage.getTotalElements());
     }
 
+    // Без ORDER BY намеренно (блок А, ритм пересмотра бессрочных задач) —
+    // порядок среди этих кандидатов считает FocusTaskRanker в Java: только
+    // там доступна давность показа (lastShownInFocusAt) с осмысленным
+    // взвешиванием, а не то, что можно было бы выразить один CASE в JPQL.
     @Query("""
             SELECT t FROM TaskJpaEntity t
             LEFT JOIN FETCH t.group
@@ -89,15 +93,6 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
                 (t.plannedDate IS NULL AND (t.deadline IS NULL OR t.deadline <= :endOfToday))
                 OR (t.plannedDate IS NOT NULL AND t.plannedDate <= :endOfToday)
               )
-            ORDER BY CASE t.priority
-              WHEN 'URGENT' THEN 0
-              WHEN 'HIGH' THEN 1
-              WHEN 'NORMAL' THEN 2
-              ELSE 3
-            END,
-            CASE WHEN t.status = ru.taskflow.task.api.TaskStatus.IN_PROGRESS THEN 0 ELSE 1 END,
-            CASE WHEN t.deadline IS NULL THEN 1 ELSE 0 END,
-            t.deadline
             """)
     List<TaskJpaEntity> findFocusTasks(
             @Param("userId") UUID userId,
@@ -116,7 +111,7 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
             ORDER BY CASE t.priority
               WHEN 'URGENT' THEN 0
               WHEN 'HIGH' THEN 1
-              WHEN 'NORMAL' THEN 2
+              WHEN 'MEDIUM' THEN 2
               ELSE 3
             END,
             t.deadline

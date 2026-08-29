@@ -29,6 +29,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -67,6 +68,10 @@ class TaskServiceTest {
     // от уже существующих тестов на один шаг.
     private static final Instant NOW = Instant.parse("2025-06-01T00:00:00Z");
     private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+    // Реальный, не мок — правило ранжирования проверяется отдельно
+    // (FocusTaskRankerTest), здесь важно только что TaskServiceImpl его
+    // действительно вызывает и сохраняет отметку показа.
+    private final FocusTaskRanker focusTaskRanker = new FocusTaskRanker();
 
     private TaskServiceImpl taskService;
 
@@ -77,7 +82,7 @@ class TaskServiceTest {
     void setUp() {
         taskService = new TaskServiceImpl(taskRepository, groupRepository, tagRepository, taskMapper,
                 taskReminderService, reminderRepository, recurrenceRepository, auditService, groupStyleResolver,
-                clock);
+                clock, focusTaskRanker);
     }
 
     @Test
@@ -912,6 +917,41 @@ class TaskServiceTest {
         var result = taskService.getFocusTasks(userId, null);
 
         assertThat(result.tasks().getFirst().reminders()).containsExactly(reminderResponse);
+    }
+
+    // --- Блок А: ритм пересмотра бессрочных задач — отметка показа и её отсутствие для отсеянных ---
+
+    @Test
+    void getFocusTasks_marksReturnedTasksAsShownNow() {
+        var shown = taskEntity();
+        when(taskRepository.findFocusTasks(eq(userId), eq(TaskStatus.DONE), any(OffsetDateTime.class)))
+                .thenReturn(List.of(shown));
+        when(taskMapper.toResponse(shown)).thenReturn(mockResponse(taskId, "задача"));
+
+        taskService.getFocusTasks(userId, null);
+
+        assertThat(shown.getLastShownInFocusAt()).isEqualTo(OffsetDateTime.now(clock));
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<TaskJpaEntity>> captor = ArgumentCaptor.forClass(List.class);
+        verify(taskRepository).saveAll(captor.capture());
+        assertThat(captor.getValue()).containsExactly(shown);
+    }
+
+    // Отметка ставится в момент выдачи — задача, которую отсеял лимит
+    // экрана (не более 3), показана не была и отметку не получает.
+    @Test
+    void getFocusTasks_doesNotMarkTasksExcludedByScreenLimit() {
+        var shownEntities = List.of(taskEntity(), taskEntity(), taskEntity());
+        var excluded = taskEntity();
+        List<TaskJpaEntity> all = new ArrayList<>(shownEntities);
+        all.add(excluded);
+        when(taskRepository.findFocusTasks(eq(userId), eq(TaskStatus.DONE), any(OffsetDateTime.class)))
+                .thenReturn(all);
+        when(taskMapper.toResponse(any())).thenReturn(mockResponse(taskId, "задача"));
+
+        taskService.getFocusTasks(userId, null);
+
+        assertThat(excluded.getLastShownInFocusAt()).isNull();
     }
 
     // --- Пункт А: день исполнения не участвует в просрочке ---

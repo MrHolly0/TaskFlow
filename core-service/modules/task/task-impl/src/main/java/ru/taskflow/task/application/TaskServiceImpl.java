@@ -70,6 +70,7 @@ public class TaskServiceImpl implements TaskService {
     private final AuditService auditService;
     private final GroupStyleResolver groupStyleResolver;
     private final Clock clock;
+    private final FocusTaskRanker focusTaskRanker;
 
     /**
      * Создаёт новую задачу для пользователя.
@@ -570,19 +571,30 @@ public class TaskServiceImpl implements TaskService {
      * Получает ограниченный список задач для режима фокуса.
      *
      * Возвращает до 3 актуальных задач на сегодня (с дедлайном до конца дня),
-     * исключая выполненные.
+     * исключая выполненные. Порядок среди кандидатов — FocusTaskRanker: срочное
+     * и просроченное впереди безусловно, среди бессрочных задач без дня
+     * исполнения учитывается ещё и давность показа (блок А, ритм пересмотра).
+     * <p>
+     * Не readOnly, в отличие от остальных читающих методов класса — отметка
+     * о показе (last_shown_in_focus_at) ставится именно здесь, в момент
+     * выдачи, а не при действии над задачей (задача, которую показали и
+     * проигнорировали, тоже считается показанной).
      *
      * @param userId ID пользователя
      * @return ответ с задачами для фокуса
      */
     @Override
+    @Transactional
     public FocusResponse getFocusTasks(UUID userId, Integer availableMinutes) {
+        var now = OffsetDateTime.now(clock);
         var endOfToday = endOfToday();
-        var entities = taskRepository.findFocusTasks(userId, TaskStatus.DONE, endOfToday)
-                .stream()
+        var candidates = taskRepository.findFocusTasks(userId, TaskStatus.DONE, endOfToday);
+        var entities = focusTaskRanker.rank(candidates, now).stream()
                 .filter(t -> fitsAvailableTime(t, availableMinutes))
                 .limit(3)
                 .toList();
+        entities.forEach(t -> t.setLastShownInFocusAt(now));
+        taskRepository.saveAll(entities);
         return new FocusResponse(withRemindersBatch(entities));
     }
 

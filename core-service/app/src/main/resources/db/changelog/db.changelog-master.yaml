@@ -65,3 +65,5 @@ databaseChangeLog:
       file: db/changelog/032-task-progress-signals.yaml
   - include:
       file: db/changelog/033-task-source-assistant-split.yaml
+  - include:
+      file: db/changelog/034-task-focus-review-rhythm.yaml

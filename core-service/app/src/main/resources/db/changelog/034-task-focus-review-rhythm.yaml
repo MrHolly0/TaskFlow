@@ -1,0 +1,16 @@
+databaseChangeLog:
+  - changeSet:
+      id: 034-task-focus-review-rhythm
+      author: taskflow
+      comment: >
+        Ритм пересмотра бессрочных задач (docs/vkr/исследование-задачи-без-срока.md,
+        §3.5): отметка последнего показа в фокусе — не для отображения
+        пользователю, а чтобы давно не показанная задача без срока могла
+        подняться в отборе.
+      changes:
+        - addColumn:
+            tableName: tasks
+            columns:
+              - column:
+                  name: last_shown_in_focus_at
+                  type: TIMESTAMP WITH TIME ZONE
