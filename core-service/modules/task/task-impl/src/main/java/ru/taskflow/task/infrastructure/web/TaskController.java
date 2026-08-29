@@ -131,6 +131,19 @@ public class TaskController {
         taskService.cancelReminder(user.userId(), id, reminderId);
     }
 
+    @PostMapping("/{id}/reminders/{reminderId}/snooze")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "Отложить настойчивый повтор", description = "Точка решения по цепочке настойчивых "
+            + "напоминаний: следующий повтор появится в выбранное время, автоматический запас повторов не тратится")
+    public void snoozeReminder(
+            @PathVariable java.util.UUID id,
+            @PathVariable java.util.UUID reminderId,
+            @RequestBody @Valid ScheduleReminderRequest request,
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) {
+        taskService.snoozeReminder(user.userId(), id, reminderId, request.fireAt());
+    }
+
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary = "Удалить задачу", description = "Мягко удаляет задачу (is_deleted = true)")

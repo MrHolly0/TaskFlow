@@ -19,6 +19,7 @@ import ru.taskflow.user.api.dto.UserSettingsDto;
 import java.time.Clock;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -208,5 +209,148 @@ class TaskReminderServiceTest {
         assertThatThrownBy(() -> service.cancelReminder(taskId, reminderId))
                 .isInstanceOf(ReminderNotFoundException.class);
         verify(notificationService, never()).cancelReminderNotifications(any());
+    }
+
+    // --- Блок Б: настойчивость включается только для помеченной задачи ---
+
+    private TaskJpaEntity persistentTask(TaskPriority priority, OffsetDateTime deadline) {
+        var task = task(priority, deadline);
+        task.setPersistentReminder(true);
+        return task;
+    }
+
+    @Test
+    void createStandaloneReminder_persistentTask_startsChainAtStepZero() {
+        var task = persistentTask(TaskPriority.MEDIUM, null);
+        OffsetDateTime fireAt = now.plusHours(2);
+
+        service.createStandaloneReminder(userId, task, fireAt);
+
+        ArgumentCaptor<ReminderJpaEntity> captor = ArgumentCaptor.forClass(ReminderJpaEntity.class);
+        verify(reminderRepository).save(captor.capture());
+        assertThat(captor.getValue().getChainStep()).isZero();
+    }
+
+    @Test
+    void createStandaloneReminder_ordinaryTask_doesNotStartChain() {
+        var task = task(TaskPriority.MEDIUM, null);
+        OffsetDateTime fireAt = now.plusHours(2);
+
+        service.createStandaloneReminder(userId, task, fireAt);
+
+        ArgumentCaptor<ReminderJpaEntity> captor = ArgumentCaptor.forClass(ReminderJpaEntity.class);
+        verify(reminderRepository).save(captor.capture());
+        assertThat(captor.getValue().getChainStep()).isNull();
+    }
+
+    @Test
+    void planForDeadline_persistentUrgentTask_onlyMainReminderStartsChain_notTheExtraOne() {
+        OffsetDateTime deadline = now.plusDays(1);
+        var task = persistentTask(TaskPriority.URGENT, deadline);
+        when(userService.getSettings(userId)).thenReturn(settings(60, true));
+
+        service.planForDeadline(userId, task);
+
+        ArgumentCaptor<ReminderJpaEntity> captor = ArgumentCaptor.forClass(ReminderJpaEntity.class);
+        verify(reminderRepository, times(2)).save(captor.capture());
+        long chainStarts = captor.getAllValues().stream().filter(r -> r.getChainStep() != null).count();
+        assertThat(chainStarts).isEqualTo(1);
+    }
+
+    // --- Б2: точка решения — отложить ---
+
+    @Test
+    void snoozeReminder_marksSnoozedAndSchedulesNextAtChosenTime_keepingSameChainStep() {
+        UUID taskId = UUID.randomUUID();
+        UUID reminderId = UUID.randomUUID();
+        var task = persistentTask(TaskPriority.MEDIUM, null);
+        var reminder = new ReminderJpaEntity();
+        reminder.setTask(task);
+        reminder.setStatus(ReminderStatus.PENDING);
+        reminder.setChainStep(1);
+        when(reminderRepository.findByIdAndTaskId(reminderId, taskId)).thenReturn(Optional.of(reminder));
+        OffsetDateTime until = now.plusMinutes(30);
+
+        service.snoozeReminder(taskId, reminderId, until);
+
+        assertThat(reminder.getStatus()).isEqualTo(ReminderStatus.SNOOZED);
+        verify(notificationService).cancelReminderNotifications(reminderId);
+
+        ArgumentCaptor<ReminderJpaEntity> captor = ArgumentCaptor.forClass(ReminderJpaEntity.class);
+        // save(reminder) для самого отложенного + save(next) для нового — 2 вызова.
+        verify(reminderRepository, times(2)).save(captor.capture());
+        var next = captor.getAllValues().get(1);
+        assertThat(next.getFireAt()).isEqualTo(until);
+        assertThat(next.getChainStep()).isEqualTo(1);
+    }
+
+    // --- Б1/Б4: снятие флага гасит только цепочку ---
+
+    @Test
+    void cancelPersistentChain_cancelsOnlyChainTaggedPendingReminders_leavesOrdinaryOnesAlone() {
+        UUID taskId = UUID.randomUUID();
+        var chainReminder = new ReminderJpaEntity();
+        chainReminder.setId(UUID.randomUUID());
+        chainReminder.setStatus(ReminderStatus.PENDING);
+        chainReminder.setChainStep(2);
+        var ordinaryReminder = new ReminderJpaEntity();
+        ordinaryReminder.setId(UUID.randomUUID());
+        ordinaryReminder.setStatus(ReminderStatus.PENDING);
+        ordinaryReminder.setChainStep(null);
+        when(reminderRepository.findByTaskIdAndStatusOrderByFireAtAsc(taskId, ReminderStatus.PENDING))
+                .thenReturn(List.of(chainReminder, ordinaryReminder));
+
+        service.cancelPersistentChain(taskId);
+
+        assertThat(chainReminder.getStatus()).isEqualTo(ReminderStatus.CANCELLED);
+        assertThat(ordinaryReminder.getStatus()).isEqualTo(ReminderStatus.PENDING);
+        verify(reminderRepository, never()).save(ordinaryReminder);
+        verify(notificationService).cancelReminderNotifications(chainReminder.getId());
+        verify(notificationService, never()).cancelReminderNotifications(ordinaryReminder.getId());
+    }
+
+    // --- Б3: затухание — конечное число автоматических повторов, промежутки растут ---
+
+    @Test
+    void advancePersistentChains_dueReminder_dismissesItAndSchedulesNextWithGrowingGap() {
+        var task = persistentTask(TaskPriority.MEDIUM, null);
+        var due = new ReminderJpaEntity();
+        due.setId(UUID.randomUUID());
+        due.setTask(task);
+        due.setStatus(ReminderStatus.PENDING);
+        due.setChainStep(0);
+        due.setFireAt(now.minusMinutes(1));
+        when(reminderRepository.findByStatusAndChainStepIsNotNullAndFireAtBefore(ReminderStatus.PENDING, now))
+                .thenReturn(List.of(due));
+
+        service.advancePersistentChains(now);
+
+        assertThat(due.getStatus()).isEqualTo(ReminderStatus.DISMISSED);
+        verify(notificationService).cancelReminderNotifications(due.getId());
+
+        ArgumentCaptor<ReminderJpaEntity> captor = ArgumentCaptor.forClass(ReminderJpaEntity.class);
+        verify(reminderRepository, times(2)).save(captor.capture());
+        var next = captor.getAllValues().get(1);
+        assertThat(next.getChainStep()).isEqualTo(1);
+        assertThat(next.getFireAt()).isEqualTo(due.getFireAt().plusMinutes(15));
+    }
+
+    @Test
+    void advancePersistentChains_lastStepDue_dismissesAndDoesNotScheduleFurther() {
+        var task = persistentTask(TaskPriority.MEDIUM, null);
+        var lastStep = new ReminderJpaEntity();
+        lastStep.setId(UUID.randomUUID());
+        lastStep.setTask(task);
+        lastStep.setStatus(ReminderStatus.PENDING);
+        lastStep.setChainStep(3); // после трёх автоматических шагов запас исчерпан
+        lastStep.setFireAt(now.minusMinutes(1));
+        when(reminderRepository.findByStatusAndChainStepIsNotNullAndFireAtBefore(ReminderStatus.PENDING, now))
+                .thenReturn(List.of(lastStep));
+
+        service.advancePersistentChains(now);
+
+        assertThat(lastStep.getStatus()).isEqualTo(ReminderStatus.DISMISSED);
+        verify(reminderRepository, times(1)).save(any());
+        verify(notificationService, never()).scheduleReminder(any(), any(), any(), any(), any(), any());
     }
 }

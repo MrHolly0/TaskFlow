@@ -48,6 +48,13 @@ public interface TaskService {
      */
     void cancelReminder(UUID userId, UUID taskId, UUID reminderId);
 
+    /**
+     * Точка решения по настойчивому повтору (Б2) — «отложить на срок»:
+     * данный повтор помечается отложенным, следующий появляется в выбранное
+     * время. Автоматический запас повторов (Б3) не расходует.
+     */
+    void snoozeReminder(UUID userId, UUID taskId, UUID reminderId, OffsetDateTime until);
+
     void delete(UUID userId, UUID taskId);
 
     /**

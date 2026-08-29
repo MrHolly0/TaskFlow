@@ -23,6 +23,7 @@ public interface TaskMapper {
     }
 
     @Mapping(target = "status", expression = "java(entity.getStatus().name())")
+    @Mapping(target = "persistent", expression = "java(entity.getChainStep() != null)")
     ReminderResponse toReminderResponse(ReminderJpaEntity entity);
 
     List<ReminderResponse> toReminderResponses(List<ReminderJpaEntity> entities);

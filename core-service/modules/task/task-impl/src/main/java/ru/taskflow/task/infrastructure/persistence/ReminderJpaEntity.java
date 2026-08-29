@@ -38,6 +38,12 @@ public class ReminderJpaEntity {
     @Column(name = "created_at")
     private OffsetDateTime createdAt;
 
+    // Настойчивость (Б2/Б3) — null у обычного напоминания. 0 — первый повтор
+    // цепочки, дальше растёт на каждом автоматическом шаге (не на снятом
+    // вручную "отложить" — снятие не тратит конечный запас повторов).
+    @Column(name = "chain_step")
+    private Integer chainStep;
+
     @PrePersist
     void prePersist() {
         if (createdAt == null) {

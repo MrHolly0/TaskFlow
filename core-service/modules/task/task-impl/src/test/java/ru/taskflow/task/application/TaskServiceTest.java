@@ -131,6 +131,52 @@ class TaskServiceTest {
         assertThat(existing.isPersistentReminder()).isTrue();
     }
 
+    // Б1/Б4: снятие флага гасит цепочку — только когда флаг реально был
+    // включён и его явно выключают, а не при любом обновлении задачи.
+    @Test
+    void update_turningPersistenceOff_cancelsPersistentChain() {
+        var existing = taskEntity();
+        existing.setId(taskId);
+        existing.setPersistentReminder(true);
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(existing));
+        when(taskRepository.save(existing)).thenReturn(existing);
+        when(taskMapper.toResponse(existing)).thenReturn(mockResponse(taskId, "задача"));
+        var request = new UpdateTaskRequest(null, null, null, null, null, null, null, null, null, null, null, false);
+
+        taskService.update(userId, taskId, request);
+
+        assertThat(existing.isPersistentReminder()).isFalse();
+        verify(taskReminderService).cancelPersistentChain(taskId);
+    }
+
+    @Test
+    void update_withoutTouchingPersistentReminder_doesNotCancelChain() {
+        var existing = taskEntity();
+        existing.setId(taskId);
+        existing.setPersistentReminder(true);
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(existing));
+        when(taskRepository.save(existing)).thenReturn(existing);
+        when(taskMapper.toResponse(existing)).thenReturn(mockResponse(taskId, "задача"));
+        var request = new UpdateTaskRequest("новое название", null, null, null, null, null, null, null, null, null,
+                null, null);
+
+        taskService.update(userId, taskId, request);
+
+        assertThat(existing.isPersistentReminder()).isTrue();
+        verify(taskReminderService, never()).cancelPersistentChain(any());
+    }
+
+    @Test
+    void snoozeReminder_delegatesToTaskReminderService() {
+        UUID reminderId = UUID.randomUUID();
+        OffsetDateTime until = OffsetDateTime.parse("2026-08-30T09:00:00Z");
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(taskEntity()));
+
+        taskService.snoozeReminder(userId, taskId, reminderId, until);
+
+        verify(taskReminderService).snoozeReminder(taskId, reminderId, until);
+    }
+
     @Test
     void create_delegatesReminderPlanningToTaskReminderService() {
         // Что именно решается (планировать ли, когда, сколько) — забота

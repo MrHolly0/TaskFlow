@@ -69,3 +69,5 @@ databaseChangeLog:
       file: db/changelog/034-task-focus-review-rhythm.yaml
   - include:
       file: db/changelog/035-task-persistent-reminder.yaml
+  - include:
+      file: db/changelog/036-reminder-persistence-chain.yaml

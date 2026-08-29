@@ -15,7 +15,9 @@ import ru.taskflow.user.api.UserService;
 import ru.taskflow.user.api.dto.UserSettingsDto;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -35,6 +37,16 @@ public class TaskReminderService {
     // отдельного поля под этот отступ в UserSettingsDto нет, urgentExtraReminder
     // только включает/выключает саму идею дополнительного напоминания.
     private static final int URGENT_EXTRA_MINUTES = 15;
+
+    // Настойчивость (Б3, затухание): три автоматических шага после исходного
+    // напоминания, промежутки растут — 15 минут, час, четыре часа. Дальше
+    // молчим: §1.5 предупреждает про внешнюю зависимость вместо привычки,
+    // цель — чтобы человек справлялся, а не чтобы не мог без нас. Снятое
+    // вручную «отложить» этот запас не тратит — считаются только шаги,
+    // которые сработали без решения человека.
+    private static final List<Duration> CHAIN_STEP_GAPS = List.of(
+            Duration.ofMinutes(15), Duration.ofHours(1), Duration.ofHours(4)
+    );
 
     private final ReminderRepository reminderRepository;
     private final NotificationService notificationService;
@@ -62,12 +74,14 @@ public class TaskReminderService {
 
         UserSettingsDto settings = userService.getSettings(userId);
         OffsetDateTime fireAt = clampToDeadline(deadline.minusMinutes(settings.defaultReminderMinutes()), deadline, now);
-        createReminder(userId, task, fireAt, deadline);
+        createReminder(userId, task, fireAt, deadline, chainStartOrNull(task));
 
         if (task.getPriority() == TaskPriority.URGENT && settings.urgentExtraReminder()) {
             OffsetDateTime urgentFireAt = clampToDeadline(deadline.minusMinutes(URGENT_EXTRA_MINUTES), deadline, now);
             if (!urgentFireAt.isEqual(fireAt)) {
-                createReminder(userId, task, urgentFireAt, deadline);
+                // Не отдельная вторая цепочка на той же задаче — только основное
+                // напоминание запускает настойчивость (Б2).
+                createReminder(userId, task, urgentFireAt, deadline, null);
             }
         }
     }
@@ -78,7 +92,73 @@ public class TaskReminderService {
      */
     @Transactional
     public void createStandaloneReminder(UUID userId, TaskJpaEntity task, OffsetDateTime fireAt) {
-        createReminder(userId, task, fireAt, null);
+        createReminder(userId, task, fireAt, null, chainStartOrNull(task));
+    }
+
+    private Integer chainStartOrNull(TaskJpaEntity task) {
+        return task.isPersistentReminder() ? 0 : null;
+    }
+
+    /**
+     * Пользователь отложил конкретный повтор цепочки на выбранный срок (Б2) —
+     * точка решения, а не автоматический шаг: запас автоматических повторов
+     * (Б3) не тратится, chainStep у новой строки тот же, что у отложенной.
+     */
+    @Transactional
+    public void snoozeReminder(UUID taskId, UUID reminderId, OffsetDateTime until) {
+        var reminder = reminderRepository.findByIdAndTaskId(reminderId, taskId)
+                .orElseThrow(() -> new ReminderNotFoundException(reminderId));
+        reminder.setStatus(ReminderStatus.SNOOZED);
+        reminderRepository.save(reminder);
+        notificationService.cancelReminderNotifications(reminderId);
+
+        TaskJpaEntity task = reminder.getTask();
+        createReminder(task.getUserId(), task, until, task.getDeadline(), reminder.getChainStep());
+    }
+
+    /**
+     * Снятие флага настойчивости (Б1/Б4) — гасит только ещё не сработавшие
+     * повторы цепочки, обычные напоминания той же задачи не трогает. Уведомления
+     * отменяются по id каждого затронутого напоминания отдельно, не задачи целиком
+     * (cancelTaskNotifications), иначе задело бы и обычные напоминания той же задачи.
+     */
+    @Transactional
+    public void cancelPersistentChain(UUID taskId) {
+        var pendingChainReminders = reminderRepository
+                .findByTaskIdAndStatusOrderByFireAtAsc(taskId, ReminderStatus.PENDING)
+                .stream()
+                .filter(r -> r.getChainStep() != null)
+                .toList();
+        for (var reminder : pendingChainReminders) {
+            reminder.setStatus(ReminderStatus.CANCELLED);
+            reminderRepository.save(reminder);
+            notificationService.cancelReminderNotifications(reminder.getId());
+        }
+    }
+
+    /**
+     * Автоматический шаг цепочки (Б3) — вызывается планировщиком, не
+     * человеком: повтор, время которого настало без решения (иначе статус
+     * уже не PENDING), помечается DISMISSED, и если запас шагов
+     * (CHAIN_STEP_GAPS) не исчерпан, создаётся следующий с растущим
+     * промежутком. Иначе цепочка тихо заканчивается — новых повторов нет.
+     */
+    @Transactional
+    public void advancePersistentChains(OffsetDateTime now) {
+        List<ReminderJpaEntity> due = reminderRepository
+                .findByStatusAndChainStepIsNotNullAndFireAtBefore(ReminderStatus.PENDING, now);
+        for (ReminderJpaEntity reminder : due) {
+            reminder.setStatus(ReminderStatus.DISMISSED);
+            reminderRepository.save(reminder);
+            notificationService.cancelReminderNotifications(reminder.getId());
+
+            int step = reminder.getChainStep();
+            if (step < CHAIN_STEP_GAPS.size()) {
+                TaskJpaEntity task = reminder.getTask();
+                OffsetDateTime nextFireAt = reminder.getFireAt().plus(CHAIN_STEP_GAPS.get(step));
+                createReminder(task.getUserId(), task, nextFireAt, task.getDeadline(), step + 1);
+            }
+        }
     }
 
     /**
@@ -113,11 +193,13 @@ public class TaskReminderService {
         return computedFireAt.isBefore(now) ? deadline : computedFireAt;
     }
 
-    private void createReminder(UUID userId, TaskJpaEntity task, OffsetDateTime fireAt, OffsetDateTime deadlineForDisplay) {
+    private void createReminder(UUID userId, TaskJpaEntity task, OffsetDateTime fireAt,
+                                 OffsetDateTime deadlineForDisplay, Integer chainStep) {
         var reminder = new ReminderJpaEntity();
         reminder.setTask(task);
         reminder.setFireAt(fireAt);
         reminder.setStatus(ReminderStatus.PENDING);
+        reminder.setChainStep(chainStep);
         reminderRepository.save(reminder);
         notificationService.scheduleReminder(userId, task.getId(), reminder.getId(), task.getTitle(), fireAt, deadlineForDisplay);
     }

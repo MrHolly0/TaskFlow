@@ -302,11 +302,18 @@ public class TaskServiceImpl implements TaskService {
             task.setTags(resolveOrCreateTags(userId, request.tags()));
         }
 
+        // Б1/Б4: снятие флага гасит только запланированные повторы цепочки —
+        // обычные напоминания той же задачи (chainStep == null) не трогает.
+        boolean turningPersistenceOff = request.persistentReminder() != null
+                && !request.persistentReminder() && task.isPersistentReminder();
         if (request.persistentReminder() != null) {
             task.setPersistentReminder(request.persistentReminder());
         }
 
         TaskJpaEntity updatedTask = taskRepository.save(task);
+        if (turningPersistenceOff) {
+            taskReminderService.cancelPersistentChain(taskId);
+        }
 
         if (groupRequested) {
             UUID newGroupId = updatedTask.getGroup() != null ? updatedTask.getGroup().getId() : null;
@@ -800,6 +807,14 @@ public class TaskServiceImpl implements TaskService {
         taskRepository.findByIdAndUserId(taskId, userId)
                 .orElseThrow(() -> new TaskNotFoundException(taskId));
         taskReminderService.cancelReminder(taskId, reminderId);
+    }
+
+    @Override
+    @Transactional
+    public void snoozeReminder(UUID userId, UUID taskId, UUID reminderId, OffsetDateTime until) {
+        taskRepository.findByIdAndUserId(taskId, userId)
+                .orElseThrow(() -> new TaskNotFoundException(taskId));
+        taskReminderService.snoozeReminder(taskId, reminderId, until);
     }
 
     @Override

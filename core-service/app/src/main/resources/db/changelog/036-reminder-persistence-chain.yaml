@@ -1,0 +1,17 @@
+databaseChangeLog:
+  - changeSet:
+      id: 036-reminder-persistence-chain
+      author: taskflow
+      comment: >
+        Настойчивость (docs/vkr/исследование-напоминания.md, §3.3): шаг в
+        цепочке настойчивых повторов — null у обычного напоминания. Отдельно
+        от status — chainStep отличает "часть цепочки" от "обычное", а
+        SNOOZED/DISMISSED (расширение ReminderStatus) отличают, чем закончился
+        конкретный повтор.
+      changes:
+        - addColumn:
+            tableName: reminders
+            columns:
+              - column:
+                  name: chain_step
+                  type: integer
