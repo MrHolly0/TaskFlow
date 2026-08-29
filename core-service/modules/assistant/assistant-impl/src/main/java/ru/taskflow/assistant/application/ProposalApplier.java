@@ -62,7 +62,8 @@ public class ProposalApplier {
         for (ProposalActionJpaEntity action : accepted) {
             if (applyOne(userId, proposal, action)) {
                 appliedCount++;
-                outcomes.add(new ActionOutcome(action.getOrdinal(), action.getSummary(), true, null));
+                outcomes.add(new ActionOutcome(action.getOrdinal(), action.getSummary(), true, null,
+                        action.getAppliedTaskId()));
             } else {
                 outcomes.add(new ActionOutcome(action.getOrdinal(), action.getSummary(), false, action.getApplyError()));
             }

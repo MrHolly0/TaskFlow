@@ -8,6 +8,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import ru.taskflow.assistant.api.AssistantActionType;
 import ru.taskflow.assistant.api.ProposalStatus;
+import ru.taskflow.assistant.api.dto.ActionOutcome;
 import ru.taskflow.assistant.api.dto.ApplyResult;
 import ru.taskflow.assistant.infrastructure.persistence.ProposalActionJpaEntity;
 import ru.taskflow.assistant.infrastructure.persistence.ProposalJpaEntity;
@@ -117,6 +118,11 @@ class ProposalApplierTest {
         assertThat(a1.getAppliedTaskId()).isEqualTo(createdId);
         assertThat(a2.getAppliedTaskId()).isEqualTo(t1);
         assertThat(a3.getAppliedTaskId()).isEqualTo(t2);
+        // Не только на сущности действия — интерфейсу после подтверждения
+        // нужно сослаться на затронутую задачу через сам ApplyResult
+        // (например, включить настойчивость только что созданной задаче).
+        assertThat(result.outcomes()).extracting(ActionOutcome::taskId)
+                .containsExactly(createdId, t1, t2);
     }
 
     @Test
