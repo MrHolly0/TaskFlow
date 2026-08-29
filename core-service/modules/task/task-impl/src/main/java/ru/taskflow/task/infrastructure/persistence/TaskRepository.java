@@ -144,7 +144,7 @@ public interface TaskRepository extends JpaRepository<TaskJpaEntity, UUID> {
             ORDER BY CASE t.priority
               WHEN 'URGENT' THEN 0
               WHEN 'HIGH' THEN 1
-              WHEN 'NORMAL' THEN 2
+              WHEN 'MEDIUM' THEN 2
               ELSE 3
             END,
             t.createdAt DESC
