@@ -73,6 +73,11 @@ public class TaskJpaEntity {
     @Column(name = "last_shown_in_focus_at")
     private OffsetDateTime lastShownInFocusAt;
 
+    // Настойчивость по задаче (Б1) — ставит человек, в карточке задачи или
+    // предложения; модель это поле не предлагает и не читает.
+    @Column(name = "persistent_reminder", nullable = false)
+    private boolean persistentReminder = false;
+
     @Column(name = "estimate_minutes")
     private Integer estimateMinutes;
 

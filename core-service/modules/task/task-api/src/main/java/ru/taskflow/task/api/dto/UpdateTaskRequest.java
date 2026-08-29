@@ -19,17 +19,29 @@ public record UpdateTaskRequest(
         List<String> tags,
         Integer estimateMinutes,
         OffsetDateTime plannedDate,
-        RecurrenceRule recurrence
+        RecurrenceRule recurrence,
+        // Б1: null — не трогать; true/false — включить/выключить настойчивость.
+        // Выключение отдельно гасит запланированные повторы (TaskServiceImpl.update).
+        Boolean persistentReminder
 ) {
     public UpdateTaskRequest(String title, String description, TaskPriority priority, TaskStatus status,
             OffsetDateTime deadline, UUID groupId, String groupName, List<String> tags, Integer estimateMinutes) {
-        this(title, description, priority, status, deadline, groupId, groupName, tags, estimateMinutes, null, null);
+        this(title, description, priority, status, deadline, groupId, groupName, tags, estimateMinutes, null, null,
+                null);
     }
 
     public UpdateTaskRequest(String title, String description, TaskPriority priority, TaskStatus status,
             OffsetDateTime deadline, UUID groupId, String groupName, List<String> tags, Integer estimateMinutes,
             OffsetDateTime plannedDate) {
         this(title, description, priority, status, deadline, groupId, groupName, tags, estimateMinutes, plannedDate,
-                null);
+                null, null);
+    }
+
+    // Совместимость: до Б1 канонический вид заканчивался на recurrence.
+    public UpdateTaskRequest(String title, String description, TaskPriority priority, TaskStatus status,
+            OffsetDateTime deadline, UUID groupId, String groupName, List<String> tags, Integer estimateMinutes,
+            OffsetDateTime plannedDate, RecurrenceRule recurrence) {
+        this(title, description, priority, status, deadline, groupId, groupName, tags, estimateMinutes, plannedDate,
+                recurrence, null);
     }
 }

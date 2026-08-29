@@ -19,7 +19,10 @@ public record CreateTaskRequest(
         List<String> tags,
         Integer estimateMinutes,
         TaskSource source,
-        RecurrenceRule recurrence
+        RecurrenceRule recurrence,
+        // Б1: настойчивость по задаче — ставит человек. По умолчанию выключена,
+        // как и на TaskJpaEntity.
+        boolean persistentReminder
 ) {
     public CreateTaskRequest {
         if (priority == null) priority = TaskPriority.MEDIUM;
@@ -29,6 +32,14 @@ public record CreateTaskRequest(
 
     public CreateTaskRequest(String title, String description, TaskPriority priority, OffsetDateTime deadline,
             UUID groupId, String groupName, List<String> tags, Integer estimateMinutes, TaskSource source) {
-        this(title, description, priority, deadline, groupId, groupName, tags, estimateMinutes, source, null);
+        this(title, description, priority, deadline, groupId, groupName, tags, estimateMinutes, source, null, false);
+    }
+
+    // Совместимость: до Б1 канонический вид заканчивался на recurrence.
+    public CreateTaskRequest(String title, String description, TaskPriority priority, OffsetDateTime deadline,
+            UUID groupId, String groupName, List<String> tags, Integer estimateMinutes, TaskSource source,
+            RecurrenceRule recurrence) {
+        this(title, description, priority, deadline, groupId, groupName, tags, estimateMinutes, source, recurrence,
+                false);
     }
 }

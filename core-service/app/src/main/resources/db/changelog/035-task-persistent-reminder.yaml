@@ -1,0 +1,18 @@
+databaseChangeLog:
+  - changeSet:
+      id: 035-task-persistent-reminder
+      author: taskflow
+      comment: >
+        Настойчивость по задаче (docs/vkr/исследование-напоминания.md, §3.3):
+        флаг ставит человек — в карточке задачи или в карточке предложения,
+        модель его не предлагает (итоги-эксперимента-2.md, прогоны 4-7).
+      changes:
+        - addColumn:
+            tableName: tasks
+            columns:
+              - column:
+                  name: persistent_reminder
+                  type: boolean
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false

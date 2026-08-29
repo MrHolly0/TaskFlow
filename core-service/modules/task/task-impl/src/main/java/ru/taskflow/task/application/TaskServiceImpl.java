@@ -94,6 +94,7 @@ public class TaskServiceImpl implements TaskService {
         task.setDeadline(request.deadline());
         task.setEstimateMinutes(request.estimateMinutes());
         task.setSource(request.source());
+        task.setPersistentReminder(request.persistentReminder());
 
         task.setGroup(resolveGroup(userId, request.groupId(), request.groupName()));
 
@@ -180,7 +181,7 @@ public class TaskServiceImpl implements TaskService {
                 response.status(), response.deadline(), response.plannedDate(), response.estimateMinutes(),
                 response.source(), response.groupId(), response.groupName(), response.tags(), response.createdAt(),
                 response.updatedAt(), response.completedAt(), reminders, response.startedAt(),
-                response.plannedDateSetAt(), response.recurrence());
+                response.plannedDateSetAt(), response.recurrence(), response.persistentReminder());
     }
 
     private TaskResponse withRecurrence(TaskResponse response, RecurrenceRule recurrence) {
@@ -188,7 +189,7 @@ public class TaskServiceImpl implements TaskService {
                 response.status(), response.deadline(), response.plannedDate(), response.estimateMinutes(),
                 response.source(), response.groupId(), response.groupName(), response.tags(), response.createdAt(),
                 response.updatedAt(), response.completedAt(), response.reminders(), response.startedAt(),
-                response.plannedDateSetAt(), recurrence);
+                response.plannedDateSetAt(), recurrence, response.persistentReminder());
     }
 
     private static final int MAX_DAY_OF_MONTH = 31;
@@ -299,6 +300,10 @@ public class TaskServiceImpl implements TaskService {
 
         if (request.tags() != null) {
             task.setTags(resolveOrCreateTags(userId, request.tags()));
+        }
+
+        if (request.persistentReminder() != null) {
+            task.setPersistentReminder(request.persistentReminder());
         }
 
         TaskJpaEntity updatedTask = taskRepository.save(task);
@@ -754,6 +759,7 @@ public class TaskServiceImpl implements TaskService {
         task.setEstimateMinutes(request.estimateMinutes());
         task.setSource(request.source());
         task.setStatus(TaskStatus.TODO);
+        task.setPersistentReminder(request.persistentReminder());
 
         task.setGroup(resolveGroup(userId, request.groupId(), request.groupName()));
 

@@ -102,6 +102,35 @@ class TaskServiceTest {
         verify(taskRepository).save(any(TaskJpaEntity.class));
     }
 
+    // Б1: настойчивость ставит человек, через обычный запрос создания/правки —
+    // модель это поле не видит (контур ассистента не участвует).
+    @Test
+    void create_setsPersistentReminderFromRequest() {
+        var request = new CreateTaskRequest("принять лекарство", null, null, null, null, null, List.of(), null,
+                null, null, true);
+        ArgumentCaptor<TaskJpaEntity> captor = ArgumentCaptor.forClass(TaskJpaEntity.class);
+        when(taskRepository.save(captor.capture())).thenReturn(taskEntity());
+        when(taskMapper.toResponse(any())).thenReturn(mockResponse(taskId, "принять лекарство"));
+
+        taskService.create(userId, request);
+
+        assertThat(captor.getValue().isPersistentReminder()).isTrue();
+    }
+
+    @Test
+    void update_setsPersistentReminderFlag() {
+        var existing = taskEntity();
+        existing.setId(taskId);
+        when(taskRepository.findByIdAndUserId(taskId, userId)).thenReturn(Optional.of(existing));
+        when(taskRepository.save(existing)).thenReturn(existing);
+        when(taskMapper.toResponse(existing)).thenReturn(mockResponse(taskId, "задача"));
+        var request = new UpdateTaskRequest(null, null, null, null, null, null, null, null, null, null, null, true);
+
+        taskService.update(userId, taskId, request);
+
+        assertThat(existing.isPersistentReminder()).isTrue();
+    }
+
     @Test
     void create_delegatesReminderPlanningToTaskReminderService() {
         // Что именно решается (планировать ли, когда, сколько) — забота

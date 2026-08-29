@@ -27,14 +27,16 @@ public record TaskResponse(
         List<ReminderResponse> reminders,
         OffsetDateTime startedAt,
         OffsetDateTime plannedDateSetAt,
-        RecurrenceRule recurrence
+        RecurrenceRule recurrence,
+        // Б1: настойчивость по задаче — ставит человек, см. TaskJpaEntity.persistentReminder.
+        boolean persistentReminder
 ) {
     public TaskResponse(UUID id, String title, String description, TaskPriority priority, TaskStatus status,
             OffsetDateTime deadline, Integer estimateMinutes, TaskSource source, UUID groupId, String groupName,
             List<String> tags, OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime completedAt,
             List<ReminderResponse> reminders) {
         this(id, title, description, priority, status, deadline, null, estimateMinutes, source, groupId, groupName,
-                tags, createdAt, updatedAt, completedAt, reminders, null, null, null);
+                tags, createdAt, updatedAt, completedAt, reminders, null, null, null, false);
     }
 
     public TaskResponse(UUID id, String title, String description, TaskPriority priority, TaskStatus status,
@@ -42,7 +44,7 @@ public record TaskResponse(
             UUID groupId, String groupName, List<String> tags, OffsetDateTime createdAt, OffsetDateTime updatedAt,
             OffsetDateTime completedAt, List<ReminderResponse> reminders) {
         this(id, title, description, priority, status, deadline, plannedDate, estimateMinutes, source, groupId,
-                groupName, tags, createdAt, updatedAt, completedAt, reminders, null, null, null);
+                groupName, tags, createdAt, updatedAt, completedAt, reminders, null, null, null, false);
     }
 
     public TaskResponse(UUID id, String title, String description, TaskPriority priority, TaskStatus status,
@@ -51,6 +53,18 @@ public record TaskResponse(
             OffsetDateTime completedAt, List<ReminderResponse> reminders, OffsetDateTime startedAt,
             OffsetDateTime plannedDateSetAt) {
         this(id, title, description, priority, status, deadline, plannedDate, estimateMinutes, source, groupId,
-                groupName, tags, createdAt, updatedAt, completedAt, reminders, startedAt, plannedDateSetAt, null);
+                groupName, tags, createdAt, updatedAt, completedAt, reminders, startedAt, plannedDateSetAt, null,
+                false);
+    }
+
+    // Совместимость: до Б1 (настойчивость) канонический вид заканчивался на recurrence.
+    public TaskResponse(UUID id, String title, String description, TaskPriority priority, TaskStatus status,
+            OffsetDateTime deadline, OffsetDateTime plannedDate, Integer estimateMinutes, TaskSource source,
+            UUID groupId, String groupName, List<String> tags, OffsetDateTime createdAt, OffsetDateTime updatedAt,
+            OffsetDateTime completedAt, List<ReminderResponse> reminders, OffsetDateTime startedAt,
+            OffsetDateTime plannedDateSetAt, RecurrenceRule recurrence) {
+        this(id, title, description, priority, status, deadline, plannedDate, estimateMinutes, source, groupId,
+                groupName, tags, createdAt, updatedAt, completedAt, reminders, startedAt, plannedDateSetAt,
+                recurrence, false);
     }
 }
