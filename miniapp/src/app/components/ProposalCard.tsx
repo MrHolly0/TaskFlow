@@ -202,12 +202,24 @@ export function ProposalCard({
   onSelect: (ordinal: number) => void;
   onReminderChange: (ordinal: number, reminderAt: string | null) => void;
   onPlannedDateChange: (ordinal: number, plannedDate: string | null) => void;
-  onApply: () => void;
+  onApply: (persistentOrdinals: number[]) => void;
   onReject: () => void;
   applying: boolean;
   rejecting: boolean;
   className?: string;
 }) {
+  // Б1: настойчивость ставит человек — галочка тут же, в карточке
+  // подтверждения, не отдельным заходом в карточку задачи после создания.
+  // Модель этого поля не видит: чисто локальное состояние до "Применить".
+  const [persistentOrdinals, setPersistentOrdinals] = useState<Set<number>>(new Set());
+  const togglePersistent = (ordinal: number, checked: boolean) => {
+    setPersistentOrdinals((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(ordinal); else next.delete(ordinal);
+      return next;
+    });
+  };
+  const applyWithPersistent = () => onApply(Array.from(persistentOrdinals));
   const isDegraded = proposal.status === 'FAILED' && !proposal.id;
   const isClarification = !proposal.actions.length && !!proposal.clarification && !isDegraded;
 
@@ -264,7 +276,7 @@ export function ProposalCard({
           ))}
         </div>
         <div className="flex gap-2 pt-1">
-          <Button size="sm" onClick={onApply} disabled={applying || rejecting} className="flex-1 gap-1.5">
+          <Button size="sm" onClick={applyWithPersistent} disabled={applying || rejecting} className="flex-1 gap-1.5">
             <IconCheck className="h-3.5 w-3.5" />
             Применить
           </Button>
@@ -307,13 +319,22 @@ export function ProposalCard({
                   onChange={(plannedDate) => onPlannedDateChange(action.ordinal, plannedDate)}
                   disabled={applying || rejecting}
                 />
+                <label className="ml-6 mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={persistentOrdinals.has(action.ordinal)}
+                    onChange={(e) => togglePersistent(action.ordinal, e.target.checked)}
+                    className="flex-shrink-0"
+                  />
+                  напоминать настойчиво, пока не отмечу
+                </label>
               </>
             )}
           </div>
         ))}
       </div>
       <div className="flex gap-2 pt-1">
-        <Button size="sm" onClick={onApply} disabled={applying || rejecting} className="flex-1 gap-1.5">
+        <Button size="sm" onClick={applyWithPersistent} disabled={applying || rejecting} className="flex-1 gap-1.5">
           <IconCheck className="h-3.5 w-3.5" />
           Применить
         </Button>

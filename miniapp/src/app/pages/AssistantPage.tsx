@@ -12,6 +12,7 @@ import {
   Proposal,
   ApplyResult,
 } from '@/lib/hooks/useAssistant';
+import { useUpdateTask } from '@/lib/hooks/useTasks';
 import { useEffectiveVoiceMode } from '@/lib/hooks/useVoiceMode';
 import { useVoiceRecording } from '@/lib/hooks/useVoiceRecording';
 import { ProposalCard } from '@/app/components/ProposalCard';
@@ -58,6 +59,7 @@ export function AssistantPage() {
   const updateActionPlannedDate = useUpdateActionPlannedDate();
   const applyProposal = useApplyProposal();
   const rejectProposal = useRejectProposal();
+  const updateTask = useUpdateTask();
   const voiceMode = useEffectiveVoiceMode();
   const recording = useVoiceRecording(voiceMode, (file) => send({ file }));
 
@@ -127,10 +129,21 @@ export function AssistantPage() {
     );
   };
 
-  const apply = (proposal: Proposal, localId: string) => {
+  const apply = (proposal: Proposal, localId: string, persistentOrdinals: number[]) => {
     if (!proposal.id) return;
     applyProposal.mutate(proposal.id, {
-      onSuccess: (result) => replaceEntry(localId, { kind: 'applied', result, localId }),
+      onSuccess: (result) => {
+        replaceEntry(localId, { kind: 'applied', result, localId });
+        // Б1: галочка «настойчиво» из карточки предложения применяется
+        // здесь, отдельным вызовом, а не как часть самого действия — модель
+        // это поле не видит, оно ставится только что созданной задаче,
+        // о чьём id мы узнаём только сейчас, из результата apply().
+        for (const outcome of result.outcomes) {
+          if (outcome.success && outcome.taskId && persistentOrdinals.includes(outcome.ordinal)) {
+            updateTask.mutate({ id: outcome.taskId, persistentReminder: true });
+          }
+        }
+      },
       onError: () => replaceEntry(localId, { kind: 'error', message: errorMessage(undefined), localId }),
     });
   };
@@ -199,7 +212,7 @@ export function AssistantPage() {
                   onSelect={(ordinal) => selectAction(entry.proposal, entry.localId, ordinal)}
                   onReminderChange={(ordinal, reminderAt) => changeReminder(entry.proposal, entry.localId, ordinal, reminderAt)}
                   onPlannedDateChange={(ordinal, plannedDate) => changePlannedDate(entry.proposal, entry.localId, ordinal, plannedDate)}
-                  onApply={() => apply(entry.proposal, entry.localId)}
+                  onApply={(persistentOrdinals) => apply(entry.proposal, entry.localId, persistentOrdinals)}
                   onReject={() => reject(entry.proposal, entry.localId)}
                   applying={applyProposal.isPending}
                   rejecting={rejectProposal.isPending}

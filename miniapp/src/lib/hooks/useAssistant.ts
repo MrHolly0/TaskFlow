@@ -54,6 +54,7 @@ export interface ActionOutcome {
   summary: string;
   success: boolean;
   error?: string;
+  taskId?: string;
 }
 
 export interface ApplyResult {

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { IconSend, IconSparkles, IconArrowLeft, IconPaperclip, IconAlertTriangle, IconMicrophone } from '@tabler/icons-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useQuickAdd, useSetActionAccepted, useSelectAlternative, useUpdateActionReminder, useUpdateActionPlannedDate, useApplyProposal, useRejectProposal, Proposal } from '@/lib/hooks/useAssistant';
+import { useUpdateTask } from '@/lib/hooks/useTasks';
 import { useEffectiveVoiceMode } from '@/lib/hooks/useVoiceMode';
 import { useVoiceRecording } from '@/lib/hooks/useVoiceRecording';
 import { ProposalCard } from '@/app/components/ProposalCard';
@@ -44,6 +45,7 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
   const updateActionReminder = useUpdateActionReminder();
   const updateActionPlannedDate = useUpdateActionPlannedDate();
   const applyProposal = useApplyProposal();
+  const updateTask = useUpdateTask();
   const rejectProposal = useRejectProposal();
 
   const [phase, setPhase] = useState<Phase>('input');
@@ -135,10 +137,17 @@ export function QuickInputModal({ open, onClose }: QuickInputModalProps) {
     );
   };
 
-  const applyCurrent = () => {
+  const applyCurrent = (persistentOrdinals: number[]) => {
     if (!proposal?.id) return;
     applyProposal.mutate(proposal.id, {
-      onSuccess: () => closeWithSuccess('Применено!'),
+      onSuccess: (result) => {
+        closeWithSuccess('Применено!');
+        for (const outcome of result.outcomes) {
+          if (outcome.success && outcome.taskId && persistentOrdinals.includes(outcome.ordinal)) {
+            updateTask.mutate({ id: outcome.taskId, persistentReminder: true });
+          }
+        }
+      },
       onError: (err) => setError(errorMessage(err)),
     });
   };

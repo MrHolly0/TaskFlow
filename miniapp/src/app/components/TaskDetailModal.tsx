@@ -8,6 +8,7 @@ import {
   useTaskReminders,
   useAddReminder,
   useCancelReminder,
+  useSnoozeReminder,
   useClearRecurrence,
   RecurrenceRule,
 } from '@/lib/hooks/useTasks';
@@ -84,6 +85,7 @@ export interface TaskInput {
   estimatedTime?: number;
   estimateMinutes?: number;
   recurrence?: RecurrenceRule;
+  persistentReminder?: boolean;
 }
 
 interface TaskDetailModalProps {
@@ -169,18 +171,21 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
   const { timezone, isReady: timezoneReady } = useUserTimezone();
   const { data: reminders = [] } = useTaskReminders(task?.id, open);
   const { mutate: cancelReminder } = useCancelReminder();
+  const { mutate: snoozeReminder } = useSnoozeReminder();
   const { mutateAsync: clearRecurrence } = useClearRecurrence();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<Priority>('MEDIUM');
   const [status, setStatus] = useState<Status>('TODO');
+  const [persistentReminder, setPersistentReminder] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<string>('');
   const [deadlineDate, setDeadlineDate] = useState('');
   const [deadlineTime, setDeadlineTime] = useState('');
   const [estimatedTime, setEstimatedTime] = useState('');
   const [saving, setSaving] = useState(false);
   const [showAddReminder, setShowAddReminder] = useState(false);
+  const [snoozingReminderId, setSnoozingReminderId] = useState<string | null>(null);
   const [recurrenceType, setRecurrenceType] = useState(NO_RECURRENCE);
   const [recurrenceInterval, setRecurrenceInterval] = useState('1');
   const [recurrenceDays, setRecurrenceDays] = useState<string[]>([]);
@@ -190,10 +195,12 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
   useEffect(() => {
     if (task) {
       setShowAddReminder(false);
+      setSnoozingReminderId(null);
       setTitle(task.title);
       setDescription(task.description ?? '');
       setPriority((task.priority as Priority) ?? 'MEDIUM');
       setStatus((task.status as Status) ?? 'TODO');
+      setPersistentReminder(task.persistentReminder ?? false);
       const estimate = task.estimateMinutes ?? task.estimatedTime;
       setEstimatedTime(estimate ? String(estimate) : '');
       // resolve initial group id
@@ -268,6 +275,7 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
         groupId: selectedGroupId || undefined,
         estimateMinutes: estimatedTime ? parseInt(estimatedTime) : undefined,
         recurrence: buildRecurrence(),
+        persistentReminder,
       });
       onClose();
     } catch {
@@ -411,25 +419,70 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
                 </Button>
               )}
             </div>
+            {/* Настойчивость (Б1) — ставит человек, не ассистент. */}
+            <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={persistentReminder}
+                onChange={(e) => setPersistentReminder(e.target.checked)}
+                className="flex-shrink-0"
+              />
+              Напоминать настойчиво, пока не отмечу выполненной
+            </label>
             {reminders.length > 0 && (
               <div className="space-y-1.5">
                 {reminders.map((r) => (
-                  <div
-                    key={r.id}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-border/60 px-3 py-2"
-                  >
-                    <span className="text-sm flex items-center gap-1.5">
-                      <IconBell className="h-3.5 w-3.5 text-muted-foreground" />
-                      {formatReminderTime(r.fireAt, timezone)}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                      onClick={() => taskId && cancelReminder({ taskId, reminderId: r.id })}
-                    >
-                      <IconX className="h-3.5 w-3.5" />
-                    </Button>
+                  <div key={r.id} className="rounded-lg border border-border/60 px-3 py-2 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm flex items-center gap-1.5">
+                        <IconBell className="h-3.5 w-3.5 text-muted-foreground" />
+                        {formatReminderTime(r.fireAt, timezone)}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        {/* Б2: у настойчивого повтора это точка решения — предлагаем
+                            отложить, не только снять совсем. */}
+                        {r.persistent && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-muted-foreground"
+                            onClick={() => setSnoozingReminderId(snoozingReminderId === r.id ? null : r.id)}
+                          >
+                            Отложить
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => taskId && cancelReminder({ taskId, reminderId: r.id })}
+                        >
+                          <IconX className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                    {snoozingReminderId === r.id && (
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {buildReminderPresets(new Date(), timezone).map((p) => (
+                          <Button
+                            key={p.key}
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={() => {
+                              if (taskId) {
+                                snoozeReminder({ taskId, reminderId: r.id, fireAt: p.fireAt.toISOString() });
+                              }
+                              setSnoozingReminderId(null);
+                            }}
+                          >
+                            {p.label}
+                          </Button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

@@ -7,6 +7,7 @@ export interface ReminderResponse {
   id: string;
   fireAt: string;
   status: string;
+  persistent: boolean;
 }
 
 // daysOfWeek — имена значений java.time.DayOfWeek ("MONDAY".."SUNDAY"), как
@@ -39,6 +40,7 @@ interface Task {
   plannedDateSetAt?: string;
   recurrence?: RecurrenceRule;
   reminders?: ReminderResponse[];
+  persistentReminder?: boolean;
 }
 
 interface FocusResponse {
@@ -167,6 +169,7 @@ export interface CreateTaskRequest {
   groupId?: string;
   groupName?: string;
   tags?: string[];
+  persistentReminder?: boolean;
 }
 
 export interface GroupResponse {
@@ -237,6 +240,7 @@ export interface UpdateTaskRequest {
   estimateMinutes?: number | null;
   groupId?: string | null;
   recurrence?: RecurrenceRule | null;
+  persistentReminder?: boolean | null;
 }
 
 export const useUpdateTask = () => {
@@ -317,6 +321,21 @@ export const useCancelReminder = () => {
   return useMutation({
     mutationFn: async ({ taskId, reminderId }: { taskId: string; reminderId: string }) => {
       await getClient().delete(`/tasks/${taskId}/reminders/${reminderId}`);
+    },
+    onSuccess: (_data, { taskId }) => {
+      queryClient.invalidateQueries({ queryKey: ['tasks', taskId, 'reminders'] });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+};
+
+// Б2: точка решения по настойчивому повтору — «отложить на срок», а не
+// снять совсем (useCancelReminder). Автоматический запас повторов не тратит.
+export const useSnoozeReminder = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ taskId, reminderId, fireAt }: { taskId: string; reminderId: string; fireAt: string }) => {
+      await getClient().post(`/tasks/${taskId}/reminders/${reminderId}/snooze`, { fireAt });
     },
     onSuccess: (_data, { taskId }) => {
       queryClient.invalidateQueries({ queryKey: ['tasks', taskId, 'reminders'] });
