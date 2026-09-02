@@ -21,6 +21,8 @@ import ru.taskflow.task.api.TaskSource;
 import ru.taskflow.task.api.dto.TaskFilterRequest;
 import ru.taskflow.user.api.UserService;
 
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
@@ -102,5 +104,58 @@ class AssistantProposalIntegrationTest {
         assertThat(createdTask.title()).isEqualTo("Подтверждённая задача");
         assertThat(createdTask.source()).isEqualTo(TaskSource.ASSISTANT_WEB);
         assertThat(tasks).noneMatch(t -> t.title().equals("Отклонённая задача"));
+    }
+
+    /**
+     * После отката f207832 модель день исполнения не предлагает — это
+     * правка человека в карточке подтверждения, тот же путь, что и у
+     * напоминания (updateActionPlannedDate, не контур). Юнит-тестов для
+     * этого класса дефектов уже было мало один раз: с chk_action_type
+     * подмена репозитория в юнит-тесте не поймала падение вставки, поймал
+     * только прогон на настоящем Postgres — здесь то же самое.
+     */
+    @Test
+    void apply_carriesManuallyEditedPlannedDateToCreatedTask() {
+        var userId = newUser();
+        var toolCall = new LlmToolCall("call-1", "propose_actions", """
+                {"actions":[{"type":"create","title":"Сходить к врачу"}]}
+                """);
+        when(nlpGatewayService.callWithTools(any()))
+                .thenReturn(new LlmToolResponse(List.of(toolCall), null, 400, 60, false));
+
+        var proposal = assistantService.handleText(userId, "сходить к врачу", AssistantChannel.WEB);
+        var plannedDate = OffsetDateTime.now(ZoneOffset.UTC).plusDays(3).withNano(0);
+        assistantService.updateActionPlannedDate(userId, proposal.id(), 1, plannedDate);
+
+        var result = assistantService.apply(userId, proposal.id());
+        assertThat(result.status()).isEqualTo(ProposalStatus.APPLIED);
+
+        var tasks = taskService.findAll(userId, new TaskFilterRequest(null, null, null, null), PageRequest.of(0, 20))
+                .getContent();
+        assertThat(tasks).hasSize(1);
+        var createdTask = tasks.getFirst();
+        assertThat(createdTask.plannedDate()).isEqualTo(plannedDate);
+        assertThat(createdTask.plannedDateSetAt()).isNotNull();
+    }
+
+    @Test
+    void apply_withNoPlannedDateNeeded_leavesPlannedDateEmpty() {
+        var userId = newUser();
+        var toolCall = new LlmToolCall("call-1", "propose_actions", """
+                {"actions":[{"type":"create","title":"Разобрать почту"}]}
+                """);
+        when(nlpGatewayService.callWithTools(any()))
+                .thenReturn(new LlmToolResponse(List.of(toolCall), null, 400, 60, false));
+
+        var proposal = assistantService.handleText(userId, "разобрать почту", AssistantChannel.WEB);
+        assistantService.updateActionPlannedDate(userId, proposal.id(), 1, null);
+
+        var result = assistantService.apply(userId, proposal.id());
+        assertThat(result.status()).isEqualTo(ProposalStatus.APPLIED);
+
+        var createdTask = taskService.findAll(userId, new TaskFilterRequest(null, null, null, null), PageRequest.of(0, 20))
+                .getContent().getFirst();
+        assertThat(createdTask.plannedDate()).isNull();
+        assertThat(createdTask.plannedDateSetAt()).isNull();
     }
 }
