@@ -767,6 +767,12 @@ public class TaskServiceImpl implements TaskService {
         task.setSource(request.source());
         task.setStatus(TaskStatus.TODO);
         task.setPersistentReminder(request.persistentReminder());
+        // Отдельный путь: день исполнения не трогает напоминания — они
+        // привязаны к deadline, а не к нему.
+        if (request.plannedDate() != null) {
+            task.setPlannedDate(request.plannedDate());
+            task.setPlannedDateSetAt(OffsetDateTime.now());
+        }
 
         task.setGroup(resolveGroup(userId, request.groupId(), request.groupName()));
 

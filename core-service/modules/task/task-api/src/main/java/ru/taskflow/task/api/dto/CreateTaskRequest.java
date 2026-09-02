@@ -22,7 +22,10 @@ public record CreateTaskRequest(
         RecurrenceRule recurrence,
         // Б1: настойчивость по задаче — ставит человек. По умолчанию выключена,
         // как и на TaskJpaEntity.
-        boolean persistentReminder
+        boolean persistentReminder,
+        // День исполнения — предположение, не обязательство: живёт отдельно
+        // от deadline и не участвует в планировании напоминаний.
+        OffsetDateTime plannedDate
 ) {
     public CreateTaskRequest {
         if (priority == null) priority = TaskPriority.MEDIUM;
@@ -32,7 +35,8 @@ public record CreateTaskRequest(
 
     public CreateTaskRequest(String title, String description, TaskPriority priority, OffsetDateTime deadline,
             UUID groupId, String groupName, List<String> tags, Integer estimateMinutes, TaskSource source) {
-        this(title, description, priority, deadline, groupId, groupName, tags, estimateMinutes, source, null, false);
+        this(title, description, priority, deadline, groupId, groupName, tags, estimateMinutes, source, null, false,
+                null);
     }
 
     // Совместимость: до Б1 канонический вид заканчивался на recurrence.
@@ -40,6 +44,14 @@ public record CreateTaskRequest(
             UUID groupId, String groupName, List<String> tags, Integer estimateMinutes, TaskSource source,
             RecurrenceRule recurrence) {
         this(title, description, priority, deadline, groupId, groupName, tags, estimateMinutes, source, recurrence,
-                false);
+                false, null);
+    }
+
+    // Совместимость: до дня исполнения канонический вид заканчивался на persistentReminder.
+    public CreateTaskRequest(String title, String description, TaskPriority priority, OffsetDateTime deadline,
+            UUID groupId, String groupName, List<String> tags, Integer estimateMinutes, TaskSource source,
+            RecurrenceRule recurrence, boolean persistentReminder) {
+        this(title, description, priority, deadline, groupId, groupName, tags, estimateMinutes, source, recurrence,
+                persistentReminder, null);
     }
 }
