@@ -196,6 +196,11 @@ public class ProposalApplier {
     }
 
     private UUID createTask(UUID userId, ProposalJpaEntity proposal, Map<String, Object> payload) {
+        // planned_date кладёт только правка человеком в карточке подтверждения
+        // (AssistantServiceImpl.withPlannedDate) — контур ассистента это поле
+        // не предлагает. no_planned_date_needed убирает ключ planned_date из
+        // payload, поэтому parseDeadline здесь и так вернёт null, отдельной
+        // ветки на явный отказ не нужно.
         CreateTaskRequest request = new CreateTaskRequest(
                 asString(payload.get("title")),
                 asString(payload.get("description")),
@@ -205,7 +210,10 @@ public class ProposalApplier {
                 asString(payload.get("group")),
                 asTags(payload.get("tags")),
                 null,
-                sourceOf(proposal)
+                sourceOf(proposal),
+                null,
+                false,
+                parseDeadline(payload.get("planned_date"))
         );
         TaskResponse created = taskService.createQuick(userId, request);
         // Срок задачи и время напоминания — разные вещи (В): напоминание
