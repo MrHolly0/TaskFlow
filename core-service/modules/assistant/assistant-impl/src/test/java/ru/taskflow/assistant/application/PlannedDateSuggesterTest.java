@@ -34,7 +34,8 @@ class PlannedDateSuggesterTest {
                 List.of(new LlmToolCall("call-1", "suggest_planned_date", "{\"planned_date\":\"2026-09-10\"}")),
                 null, 120, 15, false));
 
-        var result = suggester.suggest("разобрать бумаги по страховке", null, TODAY, ZONE);
+        var result = suggester.suggest("разобрать бумаги по страховке", null,
+                "на этой неделе нужно разобрать бумаги по страховке", TODAY, ZONE);
 
         assertThat(result.noPlannedDateNeeded()).isFalse();
         assertThat(result.plannedDate()).isEqualTo(
@@ -49,7 +50,7 @@ class PlannedDateSuggesterTest {
                 List.of(new LlmToolCall("call-1", "suggest_planned_date", "{\"no_planned_date_needed\":true}")),
                 null, 118, 10, false));
 
-        var result = suggester.suggest("разобрать шкаф с одеждой", null, TODAY, ZONE);
+        var result = suggester.suggest("разобрать шкаф с одеждой", null, "разобрать шкаф с одеждой", TODAY, ZONE);
 
         assertThat(result.plannedDate()).isNull();
         assertThat(result.noPlannedDateNeeded()).isTrue();
@@ -61,7 +62,7 @@ class PlannedDateSuggesterTest {
         // самое, что осознанный no_planned_date_needed=true.
         when(gateway.callWithTools(anyRequest())).thenReturn(new LlmToolResponse(List.of(), null, 0, 0, true));
 
-        var result = suggester.suggest("что угодно", null, TODAY, ZONE);
+        var result = suggester.suggest("что угодно", null, "что угодно", TODAY, ZONE);
 
         assertThat(result.plannedDate()).isNull();
         assertThat(result.noPlannedDateNeeded()).isFalse();
@@ -73,7 +74,7 @@ class PlannedDateSuggesterTest {
                 List.of(new LlmToolCall("call-1", "suggest_planned_date", "{\"no_planned_date_needed\":true}")),
                 null, 100, 10, false));
 
-        suggester.suggest("вынести мусор", null, TODAY, ZONE);
+        suggester.suggest("вынести мусор", null, "вынести мусор", TODAY, ZONE);
 
         var captor = forClass(LlmToolRequest.class);
         verify(gateway).callWithTools(captor.capture());
@@ -84,12 +85,13 @@ class PlannedDateSuggesterTest {
     }
 
     @Test
-    void suggest_userMessage_includesTitleDescriptionDateAndZone() {
+    void suggest_userMessage_includesTitleDescriptionOriginalMessageDateAndZone() {
         when(gateway.callWithTools(anyRequest())).thenReturn(new LlmToolResponse(
                 List.of(new LlmToolCall("call-1", "suggest_planned_date", "{\"no_planned_date_needed\":true}")),
                 null, 100, 10, false));
 
-        suggester.suggest("сдать отчёт", "квартальный, для бухгалтерии", TODAY, ZONE);
+        suggester.suggest("сдать отчёт", "квартальный, для бухгалтерии",
+                "надо не забыть сдать квартальный отчёт для бухгалтерии", TODAY, ZONE);
 
         var captor = forClass(LlmToolRequest.class);
         verify(gateway).callWithTools(captor.capture());
@@ -98,6 +100,7 @@ class PlannedDateSuggesterTest {
                 .findFirst().orElseThrow().content();
         assertThat(userMessage).contains("сдать отчёт");
         assertThat(userMessage).contains("квартальный, для бухгалтерии");
+        assertThat(userMessage).contains("надо не забыть сдать квартальный отчёт для бухгалтерии");
         assertThat(userMessage).contains("2026-09-04");
         assertThat(userMessage).contains("Asia/Tokyo");
     }
@@ -108,7 +111,7 @@ class PlannedDateSuggesterTest {
                 List.of(new LlmToolCall("call-1", "suggest_planned_date", "{\"no_planned_date_needed\":true}")),
                 null, 100, 10, false));
 
-        suggester.suggest("вынести мусор", null, TODAY, ZONE);
+        suggester.suggest("вынести мусор", null, "вынести мусор", TODAY, ZONE);
 
         var captor = forClass(LlmToolRequest.class);
         verify(gateway).callWithTools(captor.capture());
@@ -116,6 +119,28 @@ class PlannedDateSuggesterTest {
                 .filter(m -> "user".equals(m.role()))
                 .findFirst().orElseThrow().content();
         assertThat(userMessage).contains("Описание: нет");
+    }
+
+    @Test
+    void suggest_systemPrompt_doesNotQuoteDatasetPhrasesVerbatim() {
+        // Регрессия: промпт не должен перечислять конкретные обороты из
+        // nlp-dataset-planned-date-auto.json — иначе он не обобщение
+        // категории, а подгонка под конкретные реплики набора.
+        when(gateway.callWithTools(anyRequest())).thenReturn(new LlmToolResponse(
+                List.of(new LlmToolCall("call-1", "suggest_planned_date", "{\"no_planned_date_needed\":true}")),
+                null, 100, 10, false));
+
+        suggester.suggest("вынести мусор", null, "вынести мусор", TODAY, ZONE);
+
+        var captor = forClass(LlmToolRequest.class);
+        verify(gateway).callWithTools(captor.capture());
+        String systemMessage = captor.getValue().messages().stream()
+                .filter(m -> "system".equals(m.role()))
+                .findFirst().orElseThrow().content();
+        assertThat(systemMessage).doesNotContain("на этой неделе");
+        assertThat(systemMessage).doesNotContain("в выходные");
+        assertThat(systemMessage).doesNotContain("на днях");
+        assertThat(systemMessage).doesNotContain("пока не забыл");
     }
 
     private LlmToolRequest anyRequest() {

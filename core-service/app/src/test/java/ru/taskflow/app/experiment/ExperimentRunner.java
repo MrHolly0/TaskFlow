@@ -195,7 +195,7 @@ class ExperimentRunner {
             Proposal proposal = assistantService.handleText(userId, row.text(), AssistantChannel.WEB,
                     AssistantEntryPoint.CHAT);
             List<ProposedAction> effectiveActions = narrowCallEnabled
-                    ? applyPlannedDateNarrowCall(proposal.actions(), narrowStats)
+                    ? applyPlannedDateNarrowCall(proposal.actions(), row.text(), narrowStats)
                     : proposal.actions();
 
             return toResult(row, attempt, proposal, effectiveActions, setupRefToTaskId, setupRefToDeadline, matcher);
@@ -213,8 +213,14 @@ class ExperimentRunner {
      * кладётся в payload теми же ключами, что и ручная правка в карточке
      * подтверждения (AssistantServiceImpl.withPlannedDate) — сверяет их тот
      * же ActionMatcher, без изменений.
+     * <p>
+     * originalMessage — исходная реплика, не только title/description
+     * готового действия: мягкое указание на срок часто не попадает в
+     * название задачи ("на этой неделе разобрать бумаги" → title "Разобрать
+     * бумаги"), но остаётся в реплике целиком.
      */
-    private List<ProposedAction> applyPlannedDateNarrowCall(List<ProposedAction> actions, NarrowCallStats stats) {
+    private List<ProposedAction> applyPlannedDateNarrowCall(List<ProposedAction> actions, String originalMessage,
+            NarrowCallStats stats) {
         List<ProposedAction> patched = new ArrayList<>(actions.size());
         for (ProposedAction action : actions) {
             if (action.type() != AssistantActionType.CREATE) {
@@ -223,7 +229,7 @@ class ExperimentRunner {
             }
             String title = asString(action.payload().get("title"));
             String description = asString(action.payload().get("description"));
-            PlannedDateSuggestion suggestion = plannedDateSuggester.suggest(title, description,
+            PlannedDateSuggestion suggestion = plannedDateSuggester.suggest(title, description, originalMessage,
                     LocalDate.now(ZONE), ZONE);
             stats.calls++;
             stats.inputTokens += suggestion.inputTokens();

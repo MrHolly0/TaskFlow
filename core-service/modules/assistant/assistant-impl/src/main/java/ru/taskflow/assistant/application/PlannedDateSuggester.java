@@ -44,10 +44,11 @@ public class PlannedDateSuggester {
     private final NlpGatewayService nlpGatewayService;
     private final ObjectMapper objectMapper;
 
-    public PlannedDateSuggestion suggest(String title, String description, LocalDate today, ZoneId zone) {
+    public PlannedDateSuggestion suggest(String title, String description, String originalMessage,
+            LocalDate today, ZoneId zone) {
         List<LlmMessage> messages = List.of(
                 LlmMessage.system(systemPrompt()),
-                LlmMessage.user(userMessage(title, description, today, zone)));
+                LlmMessage.user(userMessage(title, description, originalMessage, today, zone)));
         LlmToolResponse response = nlpGatewayService.callWithTools(new LlmToolRequest(messages, List.of(tool())));
 
         LlmToolCall call = response.toolCalls().stream()
@@ -72,28 +73,35 @@ public class PlannedDateSuggester {
                 предположить день исполнения — не срок (обязательство пользователя), \
                 а самостоятельная подсказка, когда разумно её сделать.
 
+                Тебе даны название и описание, как их поняла система, и исходная \
+                реплика пользователя целиком — в реплике может быть то, что не \
+                попало в название или описание.
+
                 Вызови suggest_planned_date с полем planned_date (дата в формате \
-                YYYY-MM-DD), если в названии или описании есть намёк на срочность \
-                или период — «на этой неделе», «в выходные», «на днях», «пока не \
-                забыл» и подобные. День должен попадать в этот намёк, а не быть \
+                YYYY-MM-DD), если в реплике есть мягкое указание на срок или период \
+                без обязательства — не точная дата и не жёсткий дедлайн, а ощущение \
+                подходящего времени. День должен попадать в этот период, а не быть \
                 произвольным.
 
                 Вызови suggest_planned_date с полем no_planned_date_needed=true, \
-                если задача не подразумевает конкретного дня — в названии и описании \
-                нет ни срочности, ни периода. Не угадывай день там, где его нет: \
-                лучше явно отказаться, чем предложить случайную дату.
+                если ни в названии, ни в описании, ни в реплике нет такого указания. \
+                Не угадывай день там, где его нет: лучше явно отказаться, чем \
+                предложить случайную дату.
 
                 Заполняй ровно одно из двух полей.""";
     }
 
-    private String userMessage(String title, String description, LocalDate today, ZoneId zone) {
+    private String userMessage(String title, String description, String originalMessage,
+            LocalDate today, ZoneId zone) {
         return """
                 Название: %s
                 Описание: %s
+                Исходная реплика пользователя: %s
                 Сегодня: %s
                 Часовой пояс пользователя: %s""".formatted(
                 title,
                 description == null || description.isBlank() ? "нет" : description,
+                originalMessage,
                 today.format(DATE_ONLY),
                 zone.getId());
     }
