@@ -27,6 +27,9 @@ import ru.taskflow.task.api.dto.CreateTaskRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
 import ru.taskflow.user.api.UserService;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -145,10 +148,17 @@ class ExperimentRunner {
         if (narrowCallEnabled) {
             // Цена узкого вызова не входит в токены основного обращения —
             // отдельная строка, чтобы её нельзя было потерять при подсчёте
-            // стоимости прогона.
-            System.out.printf(
-                    "Узкий вызов дня исполнения: %d обращений, %d входных + %d выходных токенов%n",
-                    narrowStats.calls, narrowStats.inputTokens, narrowStats.outputTokens);
+            // стоимости прогона. В файл, не только в stdout — вывод теста
+            // легко потерять (например, -q у Gradle его глушит), а цифра
+            // нужна в отчёте.
+            String summary = "calls=%d inputTokens=%d outputTokens=%d%n"
+                    .formatted(narrowStats.calls, narrowStats.inputTokens, narrowStats.outputTokens);
+            System.out.printf("Узкий вызов дня исполнения: %s", summary);
+            try {
+                Files.writeString(outDir.resolve("run-" + stamp + "-narrow-call.txt"), summary);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
         }
 
         assertThat(results).hasSize(dataset.size() * repeats);
