@@ -26,6 +26,7 @@ import ru.taskflow.task.api.dto.TaskTransferResult;
 import ru.taskflow.task.api.dto.UpdateTaskRequest;
 import ru.taskflow.task.api.exception.GroupNotFoundException;
 import ru.taskflow.task.api.exception.TaskNotFoundException;
+import ru.taskflow.task.infrastructure.FocusHoursGateConfig;
 import ru.taskflow.task.infrastructure.persistence.*;
 import ru.taskflow.user.api.UserService;
 
@@ -75,6 +76,7 @@ public class TaskServiceImpl implements TaskService {
     private final Clock clock;
     private final FocusTaskRanker focusTaskRanker;
     private final UserService userService;
+    private final FocusHoursGateConfig focusHoursGateConfig;
 
     /**
      * Создаёт новую задачу для пользователя.
@@ -615,10 +617,12 @@ public class TaskServiceImpl implements TaskService {
     @Transactional
     public FocusResponse getFocusTasks(UUID userId, Integer availableMinutes) {
         var now = OffsetDateTime.now(clock);
-        var endOfToday = endOfToday(userService.getTimezone(userId));
+        var zone = userService.getTimezone(userId);
+        var endOfToday = endOfToday(zone);
         var candidates = taskRepository.findFocusTasks(userId, TaskStatus.DONE, endOfToday);
         var entities = focusTaskRanker.rank(candidates, now).stream()
                 .filter(t -> fitsAvailableTime(t, availableMinutes))
+                .filter(t -> passesHoursGate(t, now, zone))
                 .limit(3)
                 .toList();
         entities.forEach(t -> t.setLastShownInFocusAt(now));
@@ -666,6 +670,22 @@ public class TaskServiceImpl implements TaskService {
         return availableMinutes == null
                 || task.getEstimateMinutes() == null
                 || task.getEstimateMinutes() <= availableMinutes;
+    }
+
+    // §5.4: задача, привязанная к часам работы учреждения (по названию —
+    // TitleHoursGateMatcher), не поднимается в фокус вне окна. Стоит рядом
+    // с fitsAvailableTime и в том же .filter() до limit(3)/setLastShownInFocusAt
+    // намеренно: отфильтрованная задача не получает отметку показа и
+    // останется "давней" — всплывёт сама, когда окно наступит, без всякой
+    // просрочки. Только getFocusTasks — в getUpcomingFocusTasks фильтр не
+    // применяется: тот отвечает не "что делать сейчас", а "что будет
+    // дальше", и отсеивать предпросмотр по текущему часу суток бессмысленно.
+    private boolean passesHoursGate(TaskJpaEntity task, OffsetDateTime now, ZoneId zone) {
+        if (!TitleHoursGateMatcher.tiedToHours(task.getTitle(), focusHoursGateConfig.getRoots())) {
+            return true;
+        }
+        int hour = now.atZoneSameInstant(zone).getHour();
+        return hour >= focusHoursGateConfig.getWindowStartHour() && hour < focusHoursGateConfig.getWindowEndHour();
     }
 
     // "Конец сегодня" — понятие календаря пользователя, не Гринвича: без зоны

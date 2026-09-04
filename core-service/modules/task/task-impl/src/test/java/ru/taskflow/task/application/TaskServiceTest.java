@@ -23,6 +23,7 @@ import ru.taskflow.task.api.dto.TaskFilterRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
 import ru.taskflow.task.api.dto.UpdateTaskRequest;
 import ru.taskflow.task.api.exception.TaskNotFoundException;
+import ru.taskflow.task.infrastructure.FocusHoursGateConfig;
 import ru.taskflow.task.infrastructure.persistence.*;
 import ru.taskflow.user.api.UserService;
 
@@ -87,9 +88,12 @@ class TaskServiceTest {
         // подобраны под фиксированный UTC-clock) не зависели от зоны. Тест на
         // саму зону переопределяет стаб под конкретный сценарий.
         lenient().when(userService.getTimezone(any())).thenReturn(ZoneOffset.UTC);
+        // Пустой список корней по умолчанию — ворота §5.4 не должны влиять на
+        // тесты, которые их не касаются; тесты самих ворот строят свой
+        // TaskServiceImpl с непустой конфигурацией отдельно.
         taskService = new TaskServiceImpl(taskRepository, groupRepository, tagRepository, taskMapper,
                 taskReminderService, reminderRepository, recurrenceRepository, auditService, groupStyleResolver,
-                clock, focusTaskRanker, userService);
+                clock, focusTaskRanker, userService, new FocusHoursGateConfig());
     }
 
     @Test
@@ -1034,6 +1038,89 @@ class TaskServiceTest {
         taskService.getFocusTasks(userId, null);
 
         assertThat(excluded.getLastShownInFocusAt()).isNull();
+    }
+
+    // --- §5.4: задача, привязанная к часам работы учреждения, не поднимается
+    // в фокус вне окна — и, как отсеянная лимитом экрана, не получает
+    // отметку показа, поэтому всплывёт сама. NOW (общий clock класса)
+    // зафиксирован на 2025-06-01T00:00:00Z — полночь, вне любого разумного
+    // окна 9-19 при зоне UTC. Каждый тест строит свой TaskServiceImpl с
+    // отдельным FocusHoursGateConfig — общий из setUp() держит пустой
+    // список корней, чтобы остальные тесты класса от ворот не зависели.
+
+    @Test
+    void getFocusTasks_excludesTiedTaskOutsideWindow_andDoesNotMarkItShown() {
+        var config = new FocusHoursGateConfig();
+        config.setRoots(List.of("банк"));
+        var gated = new TaskServiceImpl(taskRepository, groupRepository, tagRepository, taskMapper,
+                taskReminderService, reminderRepository, recurrenceRepository, auditService, groupStyleResolver,
+                clock, focusTaskRanker, userService, config);
+        var tied = taskEntity();
+        tied.setTitle("Позвонить в банк");
+        when(taskRepository.findFocusTasks(eq(userId), eq(TaskStatus.DONE), any(OffsetDateTime.class)))
+                .thenReturn(List.of(tied));
+
+        var result = gated.getFocusTasks(userId, null);
+
+        assertThat(result.tasks()).isEmpty();
+        assertThat(tied.getLastShownInFocusAt()).isNull();
+        verify(taskRepository).saveAll(List.of());
+    }
+
+    @Test
+    void getFocusTasks_includesTiedTaskInsideWindow() {
+        var config = new FocusHoursGateConfig();
+        config.setRoots(List.of("банк"));
+        var dayClock = Clock.fixed(Instant.parse("2025-06-02T12:00:00Z"), ZoneOffset.UTC);
+        var gated = new TaskServiceImpl(taskRepository, groupRepository, tagRepository, taskMapper,
+                taskReminderService, reminderRepository, recurrenceRepository, auditService, groupStyleResolver,
+                dayClock, focusTaskRanker, userService, config);
+        var tied = taskEntity();
+        tied.setTitle("Позвонить в банк");
+        when(taskRepository.findFocusTasks(eq(userId), eq(TaskStatus.DONE), any(OffsetDateTime.class)))
+                .thenReturn(List.of(tied));
+        when(taskMapper.toResponse(tied)).thenReturn(mockResponse(taskId, "Позвонить в банк"));
+
+        var result = gated.getFocusTasks(userId, null);
+
+        assertThat(result.tasks()).hasSize(1);
+        assertThat(tied.getLastShownInFocusAt()).isNotNull();
+    }
+
+    @Test
+    void getFocusTasks_neverExcludesUntiedTask_regardlessOfHour() {
+        var config = new FocusHoursGateConfig();
+        config.setRoots(List.of("банк"));
+        var gated = new TaskServiceImpl(taskRepository, groupRepository, tagRepository, taskMapper,
+                taskReminderService, reminderRepository, recurrenceRepository, auditService, groupStyleResolver,
+                clock, focusTaskRanker, userService, config);
+        var untied = taskEntity();
+        untied.setTitle("купить молоко");
+        when(taskRepository.findFocusTasks(eq(userId), eq(TaskStatus.DONE), any(OffsetDateTime.class)))
+                .thenReturn(List.of(untied));
+        when(taskMapper.toResponse(untied)).thenReturn(mockResponse(taskId, "купить молоко"));
+
+        var result = gated.getFocusTasks(userId, null);
+
+        assertThat(result.tasks()).hasSize(1);
+    }
+
+    @Test
+    void getUpcomingFocusTasks_doesNotApplyHoursGate() {
+        var config = new FocusHoursGateConfig();
+        config.setRoots(List.of("банк"));
+        var gated = new TaskServiceImpl(taskRepository, groupRepository, tagRepository, taskMapper,
+                taskReminderService, reminderRepository, recurrenceRepository, auditService, groupStyleResolver,
+                clock, focusTaskRanker, userService, config);
+        var tied = taskEntity();
+        tied.setTitle("Позвонить в банк");
+        when(taskRepository.findUpcomingFocusTasks(eq(userId), eq(TaskStatus.DONE), any(OffsetDateTime.class)))
+                .thenReturn(List.of(tied));
+        when(taskMapper.toResponse(tied)).thenReturn(mockResponse(taskId, "Позвонить в банк"));
+
+        var result = gated.getUpcomingFocusTasks(userId, null);
+
+        assertThat(result.tasks()).hasSize(1);
     }
 
     // --- Пункт А: день исполнения не участвует в просрочке ---
