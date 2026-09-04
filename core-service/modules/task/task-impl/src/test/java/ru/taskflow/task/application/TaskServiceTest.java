@@ -24,6 +24,7 @@ import ru.taskflow.task.api.dto.TaskResponse;
 import ru.taskflow.task.api.dto.UpdateTaskRequest;
 import ru.taskflow.task.api.exception.TaskNotFoundException;
 import ru.taskflow.task.infrastructure.persistence.*;
+import ru.taskflow.user.api.UserService;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -60,6 +61,8 @@ class TaskServiceTest {
     private AuditService auditService;
     @Mock
     private GroupStyleResolver groupStyleResolver;
+    @Mock
+    private UserService userService;
 
     // Реальный Clock.fixed, не мок — прокрутке следующего вхождения (А) нужно
     // настоящее сравнение дат, а не настраивать заглушку под каждый шаг.
@@ -80,9 +83,13 @@ class TaskServiceTest {
 
     @BeforeEach
     void setUp() {
+        // По умолчанию зона пользователя — UTC, чтобы существующие тесты (даты
+        // подобраны под фиксированный UTC-clock) не зависели от зоны. Тест на
+        // саму зону переопределяет стаб под конкретный сценарий.
+        lenient().when(userService.getTimezone(any())).thenReturn(ZoneOffset.UTC);
         taskService = new TaskServiceImpl(taskRepository, groupRepository, tagRepository, taskMapper,
                 taskReminderService, reminderRepository, recurrenceRepository, auditService, groupStyleResolver,
-                clock, focusTaskRanker);
+                clock, focusTaskRanker, userService);
     }
 
     @Test

@@ -17,8 +17,13 @@ import ru.taskflow.task.api.dto.CreateTaskRequest;
 import ru.taskflow.task.api.dto.TaskFilterRequest;
 import ru.taskflow.task.api.dto.UpdateTaskRequest;
 import ru.taskflow.user.api.UserService;
+import ru.taskflow.user.api.dto.UpdateSettingsRequest;
 
+import java.time.Clock;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
@@ -50,6 +55,8 @@ class TaskReminderAndScheduleIntegrationTest {
     private UserService userService;
     @Autowired
     private ScheduledNotificationRepository scheduledNotificationRepository;
+    @Autowired
+    private Clock clock;
 
     private UUID newUser() {
         long telegramId = ThreadLocalRandom.current().nextLong(1_000_000_000L, 9_999_999_999L);
@@ -110,8 +117,18 @@ class TaskReminderAndScheduleIntegrationTest {
     @Test
     void reminders_areReturnedTheSameWay_inAllTasksView_focusView_andUpcomingView() {
         var userId = newUser();
-        var todayLater = OffsetDateTime.now().plusHours(3).withNano(0);
-        var nextWeek = OffsetDateTime.now().plusDays(7).withNano(0);
+        var zone = userService.getTimezone(userId);
+        // "+3 часа от сейчас" пересекало полночь по UTC в конце дня по Москве —
+        // ровно тот дефект, который здесь и правится. planForDeadline не ставит
+        // напоминание на уже прошедший срок, поэтому нужна точка одновременно
+        // "сегодня по зоне пользователя" и "в будущем" — обычно это now+2мин, а
+        // в последние минуты суток по зоне пользователя это невозможно в
+        // принципе (будущего "сегодня" уже не остаётся), поэтому граница снизу.
+        var nowInZone = OffsetDateTime.now(clock).atZoneSameInstant(zone);
+        var lastMinuteToday = nowInZone.toLocalDate().atTime(23, 58).atZone(zone);
+        var todayLater = (nowInZone.plusMinutes(2).isBefore(lastMinuteToday) ? nowInZone.plusMinutes(2) : lastMinuteToday)
+                .toOffsetDateTime();
+        var nextWeek = nowInZone.toLocalDate().atStartOfDay(zone).plusDays(7).plusHours(12).toOffsetDateTime();
 
         var todayTask = taskService.create(userId, new CreateTaskRequest(
                 "Задача на сегодня", null, TaskPriority.MEDIUM, todayLater, null, null, List.of(), null, TaskSource.MANUAL));
@@ -140,5 +157,29 @@ class TaskReminderAndScheduleIntegrationTest {
         assertThat(upcomingLaterReminders).isNotEmpty();
         assertThat(upcomingLaterReminders).extracting(r -> r.id()).containsExactlyElementsOf(
                 allTasksLaterReminders.stream().map(r -> r.id()).toList());
+    }
+
+    /**
+     * Регрессия на сам дефект: endOfToday считался по Гринвичу, а не по зоне
+     * пользователя — "сегодня 23:00 по Москве" (UTC+3) уже в 21:00 UTC, то
+     * есть раньше полуночи UTC, и старая реализация обязана была его увидеть
+     * тоже, но правильный тест — не полагаться на то, что процессу повезло
+     * запуститься до полуночи UTC, а явно закрепить зону пользователя.
+     */
+    @Test
+    void taskDueLateTodayInUsersTimezone_appearsInFocus() {
+        var userId = newUser();
+        userService.updateSettings(userId, new UpdateSettingsRequest(
+                null, null, null, null, null, null, null, null, null, null, "Europe/Moscow", null));
+        var moscow = ZoneId.of("Europe/Moscow");
+        var deadlineTonight = LocalDate.now(clock.withZone(moscow)).atTime(LocalTime.of(23, 0)).atZone(moscow)
+                .toOffsetDateTime();
+
+        var created = taskService.create(userId, new CreateTaskRequest(
+                "Позвонить в 23:00 по Москве", null, TaskPriority.MEDIUM, deadlineTonight, null, null,
+                List.of(), null, TaskSource.MANUAL));
+
+        var focusTasks = taskService.getFocusTasks(userId, null).tasks();
+        assertThat(focusTasks).extracting(t -> t.id()).contains(created.id());
     }
 }

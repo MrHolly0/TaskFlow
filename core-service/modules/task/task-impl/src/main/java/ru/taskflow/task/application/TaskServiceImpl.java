@@ -27,6 +27,7 @@ import ru.taskflow.task.api.dto.UpdateTaskRequest;
 import ru.taskflow.task.api.exception.GroupNotFoundException;
 import ru.taskflow.task.api.exception.TaskNotFoundException;
 import ru.taskflow.task.infrastructure.persistence.*;
+import ru.taskflow.user.api.UserService;
 
 import java.sql.Timestamp;
 import java.time.Clock;
@@ -36,7 +37,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.YearMonth;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -71,6 +74,7 @@ public class TaskServiceImpl implements TaskService {
     private final GroupStyleResolver groupStyleResolver;
     private final Clock clock;
     private final FocusTaskRanker focusTaskRanker;
+    private final UserService userService;
 
     /**
      * Создаёт новую задачу для пользователя.
@@ -362,7 +366,8 @@ public class TaskServiceImpl implements TaskService {
         taskReminderService.cancelForTask(taskId);
         auditService.record(userId, taskId, AuditEventType.STATUS_CHANGED, Map.of("status", "DONE"));
 
-        recurrenceRepository.findById(taskId).ifPresent(recurrence -> createNextOccurrence(userId, task, recurrence));
+        recurrenceRepository.findById(taskId).ifPresent(recurrence ->
+                createNextOccurrence(userId, task, recurrence, userService.getTimezone(userId)));
     }
 
     /**
@@ -384,14 +389,15 @@ public class TaskServiceImpl implements TaskService {
      * напоминания старого вхождения (createStandaloneReminder/REMIND) сюда не
      * копируются: они привязаны к конкретному моменту конкретного вхождения.
      */
-    private void createNextOccurrence(UUID userId, TaskJpaEntity completedTask, RecurrenceJpaEntity recurrence) {
+    private void createNextOccurrence(UUID userId, TaskJpaEntity completedTask, RecurrenceJpaEntity recurrence,
+            ZoneId zone) {
         OffsetDateTime anchor = completedTask.getDeadline() != null
                 ? completedTask.getDeadline()
                 : completedTask.getPlannedDate();
 
         OffsetDateTime nextAnchor = null;
         if (anchor != null) {
-            nextAnchor = rollToFuture(anchor, recurrence);
+            nextAnchor = rollToFuture(anchor, recurrence, zone);
             if (nextAnchor == null) {
                 // Прокрутка упёрлась в ends_at раньше, чем дошла до будущего — цепочка закончена.
                 return;
@@ -429,11 +435,11 @@ public class TaskServiceImpl implements TaskService {
      * минимум на день вперёд (см. nextOccurrence), а now фиксировано на
      * момент вызова.
      */
-    private OffsetDateTime rollToFuture(OffsetDateTime anchor, RecurrenceJpaEntity recurrence) {
+    private OffsetDateTime rollToFuture(OffsetDateTime anchor, RecurrenceJpaEntity recurrence, ZoneId zone) {
         OffsetDateTime now = OffsetDateTime.now(clock);
         OffsetDateTime candidate = anchor;
         do {
-            candidate = nextOccurrence(candidate, recurrence);
+            candidate = nextOccurrence(candidate, recurrence, zone);
             if (recurrence.getEndsAt() != null && candidate.isAfter(recurrence.getEndsAt())) {
                 return null;
             }
@@ -441,7 +447,7 @@ public class TaskServiceImpl implements TaskService {
         return candidate;
     }
 
-    private OffsetDateTime nextOccurrence(OffsetDateTime anchor, RecurrenceJpaEntity recurrence) {
+    private OffsetDateTime nextOccurrence(OffsetDateTime anchor, RecurrenceJpaEntity recurrence, ZoneId zone) {
         // saveRecurrence уже отклоняет intervalN < 1 на входе (validateRecurrence) —
         // клампим всё равно: это и есть защита rollToFuture от зацикливания на
         // строке, записанной в обход API, без отдельной проверки специально под неё.
@@ -450,38 +456,48 @@ public class TaskServiceImpl implements TaskService {
             case DAILY -> anchor.plusDays(intervalN);
             case WEEKLY -> {
                 List<DayOfWeek> days = decodeDaysOfWeek(recurrence.getDaysOfWeek());
-                yield (days == null || days.isEmpty()) ? anchor.plusWeeks(intervalN) : nextMatchingDayOfWeek(anchor, days);
+                yield (days == null || days.isEmpty())
+                        ? anchor.plusWeeks(intervalN)
+                        : nextMatchingDayOfWeek(anchor, days, zone);
             }
-            case WEEKDAYS -> nextWeekday(anchor);
-            case MONTHLY -> nextMonthly(anchor, recurrence.getDayOfMonth());
+            case WEEKDAYS -> nextWeekday(anchor, zone);
+            case MONTHLY -> nextMonthly(anchor, recurrence.getDayOfMonth(), zone);
             case CUSTOM -> throw new IllegalStateException("правило CUSTOM не должно было сохраниться");
         };
     }
 
-    private OffsetDateTime nextMatchingDayOfWeek(OffsetDateTime anchor, List<DayOfWeek> days) {
+    // День недели/день месяца — понятия календаря пользователя. anchor,
+    // только что прочитанный из базы, несёт смещение, которое отвели ему
+    // JDBC-драйвер и сессия Postgres (не обязательно то, с которым срок
+    // создавался) — getDayOfWeek() на нём напрямую посчитал бы день недели
+    // не в той зоне. atZoneSameInstant пересчитывает тот же момент в зоне
+    // пользователя, прежде чем спрашивать про день.
+    private OffsetDateTime nextMatchingDayOfWeek(OffsetDateTime anchor, List<DayOfWeek> days, ZoneId zone) {
+        ZonedDateTime zonedAnchor = anchor.atZoneSameInstant(zone);
         for (int i = 1; i <= 7; i++) {
-            OffsetDateTime candidate = anchor.plusDays(i);
+            ZonedDateTime candidate = zonedAnchor.plusDays(i);
             if (days.contains(candidate.getDayOfWeek())) {
-                return candidate;
+                return candidate.toOffsetDateTime();
             }
         }
         throw new IllegalStateException("не удалось подобрать день недели для повтора");
     }
 
-    private OffsetDateTime nextWeekday(OffsetDateTime anchor) {
-        OffsetDateTime candidate = anchor.plusDays(1);
+    private OffsetDateTime nextWeekday(OffsetDateTime anchor, ZoneId zone) {
+        ZonedDateTime candidate = anchor.atZoneSameInstant(zone).plusDays(1);
         return switch (candidate.getDayOfWeek()) {
-            case SATURDAY -> candidate.plusDays(2);
-            case SUNDAY -> candidate.plusDays(1);
-            default -> candidate;
+            case SATURDAY -> candidate.plusDays(2).toOffsetDateTime();
+            case SUNDAY -> candidate.plusDays(1).toOffsetDateTime();
+            default -> candidate.toOffsetDateTime();
         };
     }
 
-    private OffsetDateTime nextMonthly(OffsetDateTime anchor, Integer dayOfMonth) {
-        LocalDate firstOfNextMonth = anchor.toLocalDate().withDayOfMonth(1).plusMonths(1);
+    private OffsetDateTime nextMonthly(OffsetDateTime anchor, Integer dayOfMonth, ZoneId zone) {
+        ZonedDateTime zonedAnchor = anchor.atZoneSameInstant(zone);
+        LocalDate firstOfNextMonth = zonedAnchor.toLocalDate().withDayOfMonth(1).plusMonths(1);
         int day = Math.min(dayOfMonth, YearMonth.from(firstOfNextMonth).lengthOfMonth());
         LocalDate nextDate = firstOfNextMonth.withDayOfMonth(day);
-        return OffsetDateTime.of(nextDate, anchor.toLocalTime(), anchor.getOffset());
+        return ZonedDateTime.of(nextDate, zonedAnchor.toLocalTime(), zone).toOffsetDateTime();
     }
 
     /**
@@ -599,7 +615,7 @@ public class TaskServiceImpl implements TaskService {
     @Transactional
     public FocusResponse getFocusTasks(UUID userId, Integer availableMinutes) {
         var now = OffsetDateTime.now(clock);
-        var endOfToday = endOfToday();
+        var endOfToday = endOfToday(userService.getTimezone(userId));
         var candidates = taskRepository.findFocusTasks(userId, TaskStatus.DONE, endOfToday);
         var entities = focusTaskRanker.rank(candidates, now).stream()
                 .filter(t -> fitsAvailableTime(t, availableMinutes))
@@ -617,7 +633,7 @@ public class TaskServiceImpl implements TaskService {
      */
     @Override
     public FocusResponse getUpcomingFocusTasks(UUID userId, Integer availableMinutes) {
-        var endOfToday = endOfToday();
+        var endOfToday = endOfToday(userService.getTimezone(userId));
         var entities = taskRepository.findUpcomingFocusTasks(userId, TaskStatus.DONE, endOfToday)
                 .stream()
                 .filter(t -> fitsAvailableTime(t, availableMinutes))
@@ -652,9 +668,11 @@ public class TaskServiceImpl implements TaskService {
                 || task.getEstimateMinutes() <= availableMinutes;
     }
 
-    private OffsetDateTime endOfToday() {
-        return OffsetDateTime.now(ZoneOffset.UTC)
-                .withHour(23).withMinute(59).withSecond(59).withNano(0);
+    // "Конец сегодня" — понятие календаря пользователя, не Гринвича: без зоны
+    // это была бы полночь где-то посередине его дня, а не в его собственную
+    // полночь. Один источник времени, clock, спроецированный в его зону.
+    private OffsetDateTime endOfToday(ZoneId zone) {
+        return LocalDate.now(clock.withZone(zone)).atTime(23, 59, 59).atZone(zone).toOffsetDateTime();
     }
 
     /**
@@ -668,7 +686,9 @@ public class TaskServiceImpl implements TaskService {
      */
     @Override
     public DigestResponse getDigest(UUID userId, LocalDate date) {
-        var startOfDay = date.atStartOfDay(ZoneOffset.UTC).toOffsetDateTime();
+        var zone = userService.getTimezone(userId);
+        var now = OffsetDateTime.now(clock);
+        var startOfDay = date.atStartOfDay(zone).toOffsetDateTime();
         var allTasks = taskRepository.findDigestTasks(userId, startOfDay, TaskStatus.DONE);
 
         var topTasks = allTasks.stream()
@@ -682,7 +702,7 @@ public class TaskServiceImpl implements TaskService {
                 .count();
 
         long overdueTasks = allTasks.stream()
-                .filter(t -> t.getDeadline() != null && t.getDeadline().isBefore(OffsetDateTime.now()) && t.getStatus() != TaskStatus.DONE)
+                .filter(t -> t.getDeadline() != null && t.getDeadline().isBefore(now) && t.getStatus() != TaskStatus.DONE)
                 .count();
 
         return new DigestResponse(topTasks, totalTasks, completedToday, overdueTasks);

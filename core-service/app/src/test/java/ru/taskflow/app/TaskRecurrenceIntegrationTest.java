@@ -20,6 +20,8 @@ import ru.taskflow.task.api.dto.TaskFilterRequest;
 import ru.taskflow.task.api.dto.UpdateTaskRequest;
 import ru.taskflow.user.api.UserService;
 
+import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
@@ -49,6 +51,8 @@ class TaskRecurrenceIntegrationTest {
     private TaskService taskService;
     @Autowired
     private UserService userService;
+    @Autowired
+    private Clock clock;
 
     private java.util.UUID newUser() {
         long telegramId = ThreadLocalRandom.current().nextLong(1_000_000_000L, 9_999_999_999L);
@@ -110,15 +114,23 @@ class TaskRecurrenceIntegrationTest {
     @Test
     void recurringTask_closedManyPeriodsLate_producesOccurrenceInTheFuture() {
         var userId = newUser();
+        var zone = userService.getTimezone(userId);
         // Еженедельная задача, просроченная на три недели к моменту закрытия —
         // один шаг от опоздавшей даты дал бы вхождение, тоже просроченное на
         // две недели (Блок А). Якорь дня недели должен сохраниться.
-        var lateDeadline = OffsetDateTime.now().minusDays(21).withNano(0);
+        //
+        // "now" берём из того же clock, что и рабочий код, а не из голого
+        // OffsetDateTime.now() — иначе сравнение зависит от TZ процесса. День
+        // недели — тоже не смещение самого значения (после прохода через базу
+        // это смещение сессии Postgres, не обязательно зона пользователя), а
+        // спроецированный в зону пользователя момент — ровно то же самое
+        // понятие "день недели", которое использует rollToFuture.
+        var lateDeadline = OffsetDateTime.now(clock).minusDays(21).withNano(0);
         var rule = new RecurrenceRule(RecurrenceType.WEEKLY, 1, null, null, null);
         var created = taskService.create(userId, new CreateTaskRequest(
                 "Еженедельный отчёт", null, TaskPriority.MEDIUM, lateDeadline, null, null,
                 List.of(), null, TaskSource.MANUAL, rule));
-        var originalDayOfWeek = lateDeadline.getDayOfWeek();
+        var originalDayOfWeek = lateDeadline.atZoneSameInstant(zone).getDayOfWeek();
 
         taskService.complete(userId, created.id());
 
@@ -128,7 +140,43 @@ class TaskRecurrenceIntegrationTest {
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("следующее вхождение не найдено"));
 
-        assertThat(nextOccurrence.deadline()).isAfter(OffsetDateTime.now());
-        assertThat(nextOccurrence.deadline().getDayOfWeek()).isEqualTo(originalDayOfWeek);
+        assertThat(nextOccurrence.deadline()).isAfter(OffsetDateTime.now(clock));
+        assertThat(nextOccurrence.deadline().atZoneSameInstant(zone).getDayOfWeek()).isEqualTo(originalDayOfWeek);
+    }
+
+    /**
+     * Тот же класс дефектов (день недели теряется на смещении, которое база
+     * отдаёт не тем, каким его сохраняли), но на пути, где день недели
+     * действительно вычисляется в рабочем коде — nextMatchingDayOfWeek, а не
+     * plusWeeks. Еженедельная задача выше не задаёт daysOfWeek и идёт другим
+     * путём (plusWeeks, для него смещение неважно) — этот тест закрывает то,
+     * что тот не проверяет.
+     */
+    @Test
+    void recurringTaskWithSpecificDaysOfWeek_keepsCorrectAnchorDay() {
+        var userId = newUser();
+        var zone = userService.getTimezone(userId);
+        // Понедельник и четверг — anchor в четверг, следующее вхождение должно
+        // быть в понедельник (первый подходящий день после anchor).
+        var anchor = OffsetDateTime.now(clock).minusDays(10).withNano(0);
+        while (anchor.atZoneSameInstant(zone).getDayOfWeek() != DayOfWeek.THURSDAY) {
+            anchor = anchor.plusDays(1);
+        }
+        var rule = new RecurrenceRule(RecurrenceType.WEEKLY, 1,
+                List.of(DayOfWeek.MONDAY, DayOfWeek.THURSDAY), null, null);
+        var created = taskService.create(userId, new CreateTaskRequest(
+                "Планёрка", null, TaskPriority.MEDIUM, anchor, null, null,
+                List.of(), null, TaskSource.MANUAL, rule));
+
+        taskService.complete(userId, created.id());
+
+        var page = taskService.findAll(userId, new TaskFilterRequest(null, null, null, null), PageRequest.of(0, 20));
+        var nextOccurrence = page.getContent().stream()
+                .filter(t -> t.title().equals("Планёрка") && !t.id().equals(created.id()))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("следующее вхождение не найдено"));
+
+        assertThat(nextOccurrence.deadline().atZoneSameInstant(zone).getDayOfWeek())
+                .isIn(DayOfWeek.MONDAY, DayOfWeek.THURSDAY);
     }
 }
