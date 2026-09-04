@@ -11,12 +11,15 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import ru.taskflow.assistant.api.AssistantActionType;
 import ru.taskflow.assistant.api.AssistantChannel;
 import ru.taskflow.assistant.api.AssistantEntryPoint;
 import ru.taskflow.assistant.api.AssistantService;
 import ru.taskflow.assistant.api.ProposalStatus;
 import ru.taskflow.assistant.api.dto.Proposal;
 import ru.taskflow.assistant.api.dto.ProposedAction;
+import ru.taskflow.assistant.application.PlannedDateSuggester;
+import ru.taskflow.assistant.application.PlannedDateSuggestion;
 import ru.taskflow.task.api.TaskPriority;
 import ru.taskflow.task.api.TaskService;
 import ru.taskflow.task.api.TaskSource;
@@ -86,6 +89,8 @@ class ExperimentRunner {
     private UserService userService;
     @Autowired
     private TaskService taskService;
+    @Autowired
+    private PlannedDateSuggester plannedDateSuggester;
 
     @BeforeAll
     static void requiresLiveGroqKey() {
@@ -108,6 +113,13 @@ class ExperimentRunner {
         long pacingMs = Long.parseLong(
                 configValue("experiment.pacingMs", "EXPERIMENT_PACING_MS",
                         String.valueOf(DEFAULT_PACING_MS)));
+        // §4.3: узкий вызов дня исполнения не сидит на пути создания и
+        // runOneRow сам его не заденет — включается отдельно, чтобы обычные
+        // прогоны (150 реплик и любые другие) остались прежними по цене и
+        // поведению.
+        boolean narrowCallEnabled = Boolean.parseBoolean(
+                configValue("experiment.plannedDateNarrowCall", "EXPERIMENT_PLANNED_DATE_NARROW_CALL", "false"));
+        NarrowCallStats narrowStats = new NarrowCallStats();
 
         boolean first = true;
         for (int attempt = 1; attempt <= repeats; attempt++) {
@@ -116,7 +128,7 @@ class ExperimentRunner {
                     Thread.sleep(pacingMs);
                 }
                 first = false;
-                results.add(runOneRow(userId, row, attempt, matcher));
+                results.add(runOneRow(userId, row, attempt, matcher, narrowCallEnabled, narrowStats));
             }
         }
 
@@ -130,11 +142,27 @@ class ExperimentRunner {
         System.out.printf(
                 "Готово: %d обращений (%d реплик × %d прогона), деградаций/предела частоты: %d, файлы в %s%n",
                 results.size(), dataset.size(), repeats, rateLimited, outDir.toAbsolutePath());
+        if (narrowCallEnabled) {
+            // Цена узкого вызова не входит в токены основного обращения —
+            // отдельная строка, чтобы её нельзя было потерять при подсчёте
+            // стоимости прогона.
+            System.out.printf(
+                    "Узкий вызов дня исполнения: %d обращений, %d входных + %d выходных токенов%n",
+                    narrowStats.calls, narrowStats.inputTokens, narrowStats.outputTokens);
+        }
 
         assertThat(results).hasSize(dataset.size() * repeats);
     }
 
-    private ExperimentRunResult runOneRow(UUID userId, DatasetRow row, int attempt, ActionMatcher matcher) {
+    /** Мутируемый накопитель — единственный экземпляр на прогон, не потокобезопасен, цикл однопоточный. */
+    private static final class NarrowCallStats {
+        long inputTokens;
+        long outputTokens;
+        int calls;
+    }
+
+    private ExperimentRunResult runOneRow(UUID userId, DatasetRow row, int attempt, ActionMatcher matcher,
+                                           boolean narrowCallEnabled, NarrowCallStats narrowStats) {
         Map<String, UUID> setupRefToTaskId = new HashMap<>();
         // Реальный дедлайн заведённых задач, не продекларированный offsetDays —
         // нужен для сверки отступа от срока у remind (блок В), см. javadoc
@@ -156,8 +184,11 @@ class ExperimentRunner {
 
             Proposal proposal = assistantService.handleText(userId, row.text(), AssistantChannel.WEB,
                     AssistantEntryPoint.CHAT);
+            List<ProposedAction> effectiveActions = narrowCallEnabled
+                    ? applyPlannedDateNarrowCall(proposal.actions(), narrowStats)
+                    : proposal.actions();
 
-            return toResult(row, attempt, proposal, setupRefToTaskId, setupRefToDeadline, matcher);
+            return toResult(row, attempt, proposal, effectiveActions, setupRefToTaskId, setupRefToDeadline, matcher);
         } catch (Exception e) {
             return errorResult(row, attempt, e);
         } finally {
@@ -165,7 +196,47 @@ class ExperimentRunner {
         }
     }
 
+    /**
+     * §4.3: за CREATE-действия без дня исполнения (контур ассистента его не
+     * предлагает — контракт не расширен) решает отдельный узкий вызов
+     * (PlannedDateSuggester), а не модель основного прохода. Результат
+     * кладётся в payload теми же ключами, что и ручная правка в карточке
+     * подтверждения (AssistantServiceImpl.withPlannedDate) — сверяет их тот
+     * же ActionMatcher, без изменений.
+     */
+    private List<ProposedAction> applyPlannedDateNarrowCall(List<ProposedAction> actions, NarrowCallStats stats) {
+        List<ProposedAction> patched = new ArrayList<>(actions.size());
+        for (ProposedAction action : actions) {
+            if (action.type() != AssistantActionType.CREATE) {
+                patched.add(action);
+                continue;
+            }
+            String title = asString(action.payload().get("title"));
+            String description = asString(action.payload().get("description"));
+            PlannedDateSuggestion suggestion = plannedDateSuggester.suggest(title, description,
+                    LocalDate.now(ZONE), ZONE);
+            stats.calls++;
+            stats.inputTokens += suggestion.inputTokens();
+            stats.outputTokens += suggestion.outputTokens();
+
+            Map<String, Object> newPayload = new HashMap<>(action.payload());
+            if (suggestion.noPlannedDateNeeded()) {
+                newPayload.put("no_planned_date_needed", true);
+            } else if (suggestion.plannedDate() != null) {
+                newPayload.put("planned_date", suggestion.plannedDate().toString());
+            }
+            patched.add(new ProposedAction(action.ordinal(), action.type(), action.targetTaskId(), newPayload,
+                    action.summary(), action.accepted()));
+        }
+        return patched;
+    }
+
+    private String asString(Object value) {
+        return value == null ? null : value.toString();
+    }
+
     private ExperimentRunResult toResult(DatasetRow row, int attempt, Proposal proposal,
+                                          List<ProposedAction> effectiveActions,
                                           Map<String, UUID> setupRefToTaskId,
                                           Map<String, OffsetDateTime> setupRefToDeadline, ActionMatcher matcher) {
         boolean statusFailed = proposal.status() == ProposalStatus.FAILED;
@@ -204,8 +275,10 @@ class ExperimentRunner {
         // требует missingCount==0 && extraCount==0, оба нули на пустом
         // actual при пустом expected — строка не выбрасывается из статистики,
         // просто попадает в общий путь без деградационной пометки.
-        List<ProposedAction> effectiveActions = proposal.actions();
-
+        //
+        // effectiveActions приходит параметром, а не proposal.actions() —
+        // при включённом узком вызове (§4.3) это те же действия с
+        // patched-payload для CREATE без дня, иначе не отличается от исходного.
         ActionMatcher.MatchResult match = llmFailed
                 ? matcher.match(List.of(), row.expected(), setupRefToTaskId, setupRefToDeadline, LocalDate.now(ZONE), ZONE)
                 : matcher.match(effectiveActions, row.expected(), setupRefToTaskId, setupRefToDeadline, LocalDate.now(ZONE), ZONE);
