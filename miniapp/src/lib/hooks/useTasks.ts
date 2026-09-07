@@ -51,6 +51,10 @@ interface FocusHintResponse {
   hint?: string;
 }
 
+interface PlannedDateSuggestionResponse {
+  plannedDate?: string;
+}
+
 interface DigestResponse {
   topTasks: Task[];
   totalTasks: number;
@@ -122,6 +126,21 @@ export const useFocusHint = (taskId?: string, enabled = false) => {
     queryFn: async () => {
       const response = await getClient().get<FocusHintResponse>(`/tasks/${taskId}/focus-hint`);
       return response.data.hint;
+    },
+    enabled: enabled && Boolean(taskId),
+    staleTime: Infinity,
+    retry: false,
+  });
+};
+
+export const usePlannedDateSuggestion = (taskId?: string, enabled = false) => {
+  return useQuery({
+    queryKey: ['tasks', taskId, 'planned-date-suggestion'],
+    queryFn: async () => {
+      const response = await getClient().post<PlannedDateSuggestionResponse>(
+        `/tasks/${taskId}/planned-date-suggestion`,
+      );
+      return response.data.plannedDate;
     },
     enabled: enabled && Boolean(taskId),
     staleTime: Infinity,

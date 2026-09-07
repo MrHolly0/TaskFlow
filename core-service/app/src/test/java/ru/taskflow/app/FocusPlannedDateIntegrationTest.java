@@ -55,7 +55,7 @@ class FocusPlannedDateIntegrationTest {
     private NlpGatewayService nlpGatewayService;
 
     @Test
-    void firstFocus_setsPlannedDateFromOriginalMessage_andSecondFocusDoesNotCallAgain() {
+    void lazyRequest_setsPlannedDateFromOriginalMessage_andSecondRequestDoesNotCallAgain() {
         LocalDate suggestedDate = LocalDate.now(ZoneId.of("Europe/Moscow"));
         when(nlpGatewayService.callWithTools(any()))
                 .thenReturn(new LlmToolResponse(
@@ -76,12 +76,17 @@ class FocusPlannedDateIntegrationTest {
         assertThat(firstFocus.tasks()).singleElement().satisfies(task -> {
             assertThat(task.id()).isEqualTo(taskId);
             assertThat(task.deadline()).isNull();
-            assertThat(task.plannedDate()).isNotNull();
-            assertThat(task.plannedDate().toLocalDate()).isEqualTo(suggestedDate);
-            assertThat(task.plannedDateSetAt()).isNotNull();
+            assertThat(task.plannedDate()).isNull();
         });
+        verify(nlpGatewayService, times(1)).callWithTools(any());
 
-        taskService.getFocusTasks(userId, null);
+        var suggestion = taskService.suggestPlannedDate(userId, taskId);
+
+        assertThat(suggestion.plannedDate()).isNotNull();
+        assertThat(suggestion.plannedDate().toLocalDate()).isEqualTo(suggestedDate);
+        assertThat(taskService.findById(userId, taskId).plannedDateSetAt()).isNotNull();
+
+        taskService.suggestPlannedDate(userId, taskId);
         verify(nlpGatewayService, times(2)).callWithTools(any());
 
         var captor = forClass(LlmToolRequest.class);

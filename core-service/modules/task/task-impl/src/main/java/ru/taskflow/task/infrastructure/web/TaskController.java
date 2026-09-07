@@ -19,6 +19,7 @@ import ru.taskflow.task.api.dto.CreateTaskRequest;
 import ru.taskflow.task.api.dto.DigestResponse;
 import ru.taskflow.task.api.dto.FocusResponse;
 import ru.taskflow.task.api.dto.ReminderResponse;
+import ru.taskflow.task.api.dto.PlannedDateSuggestionResponse;
 import ru.taskflow.task.api.dto.ScheduleReminderRequest;
 import ru.taskflow.task.api.dto.TaskFilterRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
@@ -177,6 +178,15 @@ public class TaskController {
             @AuthenticationPrincipal AuthenticatedUser user
     ) {
         return taskService.getFocusHint(user.userId(), id);
+    }
+
+    @PostMapping("/{id}/planned-date-suggestion")
+    @Operation(summary = "Подобрать день исполнения для бессрочной задачи")
+    public PlannedDateSuggestionResponse suggestPlannedDate(
+            @PathVariable java.util.UUID id,
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) {
+        return taskService.suggestPlannedDate(user.userId(), id);
     }
 
     @GetMapping("/focus/upcoming")

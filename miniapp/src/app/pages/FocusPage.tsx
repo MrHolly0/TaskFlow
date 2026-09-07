@@ -6,7 +6,14 @@ import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 import { addDays } from 'date-fns';
 import { Priority } from '@/lib/store';
 import { formatDeadline, formatReminderTime, getPriorityBgColor, cn } from '@/lib/utils';
-import { useFocusTasks, useUpcomingFocusTasks, useCompleteTask, useUpdateTask, useTasksList } from '@/lib/hooks/useTasks';
+import {
+  useFocusTasks,
+  useUpcomingFocusTasks,
+  useCompleteTask,
+  useUpdateTask,
+  useTasksList,
+  usePlannedDateSuggestion,
+} from '@/lib/hooks/useTasks';
 import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
 import { useDisplayName } from '@/lib/hooks/useSettings';
 import { useMinuteTick } from '@/lib/hooks/useMinuteTick';
@@ -71,11 +78,25 @@ interface FocusTaskCardProps {
   onSnooze: (id: string) => void;
   onStart: (id: string) => void;
   onClick: (task: Task) => void;
+  suggestPlannedDate: boolean;
 }
 
-function FocusTaskCard({ task, index, timezone, onComplete, onSnooze, onStart, onClick }: FocusTaskCardProps) {
+function FocusTaskCard({
+  task,
+  index,
+  timezone,
+  onComplete,
+  onSnooze,
+  onStart,
+  onClick,
+  suggestPlannedDate,
+}: FocusTaskCardProps) {
   const [completing, setCompleting] = useState(false);
   useMinuteTick();
+  usePlannedDateSuggestion(
+    task.id,
+    suggestPlannedDate && !task.deadline && !task.plannedDate,
+  );
 
   const handleComplete = () => {
     setCompleting(true);
@@ -424,6 +445,7 @@ export function FocusPage() {
                 onSnooze={handleSnooze}
                 onStart={handleStartTask}
                 onClick={handleOpenTask}
+                suggestPlannedDate={!showingUpcoming}
               />
             ))}
           </AnimatePresence>

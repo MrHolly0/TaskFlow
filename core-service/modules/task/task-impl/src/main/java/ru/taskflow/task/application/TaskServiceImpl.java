@@ -21,6 +21,7 @@ import ru.taskflow.task.api.dto.CreateTaskRequest;
 import ru.taskflow.task.api.dto.DigestResponse;
 import ru.taskflow.task.api.dto.FocusResponse;
 import ru.taskflow.task.api.dto.FocusHintResponse;
+import ru.taskflow.task.api.dto.PlannedDateSuggestionResponse;
 import ru.taskflow.task.api.dto.RecurrenceRule;
 import ru.taskflow.task.api.dto.ReminderResponse;
 import ru.taskflow.task.api.dto.TaskFilterRequest;
@@ -643,17 +644,22 @@ public class TaskServiceImpl implements TaskService {
                 .filter(t -> passesHoursGate(t, now, zone))
                 .limit(3)
                 .toList();
-        entities.forEach(task -> suggestPlannedDateOnce(task, now, zone));
         entities.forEach(t -> t.setLastShownInFocusAt(now));
         taskRepository.saveAll(entities);
         return new FocusResponse(withRemindersBatch(entities));
     }
 
-    private void suggestPlannedDateOnce(TaskJpaEntity task, OffsetDateTime now, ZoneId zone) {
+    @Override
+    @Transactional
+    public PlannedDateSuggestionResponse suggestPlannedDate(UUID userId, UUID taskId) {
+        var task = taskRepository.findByIdAndUserId(taskId, userId)
+                .orElseThrow(() -> new TaskNotFoundException(taskId));
         if (task.getDeadline() != null || task.getPlannedDate() != null
                 || task.getPlannedDateSuggestionAttemptedAt() != null) {
-            return;
+            return new PlannedDateSuggestionResponse(task.getPlannedDate());
         }
+        var now = OffsetDateTime.now(clock);
+        var zone = userService.getTimezone(userId);
         try {
             var generation = focusPlannedDateGenerator.generate(
                     task.getId(), task.getTitle(), task.getDescription(),
@@ -666,6 +672,8 @@ public class TaskServiceImpl implements TaskService {
         } catch (RuntimeException e) {
             log.warn("Не удалось подобрать день исполнения для задачи {}: {}", task.getId(), e.getMessage());
         }
+        taskRepository.save(task);
+        return new PlannedDateSuggestionResponse(task.getPlannedDate());
     }
 
     @Override
