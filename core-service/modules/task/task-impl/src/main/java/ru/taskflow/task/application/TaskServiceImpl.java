@@ -660,11 +660,11 @@ public class TaskServiceImpl implements TaskService {
         }
         var now = OffsetDateTime.now(clock);
         var zone = userService.getTimezone(userId);
+        task.setPlannedDateSuggestionAttemptedAt(now);
         try {
             var generation = focusPlannedDateGenerator.generate(
                     task.getId(), task.getTitle(), task.getDescription(),
                     LocalDate.now(clock.withZone(zone)), zone);
-            task.setPlannedDateSuggestionAttemptedAt(now);
             if (generation.plannedDate() != null) {
                 task.setPlannedDate(generation.plannedDate());
                 task.setPlannedDateSetAt(now);

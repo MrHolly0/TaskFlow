@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -16,6 +17,7 @@ import ru.taskflow.nlp.api.LlmToolRequest;
 import ru.taskflow.nlp.api.LlmToolResponse;
 import ru.taskflow.nlp.api.NlpGatewayService;
 import ru.taskflow.task.api.TaskService;
+import ru.taskflow.task.api.dto.CreateTaskRequest;
 import ru.taskflow.user.api.UserService;
 
 import java.time.LocalDate;
@@ -30,6 +32,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Testcontainers
@@ -51,6 +54,8 @@ class FocusPlannedDateIntegrationTest {
     private TaskService taskService;
     @Autowired
     private UserService userService;
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
     @MockBean
     private NlpGatewayService nlpGatewayService;
 
@@ -95,6 +100,24 @@ class FocusPlannedDateIntegrationTest {
                 .filter(message -> "user".equals(message.role()))
                 .findFirst().orElseThrow().content();
         assertThat(narrowCallInput).contains(sourceText);
+    }
+
+    @Test
+    void failedLazyRequest_savesAttemptAndIsNotRepeated() {
+        doThrow(new RuntimeException("модель недоступна"))
+                .when(nlpGatewayService).callWithTools(any());
+        UUID userId = newUser();
+        UUID taskId = taskService.createQuick(userId,
+                new CreateTaskRequest("подготовить пакет документов", null, null, null,
+                        null, null, List.of(), null, null)).id();
+
+        assertThat(taskService.suggestPlannedDate(userId, taskId).plannedDate()).isNull();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT planned_date_suggestion_attempted_at IS NOT NULL FROM tasks WHERE id = ?",
+                Boolean.class, taskId)).isTrue();
+
+        assertThat(taskService.suggestPlannedDate(userId, taskId).plannedDate()).isNull();
+        verify(nlpGatewayService, times(1)).callWithTools(any());
     }
 
     private UUID newUser() {
