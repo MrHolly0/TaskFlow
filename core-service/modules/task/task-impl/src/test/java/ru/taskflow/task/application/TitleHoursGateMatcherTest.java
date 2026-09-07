@@ -8,9 +8,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class TitleHoursGateMatcherTest {
 
-    // Корень для поликлиники должен отличать её от "полить"/"поливать" —
-    // ловушка, найденная при прототипировании гибридной меры (§4.3/§4.1).
-    private static final List<String> ROOTS = List.of("полик", "банк", "магаз");
+    private static final List<String> ROOTS = List.of(
+            "поликлин", "больниц", "аптек", "мфц", "нотар", "автосерв",
+            "химчист", "загс", "соцзащит", "консульст", "ветеринар");
 
     @Test
     void tiedToHours_matchesConfiguredRoot() {
@@ -34,12 +34,12 @@ class TitleHoursGateMatcherTest {
 
     @Test
     void tiedToHours_isCaseInsensitive() {
-        assertThat(TitleHoursGateMatcher.tiedToHours("ПОЗВОНИТЬ В БАНК", ROOTS)).isTrue();
+        assertThat(TitleHoursGateMatcher.tiedToHours("ПОЗВОНИТЬ В АПТЕКУ", ROOTS)).isTrue();
     }
 
     @Test
     void tiedToHours_ignoresPunctuation() {
-        assertThat(TitleHoursGateMatcher.tiedToHours("Банк: перевыпустить карту!", ROOTS)).isTrue();
+        assertThat(TitleHoursGateMatcher.tiedToHours("Аптека: купить лекарство!", ROOTS)).isTrue();
     }
 
     @Test
@@ -55,11 +55,22 @@ class TitleHoursGateMatcherTest {
 
     @Test
     void tiedToHours_falseWhenNoRootsConfigured() {
-        assertThat(TitleHoursGateMatcher.tiedToHours("сходить в банк", List.of())).isFalse();
+        assertThat(TitleHoursGateMatcher.tiedToHours("сходить в аптеку", List.of())).isFalse();
     }
 
     @Test
     void tiedToHours_matchesWordAnywhereInTitle() {
-        assertThat(TitleHoursGateMatcher.tiedToHours("заехать в магазин по пути домой", ROOTS)).isTrue();
+        assertThat(TitleHoursGateMatcher.tiedToHours("заехать в автосервис по пути домой", ROOTS)).isTrue();
+    }
+
+    @Test
+    void tiedToHours_doesNotMatchCheckedPrefixCollisions() {
+        assertThat(TitleHoursGateMatcher.tiedToHours("снять денег в банкомате", ROOTS)).isFalse();
+        assertThat(TitleHoursGateMatcher.tiedToHours("купить банку кофе", ROOTS)).isFalse();
+        assertThat(TitleHoursGateMatcher.tiedToHours("заказать банкетный зал", ROOTS)).isFalse();
+        assertThat(TitleHoursGateMatcher.tiedToHours("купить магазин для автомата", ROOTS)).isFalse();
+        assertThat(TitleHoursGateMatcher.tiedToHours("проведать больного друга", ROOTS)).isFalse();
+        assertThat(TitleHoursGateMatcher.tiedToHours("купить поликарбонат", ROOTS)).isFalse();
+        assertThat(TitleHoursGateMatcher.tiedToHours("прочитать про полицитемию", ROOTS)).isFalse();
     }
 }
