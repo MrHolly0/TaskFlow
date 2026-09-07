@@ -4,5 +4,7 @@ public enum AuditEventType {
     CREATED,
     UPDATED,
     STATUS_CHANGED,
-    DELETED
+    DELETED,
+    FOCUS_HINT_SHOWN,
+    STARTED_AFTER_HINT
 }

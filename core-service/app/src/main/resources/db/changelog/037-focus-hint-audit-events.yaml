@@ -1,0 +1,14 @@
+databaseChangeLog:
+  - changeSet:
+      id: 037-focus-hint-audit-events
+      author: taskflow
+      comment: >
+        Показ первого шага и последующий старт задачи нужны для проверки
+        гипотезы §5.1 по поведению пользователя. Ограничение chk_event_type
+        перечисляет допустимые значения явно, поэтому обновляется вместе с
+        AuditEventType.
+      changes:
+        - sql:
+            sql: "ALTER TABLE task_events DROP CONSTRAINT chk_event_type;"
+        - sql:
+            sql: "ALTER TABLE task_events ADD CONSTRAINT chk_event_type CHECK (event_type IN ('CREATED','UPDATED','STATUS_CHANGED','DELETED','FOCUS_HINT_SHOWN','STARTED_AFTER_HINT'));"
