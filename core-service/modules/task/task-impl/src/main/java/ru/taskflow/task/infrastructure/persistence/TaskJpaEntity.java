@@ -67,6 +67,9 @@ public class TaskJpaEntity {
     @Column(name = "planned_date_set_at")
     private OffsetDateTime plannedDateSetAt;
 
+    @Column(name = "planned_date_suggestion_attempted_at")
+    private OffsetDateTime plannedDateSuggestionAttemptedAt;
+
     // Момент выдачи задачи в фокус (не действия над ней) — единственное
     // основание для подъёма давно не показанной бессрочной задачи. Не
     // отображается пользователю ни в каком виде (А3).

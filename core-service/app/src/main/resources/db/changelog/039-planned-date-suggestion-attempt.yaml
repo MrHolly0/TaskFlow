@@ -1,0 +1,16 @@
+databaseChangeLog:
+  - changeSet:
+      id: 039-planned-date-suggestion-attempt
+      author: taskflow
+      comment: >
+        Отметка первого узкого вызова дня исполнения отличает ещё не
+        обработанную бессрочную задачу от задачи, для которой модель
+        осознанно не предложила день. Без неё второй случай вызывал бы модель
+        при каждом попадании в фокус.
+      changes:
+        - addColumn:
+            tableName: tasks
+            columns:
+              - column:
+                  name: planned_date_suggestion_attempted_at
+                  type: TIMESTAMP WITH TIME ZONE

@@ -38,4 +38,12 @@ public interface ProposalRepository extends JpaRepository<ProposalJpaEntity, UUI
     @Modifying
     @Query("UPDATE ProposalJpaEntity p SET p.userId = :to WHERE p.userId = :from")
     int reassignOwner(@Param("from") UUID from, @Param("to") UUID to);
+
+    @Query("""
+            SELECT p.sourceText FROM ProposalJpaEntity p
+            JOIN p.actions a
+            WHERE a.appliedTaskId = :taskId AND p.sourceText IS NOT NULL
+            ORDER BY p.createdAt DESC
+            """)
+    List<String> findSourceTextsByAppliedTaskId(@Param("taskId") UUID taskId, Pageable pageable);
 }

@@ -1,6 +1,7 @@
 package ru.taskflow.task.application;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -8,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.taskflow.assistant.api.FocusHintGeneration;
 import ru.taskflow.assistant.api.FocusHintGenerator;
+import ru.taskflow.assistant.api.FocusPlannedDateGenerator;
 import ru.taskflow.audit.api.AuditEventType;
 import ru.taskflow.audit.api.AuditService;
 import ru.taskflow.shared.exception.ValidationException;
@@ -63,6 +65,7 @@ import java.util.stream.Collectors;
  */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 @Transactional(readOnly = true)
 public class TaskServiceImpl implements TaskService {
 
@@ -83,6 +86,7 @@ public class TaskServiceImpl implements TaskService {
     private final FocusHoursGateConfig focusHoursGateConfig;
     private final FocusHintConfig focusHintConfig;
     private final FocusHintGenerator focusHintGenerator;
+    private final FocusPlannedDateGenerator focusPlannedDateGenerator;
 
     /**
      * Создаёт новую задачу для пользователя.
@@ -639,9 +643,29 @@ public class TaskServiceImpl implements TaskService {
                 .filter(t -> passesHoursGate(t, now, zone))
                 .limit(3)
                 .toList();
+        entities.forEach(task -> suggestPlannedDateOnce(task, now, zone));
         entities.forEach(t -> t.setLastShownInFocusAt(now));
         taskRepository.saveAll(entities);
         return new FocusResponse(withRemindersBatch(entities));
+    }
+
+    private void suggestPlannedDateOnce(TaskJpaEntity task, OffsetDateTime now, ZoneId zone) {
+        if (task.getDeadline() != null || task.getPlannedDate() != null
+                || task.getPlannedDateSuggestionAttemptedAt() != null) {
+            return;
+        }
+        try {
+            var generation = focusPlannedDateGenerator.generate(
+                    task.getId(), task.getTitle(), task.getDescription(),
+                    LocalDate.now(clock.withZone(zone)), zone);
+            task.setPlannedDateSuggestionAttemptedAt(now);
+            if (generation.plannedDate() != null) {
+                task.setPlannedDate(generation.plannedDate());
+                task.setPlannedDateSetAt(now);
+            }
+        } catch (RuntimeException e) {
+            log.warn("Не удалось подобрать день исполнения для задачи {}: {}", task.getId(), e.getMessage());
+        }
     }
 
     @Override
