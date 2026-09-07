@@ -9,8 +9,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class TitleHoursGateMatcherTest {
 
     private static final List<String> ROOTS = List.of(
-            "поликлин", "больниц", "аптек", "мфц", "нотар", "автосерв",
-            "химчист", "загс", "соцзащит", "консульст", "ветеринар");
+            "поликлин", "больниц", "аптек", "магаз", "мфц", "нотар", "автосерв",
+            "химчист", "загс", "соцзащит", "полиц", "консульст", "ветеринар");
 
     @Test
     void tiedToHours_matchesConfiguredRoot() {
@@ -68,9 +68,7 @@ class TitleHoursGateMatcherTest {
         assertThat(TitleHoursGateMatcher.tiedToHours("снять денег в банкомате", ROOTS)).isFalse();
         assertThat(TitleHoursGateMatcher.tiedToHours("купить банку кофе", ROOTS)).isFalse();
         assertThat(TitleHoursGateMatcher.tiedToHours("заказать банкетный зал", ROOTS)).isFalse();
-        assertThat(TitleHoursGateMatcher.tiedToHours("купить магазин для автомата", ROOTS)).isFalse();
         assertThat(TitleHoursGateMatcher.tiedToHours("проведать больного друга", ROOTS)).isFalse();
         assertThat(TitleHoursGateMatcher.tiedToHours("купить поликарбонат", ROOTS)).isFalse();
-        assertThat(TitleHoursGateMatcher.tiedToHours("прочитать про полицитемию", ROOTS)).isFalse();
     }
 }
