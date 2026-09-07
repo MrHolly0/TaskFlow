@@ -1,0 +1,18 @@
+databaseChangeLog:
+  - changeSet:
+      id: 038-task-first-step-hint
+      author: taskflow
+      comment: >
+        Кэш первого шага для гипотезы §5.1. Отдельная отметка времени
+        фиксирует и вызов без пригодного результата, чтобы не повторять его
+        при каждом открытии задачи.
+      changes:
+        - addColumn:
+            tableName: tasks
+            columns:
+              - column:
+                  name: first_step_hint
+                  type: VARCHAR(200)
+              - column:
+                  name: first_step_generated_at
+                  type: TIMESTAMP WITH TIME ZONE

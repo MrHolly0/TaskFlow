@@ -72,6 +72,9 @@ app:
     read-timeout-seconds: 30
     tool-call-read-timeout-seconds: 20
   focus:
+    hint:
+      min-title-words: 4
+      estimate-threshold-minutes: 30
     hours-gate:
       window-start-hour: 9
       window-end-hour: 19

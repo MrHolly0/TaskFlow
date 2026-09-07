@@ -5,6 +5,7 @@ import org.springframework.data.domain.Pageable;
 import ru.taskflow.task.api.dto.CreateTaskRequest;
 import ru.taskflow.task.api.dto.DigestResponse;
 import ru.taskflow.task.api.dto.FocusResponse;
+import ru.taskflow.task.api.dto.FocusHintResponse;
 import ru.taskflow.task.api.dto.ReminderResponse;
 import ru.taskflow.task.api.dto.TaskFilterRequest;
 import ru.taskflow.task.api.dto.TaskResponse;
@@ -70,6 +71,8 @@ public interface TaskService {
      *                         задачи без оценки участвуют всегда, независимо от значения
      */
     FocusResponse getFocusTasks(UUID userId, Integer availableMinutes);
+
+    FocusHintResponse getFocusHint(UUID userId, UUID taskId);
 
     FocusResponse getUpcomingFocusTasks(UUID userId, Integer availableMinutes);
 

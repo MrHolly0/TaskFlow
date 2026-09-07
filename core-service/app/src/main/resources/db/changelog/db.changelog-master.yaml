@@ -73,3 +73,5 @@ databaseChangeLog:
       file: db/changelog/036-reminder-persistence-chain.yaml
   - include:
       file: db/changelog/037-focus-hint-audit-events.yaml
+  - include:
+      file: db/changelog/038-task-first-step-hint.yaml

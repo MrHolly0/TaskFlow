@@ -170,6 +170,15 @@ public class TaskController {
         return taskService.getFocusTasks(user.userId(), availableMinutes);
     }
 
+    @GetMapping("/{id}/focus-hint")
+    @Operation(summary = "Первый шаг задачи в режиме фокуса")
+    public ru.taskflow.task.api.dto.FocusHintResponse getFocusHint(
+            @PathVariable java.util.UUID id,
+            @AuthenticationPrincipal AuthenticatedUser user
+    ) {
+        return taskService.getFocusHint(user.userId(), id);
+    }
+
     @GetMapping("/focus/upcoming")
     @Operation(summary = "Режим фокуса — что дальше", description = "Возвращает 1–3 задачи с дедлайном позже сегодняшнего, для просмотра после закрытия плана на сегодня")
     public FocusResponse getUpcomingFocusTasks(

@@ -10,6 +10,7 @@ import {
   useCancelReminder,
   useSnoozeReminder,
   useClearRecurrence,
+  useFocusHint,
   RecurrenceRule,
 } from '@/lib/hooks/useTasks';
 import { useUserTimezone } from '@/lib/hooks/useUserTimezone';
@@ -92,6 +93,7 @@ interface TaskDetailModalProps {
   task: TaskInput | null;
   open: boolean;
   onClose: () => void;
+  showFocusHint?: boolean;
 }
 
 function AddReminderForm({
@@ -164,7 +166,7 @@ function AddReminderForm({
   );
 }
 
-export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
+export function TaskDetailModal({ task, open, onClose, showFocusHint = false }: TaskDetailModalProps) {
   const { mutateAsync: updateTask } = useUpdateTask();
   const { mutate: deleteTask } = useDeleteTask();
   const { data: groups = [] } = useGroups();
@@ -173,6 +175,10 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
   const { mutate: cancelReminder } = useCancelReminder();
   const { mutate: snoozeReminder } = useSnoozeReminder();
   const { mutateAsync: clearRecurrence } = useClearRecurrence();
+  const { data: focusHint, isLoading: focusHintLoading } = useFocusHint(
+    task?.id,
+    open && showFocusHint,
+  );
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -333,6 +339,17 @@ export function TaskDetailModal({ task, open, onClose }: TaskDetailModalProps) {
               className="resize-none min-h-[80px]"
             />
           </div>
+
+          {showFocusHint && (focusHintLoading || focusHint) && (
+            <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Первый шаг
+              </p>
+              <p className="mt-1 text-sm">
+                {focusHintLoading ? 'Подбираем короткий шаг…' : focusHint}
+              </p>
+            </div>
+          )}
 
           {/* Priority + Status row */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

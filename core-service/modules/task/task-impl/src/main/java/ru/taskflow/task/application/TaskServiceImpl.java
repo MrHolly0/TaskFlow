@@ -6,6 +6,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import ru.taskflow.assistant.api.FocusHintGeneration;
+import ru.taskflow.assistant.api.FocusHintGenerator;
 import ru.taskflow.audit.api.AuditEventType;
 import ru.taskflow.audit.api.AuditService;
 import ru.taskflow.shared.exception.ValidationException;
@@ -16,6 +18,7 @@ import ru.taskflow.task.api.TaskStatus;
 import ru.taskflow.task.api.dto.CreateTaskRequest;
 import ru.taskflow.task.api.dto.DigestResponse;
 import ru.taskflow.task.api.dto.FocusResponse;
+import ru.taskflow.task.api.dto.FocusHintResponse;
 import ru.taskflow.task.api.dto.RecurrenceRule;
 import ru.taskflow.task.api.dto.ReminderResponse;
 import ru.taskflow.task.api.dto.TaskFilterRequest;
@@ -27,6 +30,7 @@ import ru.taskflow.task.api.dto.UpdateTaskRequest;
 import ru.taskflow.task.api.exception.GroupNotFoundException;
 import ru.taskflow.task.api.exception.TaskNotFoundException;
 import ru.taskflow.task.infrastructure.FocusHoursGateConfig;
+import ru.taskflow.task.infrastructure.FocusHintConfig;
 import ru.taskflow.task.infrastructure.persistence.*;
 import ru.taskflow.user.api.UserService;
 
@@ -77,6 +81,8 @@ public class TaskServiceImpl implements TaskService {
     private final FocusTaskRanker focusTaskRanker;
     private final UserService userService;
     private final FocusHoursGateConfig focusHoursGateConfig;
+    private final FocusHintConfig focusHintConfig;
+    private final FocusHintGenerator focusHintGenerator;
 
     /**
      * Создаёт новую задачу для пользователя.
@@ -267,6 +273,11 @@ public class TaskServiceImpl implements TaskService {
         var task = taskRepository.findByIdAndUserId(taskId, userId)
                 .orElseThrow(() -> new TaskNotFoundException(taskId));
 
+        boolean startedAfterHint = request.status() == TaskStatus.IN_PROGRESS
+                && task.getStatus() != TaskStatus.IN_PROGRESS
+                && auditService.getHistory(taskId, userId).stream()
+                        .anyMatch(event -> AuditEventType.FOCUS_HINT_SHOWN.name().equals(event.eventType()));
+
         // Считаем дельту до мутации task — buildDelta сравнивает request с текущим
         // состоянием, а не "было/стало"; после сеттеров ниже task.getX() уже равен
         // request.X(), и сравнение всегда было бы истинным.
@@ -328,6 +339,9 @@ public class TaskServiceImpl implements TaskService {
             }
         }
         auditService.record(userId, taskId, AuditEventType.UPDATED, delta.isEmpty() ? null : delta);
+        if (startedAfterHint) {
+            auditService.record(userId, taskId, AuditEventType.STARTED_AFTER_HINT, null);
+        }
 
         boolean becameTerminal = request.status() == TaskStatus.DONE || request.status() == TaskStatus.CANCELLED;
         if (becameTerminal) {
@@ -628,6 +642,43 @@ public class TaskServiceImpl implements TaskService {
         entities.forEach(t -> t.setLastShownInFocusAt(now));
         taskRepository.saveAll(entities);
         return new FocusResponse(withRemindersBatch(entities));
+    }
+
+    @Override
+    @Transactional
+    public FocusHintResponse getFocusHint(UUID userId, UUID taskId) {
+        var task = taskRepository.findByIdAndUserId(taskId, userId)
+                .orElseThrow(() -> new TaskNotFoundException(taskId));
+        if (!eligibleForFocusHint(task)) {
+            return new FocusHintResponse(null);
+        }
+
+        FocusHintGeneration generation = null;
+        if (task.getFirstStepGeneratedAt() == null) {
+            generation = focusHintGenerator.generate(task.getTitle(), task.getDescription());
+            task.setFirstStepHint(generation.hint());
+            task.setFirstStepGeneratedAt(OffsetDateTime.now(clock));
+            taskRepository.save(task);
+        }
+
+        if (task.getFirstStepHint() != null) {
+            Map<String, Object> delta = generation == null
+                    ? Map.of("cached", true)
+                    : Map.of(
+                            "cached", false,
+                            "inputTokens", generation.inputTokens(),
+                            "outputTokens", generation.outputTokens());
+            auditService.record(userId, taskId, AuditEventType.FOCUS_HINT_SHOWN, delta);
+        }
+        return new FocusHintResponse(task.getFirstStepHint());
+    }
+
+    private boolean eligibleForFocusHint(TaskJpaEntity task) {
+        int titleWords = task.getTitle().trim().split("\\s+").length;
+        boolean titleLongEnough = titleWords >= focusHintConfig.getMinTitleWords();
+        boolean estimateLongEnough = task.getEstimateMinutes() != null
+                && task.getEstimateMinutes() > focusHintConfig.getEstimateThresholdMinutes();
+        return titleLongEnough || estimateLongEnough;
     }
 
     /**

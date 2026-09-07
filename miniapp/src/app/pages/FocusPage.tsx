@@ -433,6 +433,7 @@ export function FocusPage() {
       <TaskDetailModal
         task={selectedTask}
         open={modalOpen}
+        showFocusHint={!showingUpcoming}
         onClose={() => setModalOpen(false)}
       />
     </>

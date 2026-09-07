@@ -73,6 +73,14 @@ public class TaskJpaEntity {
     @Column(name = "last_shown_in_focus_at")
     private OffsetDateTime lastShownInFocusAt;
 
+    @Column(name = "first_step_hint", length = 200)
+    private String firstStepHint;
+
+    // Ненулевая отметка означает, что гипотеза §5.1 уже вычислялась, даже
+    // если модель не вернула пригодный текст: повторно её не вызываем.
+    @Column(name = "first_step_generated_at")
+    private OffsetDateTime firstStepGeneratedAt;
+
     // Настойчивость по задаче (Б1) — ставит человек, в карточке задачи или
     // предложения; модель это поле не предлагает и не читает.
     @Column(name = "persistent_reminder", nullable = false)

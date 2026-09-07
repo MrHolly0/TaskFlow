@@ -12,6 +12,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import ru.taskflow.audit.api.AuditEventType;
 import ru.taskflow.audit.api.AuditService;
+import ru.taskflow.assistant.api.FocusHintGenerator;
 import ru.taskflow.shared.exception.ValidationException;
 import ru.taskflow.task.api.RecurrenceType;
 import ru.taskflow.task.api.TaskPriority;
@@ -24,6 +25,7 @@ import ru.taskflow.task.api.dto.TaskResponse;
 import ru.taskflow.task.api.dto.UpdateTaskRequest;
 import ru.taskflow.task.api.exception.TaskNotFoundException;
 import ru.taskflow.task.infrastructure.FocusHoursGateConfig;
+import ru.taskflow.task.infrastructure.FocusHintConfig;
 import ru.taskflow.task.infrastructure.persistence.*;
 import ru.taskflow.user.api.UserService;
 
@@ -64,6 +66,8 @@ class TaskServiceTest {
     private GroupStyleResolver groupStyleResolver;
     @Mock
     private UserService userService;
+    @Mock
+    private FocusHintGenerator focusHintGenerator;
 
     // Реальный Clock.fixed, не мок — прокрутке следующего вхождения (А) нужно
     // настоящее сравнение дат, а не настраивать заглушку под каждый шаг.
@@ -93,7 +97,8 @@ class TaskServiceTest {
         // TaskServiceImpl с непустой конфигурацией отдельно.
         taskService = new TaskServiceImpl(taskRepository, groupRepository, tagRepository, taskMapper,
                 taskReminderService, reminderRepository, recurrenceRepository, auditService, groupStyleResolver,
-                clock, focusTaskRanker, userService, new FocusHoursGateConfig());
+                clock, focusTaskRanker, userService, new FocusHoursGateConfig(), new FocusHintConfig(),
+                focusHintGenerator);
     }
 
     @Test
@@ -1054,7 +1059,7 @@ class TaskServiceTest {
         config.setRoots(List.of("банк"));
         var gated = new TaskServiceImpl(taskRepository, groupRepository, tagRepository, taskMapper,
                 taskReminderService, reminderRepository, recurrenceRepository, auditService, groupStyleResolver,
-                clock, focusTaskRanker, userService, config);
+                clock, focusTaskRanker, userService, config, new FocusHintConfig(), focusHintGenerator);
         var tied = taskEntity();
         tied.setTitle("Позвонить в банк");
         when(taskRepository.findFocusTasks(eq(userId), eq(TaskStatus.DONE), any(OffsetDateTime.class)))
@@ -1074,7 +1079,7 @@ class TaskServiceTest {
         var dayClock = Clock.fixed(Instant.parse("2025-06-02T12:00:00Z"), ZoneOffset.UTC);
         var gated = new TaskServiceImpl(taskRepository, groupRepository, tagRepository, taskMapper,
                 taskReminderService, reminderRepository, recurrenceRepository, auditService, groupStyleResolver,
-                dayClock, focusTaskRanker, userService, config);
+                dayClock, focusTaskRanker, userService, config, new FocusHintConfig(), focusHintGenerator);
         var tied = taskEntity();
         tied.setTitle("Позвонить в банк");
         when(taskRepository.findFocusTasks(eq(userId), eq(TaskStatus.DONE), any(OffsetDateTime.class)))
@@ -1093,7 +1098,7 @@ class TaskServiceTest {
         config.setRoots(List.of("банк"));
         var gated = new TaskServiceImpl(taskRepository, groupRepository, tagRepository, taskMapper,
                 taskReminderService, reminderRepository, recurrenceRepository, auditService, groupStyleResolver,
-                clock, focusTaskRanker, userService, config);
+                clock, focusTaskRanker, userService, config, new FocusHintConfig(), focusHintGenerator);
         var untied = taskEntity();
         untied.setTitle("купить молоко");
         when(taskRepository.findFocusTasks(eq(userId), eq(TaskStatus.DONE), any(OffsetDateTime.class)))
@@ -1111,7 +1116,7 @@ class TaskServiceTest {
         config.setRoots(List.of("банк"));
         var gated = new TaskServiceImpl(taskRepository, groupRepository, tagRepository, taskMapper,
                 taskReminderService, reminderRepository, recurrenceRepository, auditService, groupStyleResolver,
-                clock, focusTaskRanker, userService, config);
+                clock, focusTaskRanker, userService, config, new FocusHintConfig(), focusHintGenerator);
         var tied = taskEntity();
         tied.setTitle("Позвонить в банк");
         when(taskRepository.findUpcomingFocusTasks(eq(userId), eq(TaskStatus.DONE), any(OffsetDateTime.class)))

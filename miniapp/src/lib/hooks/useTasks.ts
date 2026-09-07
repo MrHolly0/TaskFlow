@@ -47,6 +47,10 @@ interface FocusResponse {
   tasks: Task[];
 }
 
+interface FocusHintResponse {
+  hint?: string;
+}
+
 interface DigestResponse {
   topTasks: Task[];
   totalTasks: number;
@@ -109,6 +113,19 @@ export const useUpcomingFocusTasks = (enabled: boolean, availableMinutes?: numbe
     },
     enabled,
     staleTime: 1000 * 60 * 2,
+  });
+};
+
+export const useFocusHint = (taskId?: string, enabled = false) => {
+  return useQuery({
+    queryKey: ['tasks', taskId, 'focus-hint'],
+    queryFn: async () => {
+      const response = await getClient().get<FocusHintResponse>(`/tasks/${taskId}/focus-hint`);
+      return response.data.hint;
+    },
+    enabled: enabled && Boolean(taskId),
+    staleTime: Infinity,
+    retry: false,
   });
 };
 
